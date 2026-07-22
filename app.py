@@ -590,187 +590,186 @@ with tab2:
 
 
 with tab3:
-    st.markdown("### 🧪 Test Point Verification & Curve")
-    st.caption(
+    st.subheader("🧪 Test Point Verification & Curve")
+    st.write(
         "Enter measured test results and see them plotted against the calculated "
         "characteristic curve, all in one place."
     )
-    with st.container(border=True):
-        st.markdown("#### 📝 Add Test Points (Actual Measured Results)")
-        st.caption(
-            "Enter the restraint and differential currents actually read off your test set's "
-            "ammeters during injection testing — each one you add is plotted on the curve "
-            "below, so you can see how real results compare to the calculated CAL. line. "
-            "Pick whichever unit matches your test set's readout; values are stored and "
-            "converted consistently either way."
+    st.markdown("#### 📝 Add Test Points (Actual Measured Results)")
+    st.caption(
+        "Enter the restraint and differential currents actually read off your test set's "
+        "ammeters during injection testing — each one you add is plotted on the curve "
+        "below, so you can see how real results compare to the calculated CAL. line. "
+        "Pick whichever unit matches your test set's readout; values are stored and "
+        "converted consistently either way."
+    )
+
+    if "manual_test_points" not in st.session_state:
+        st.session_state.manual_test_points = []
+
+    with st.form("add_test_point_form", clear_on_submit=True):
+        tp_unit = st.radio(
+            "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
+            key="tp_entry_unit",
+            help="pu is converted to Amps using the Neutral-side rated secondary current "
+                 "(same base used everywhere else in this app) before it's stored."
         )
+        tc1, tc2, tc3, tc4 = st.columns([1, 1, 1, 1.4])
+        restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
+        diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
+        restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
+        diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
+        restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
+        diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
+        with tc1:
+            tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"])
+        with tc2:
+            tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step)
+        with tc3:
+            tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
+        with tc4:
+            tp_label = st.text_input("Label (optional)", value="")
+        submitted = st.form_submit_button("➕ Add Test Point")
+        if submitted:
+            if tp_unit.startswith("Secondary"):
+                restraint_amps = tp_restraint
+                diff_amps = tp_diff
+            else:
+                restraint_amps = tp_restraint * amps_base
+                diff_amps = tp_diff * amps_base
+            st.session_state.manual_test_points.append({
+                "Phase": tp_phase,
+                "Restraint (A)": round(restraint_amps, 3),
+                "Measured Diff (A)": round(diff_amps, 3),
+                "Label": tp_label
+            })
 
-        if "manual_test_points" not in st.session_state:
-            st.session_state.manual_test_points = []
-
-        with st.form("add_test_point_form", clear_on_submit=True):
-            tp_unit = st.radio(
-                "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
-                key="tp_entry_unit",
-                help="pu is converted to Amps using the Neutral-side rated secondary current "
-                     "(same base used everywhere else in this app) before it's stored."
-            )
-            tc1, tc2, tc3, tc4 = st.columns([1, 1, 1, 1.4])
-            restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
-            diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
-            restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
-            diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
-            restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
-            diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
-            with tc1:
-                tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"])
-            with tc2:
-                tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step)
-            with tc3:
-                tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
-            with tc4:
-                tp_label = st.text_input("Label (optional)", value="")
-            submitted = st.form_submit_button("➕ Add Test Point")
-            if submitted:
-                if tp_unit.startswith("Secondary"):
-                    restraint_amps = tp_restraint
-                    diff_amps = tp_diff
-                else:
-                    restraint_amps = tp_restraint * amps_base
-                    diff_amps = tp_diff * amps_base
-                st.session_state.manual_test_points.append({
-                    "Phase": tp_phase,
-                    "Restraint (A)": round(restraint_amps, 3),
-                    "Measured Diff (A)": round(diff_amps, 3),
-                    "Label": tp_label
-                })
-
-        if st.session_state.manual_test_points:
-            table_unit = st.radio(
-                "Display units for table", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
-                key="tp_table_unit",
-                help="Points are always stored consistently in Secondary Amps internally, but you "
-                     "can view this table in whichever unit you prefer — the values convert either way."
-            )
-            table_in_pu = table_unit.startswith("Per-Unit")
-            restraint_col = "Restraint (pu)" if table_in_pu else "Restraint (A)"
-            diff_col = "Measured Diff (pu)" if table_in_pu else "Measured Diff (A)"
-
-            tp_display_rows = []
-            for tp in st.session_state.manual_test_points:
-                r_amps = tp["Restraint (A)"]
-                d_amps = tp["Measured Diff (A)"]
-                tp_display_rows.append({
-                    "Phase": tp["Phase"],
-                    restraint_col: round(r_amps / amps_base, 3) if table_in_pu else round(r_amps, 3),
-                    diff_col: round(d_amps / amps_base, 3) if table_in_pu else round(d_amps, 3),
-                    "Label": tp["Label"]
-                })
-            tp_df = pd.DataFrame(tp_display_rows)
-            st.dataframe(tp_df, use_container_width=True)
-
-            rc1, rc2 = st.columns(2)
-            with rc1:
-                remove_idx = st.number_input(
-                    "Row # to remove (0-indexed)", min_value=0,
-                    max_value=max(len(st.session_state.manual_test_points) - 1, 0),
-                    value=0, step=1
-                )
-                if st.button("🗑️ Remove Row"):
-                    st.session_state.manual_test_points.pop(int(remove_idx))
-                    st.rerun()
-            with rc2:
-                if st.button("🗑️ Clear All Test Points"):
-                    st.session_state.manual_test_points = []
-                    st.rerun()
-        else:
-            st.info("No test points added yet — add some above to see them plotted below.")
-
-        st.markdown("---")
-        st.markdown("#### 📈 Differential Slope Characteristic Curve")
-
-        comm_chart_units = st.radio(
-            "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
-            key="comm_chart_units",
-            help="Secondary Amps matches how commissioning test reports are usually plotted "
-                 "(e.g. GEK-34124 Figure 7). Conversion uses the Neutral-side rated secondary "
-                 "current as the base — accurate as long as both CTs share the same ratio, "
-                 "which they do for this unit (24000:5 on both sides)."
+    if st.session_state.manual_test_points:
+        table_unit = st.radio(
+            "Display units for table", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
+            key="tp_table_unit",
+            help="Points are always stored consistently in Secondary Amps internally, but you "
+                 "can view this table in whichever unit you prefer — the values convert either way."
         )
-        use_amps_comm = comm_chart_units == "Secondary Amps (A)"
-        unit_label_comm = "A" if use_amps_comm else "pu"
+        table_in_pu = table_unit.startswith("Per-Unit")
+        restraint_col = "Restraint (pu)" if table_in_pu else "Restraint (A)"
+        diff_col = "Measured Diff (pu)" if table_in_pu else "Measured Diff (A)"
 
-        cal_source = st.radio(
-            "CAL. line source",
-            ["Connect my test points (commissioning report style)", "Theoretical relay characteristic"],
-            horizontal=True,
-            key="cal_line_source",
-            help="'Connect my test points' draws a straight line through your entered test points "
-                 "sorted by restraint current, exactly like the CAL. line in a commissioning test "
-                 "report. 'Theoretical' plots the smooth curve from the relay's Pickup/Slope/Break "
-                 "settings instead."
-        )
-
-        sweep_fig = go.Figure()
-
-        if cal_source.startswith("Connect") and len(st.session_state.manual_test_points) >= 2:
-            sorted_pts = sorted(st.session_state.manual_test_points, key=lambda tp: tp["Restraint (A)"])
-            cal_x_amps = [tp["Restraint (A)"] for tp in sorted_pts]
-            cal_y_amps = [tp["Measured Diff (A)"] for tp in sorted_pts]
-            curve_x = cal_x_amps if use_amps_comm else [x / amps_base for x in cal_x_amps]
-            curve_y = cal_y_amps if use_amps_comm else [y / amps_base for y in cal_y_amps]
-            sweep_fig.add_trace(go.Scatter(
-                x=curve_x, y=curve_y, mode="lines", name="CAL.",
-                line=dict(color="#2E8B57", width=3)
-            ))
-        else:
-            if cal_source.startswith("Connect"):
-                st.info("Add at least 2 test points above to draw the CAL. line through them — showing the theoretical characteristic for now.")
-            manual_restraints_pu = [tp["Restraint (A)"] / amps_base for tp in st.session_state.manual_test_points]
-            default_reach = (relay.break_2 + 2.0) if current_mode == "GENERATOR" else 6.0
-            max_restraint = max(manual_restraints_pu + [default_reach]) if manual_restraints_pu else default_reach
-
-            curve_x_pu = np.linspace(0, max_restraint * 1.2 + 0.5, 300)
-            curve_y_pu = [relay.calculate_trip_threshold(x) for x in curve_x_pu]
-            curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
-            curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
-
-            sweep_fig.add_trace(go.Scatter(
-                x=curve_x, y=curve_y, mode="lines", name="CAL.",
-                line=dict(color="#2E8B57", width=3)
-            ))
-
-        tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
-        tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}
-
+        tp_display_rows = []
         for tp in st.session_state.manual_test_points:
             r_amps = tp["Restraint (A)"]
             d_amps = tp["Measured Diff (A)"]
-            px = r_amps if use_amps_comm else r_amps / amps_base
-            py = d_amps if use_amps_comm else d_amps / amps_base
-            trace_name = tp["Phase"] + (f' ({tp["Label"]})' if tp["Label"] else "")
-            sweep_fig.add_trace(go.Scatter(
-                x=[px], y=[py], mode="markers", name=trace_name,
-                marker=dict(size=13, color=tp_marker_colors.get(tp["Phase"], "#F59E0B"),
-                            symbol=tp_marker_symbols.get(tp["Phase"], "diamond")),
-                hovertemplate=f"<b>{tp['Phase']}</b><br>Restraint: %{{x:.3f}} {unit_label_comm}<br>Measured Diff: %{{y:.3f}} {unit_label_comm}<extra></extra>"
-            ))
+            tp_display_rows.append({
+                "Phase": tp["Phase"],
+                restraint_col: round(r_amps / amps_base, 3) if table_in_pu else round(r_amps, 3),
+                diff_col: round(d_amps / amps_base, 3) if table_in_pu else round(d_amps, 3),
+                "Label": tp["Label"]
+            })
+        tp_df = pd.DataFrame(tp_display_rows)
+        st.dataframe(tp_df, use_container_width=True)
 
-        sweep_fig.update_layout(
-            title="Differential Slope Characteristic Curve",
-            xaxis_title=f"Restraint Current ({unit_label_comm})",
-            yaxis_title=f"Diff. Current ({unit_label_comm})",
-            template="plotly_white",
-            height=450
-        )
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            remove_idx = st.number_input(
+                "Row # to remove (0-indexed)", min_value=0,
+                max_value=max(len(st.session_state.manual_test_points) - 1, 0),
+                value=0, step=1
+            )
+            if st.button("🗑️ Remove Row"):
+                st.session_state.manual_test_points.pop(int(remove_idx))
+                st.rerun()
+        with rc2:
+            if st.button("🗑️ Clear All Test Points"):
+                st.session_state.manual_test_points = []
+                st.rerun()
+    else:
+        st.info("No test points added yet — add some above to see them plotted below.")
 
-        png_filename = f"87G_Differential_Slope_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
-        st.plotly_chart(
-            sweep_fig, use_container_width=True,
-            config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}}
-        )
-        st.caption(
-            "📷 To save this chart as an image: hover over the top-right of the chart and "
-            "click the camera icon — it downloads a PNG directly from your browser, no extra "
-            "software needed."
-        )
+    st.markdown("---")
+    st.markdown("#### 📈 Differential Slope Characteristic Curve")
+
+    comm_chart_units = st.radio(
+        "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
+        key="comm_chart_units",
+        help="Secondary Amps matches how commissioning test reports are usually plotted "
+             "(e.g. GEK-34124 Figure 7). Conversion uses the Neutral-side rated secondary "
+             "current as the base — accurate as long as both CTs share the same ratio, "
+             "which they do for this unit (24000:5 on both sides)."
+    )
+    use_amps_comm = comm_chart_units == "Secondary Amps (A)"
+    unit_label_comm = "A" if use_amps_comm else "pu"
+
+    cal_source = st.radio(
+        "CAL. line source",
+        ["Connect my test points (commissioning report style)", "Theoretical relay characteristic"],
+        horizontal=True,
+        key="cal_line_source",
+        help="'Connect my test points' draws a straight line through your entered test points "
+             "sorted by restraint current, exactly like the CAL. line in a commissioning test "
+             "report. 'Theoretical' plots the smooth curve from the relay's Pickup/Slope/Break "
+             "settings instead."
+    )
+
+    sweep_fig = go.Figure()
+
+    if cal_source.startswith("Connect") and len(st.session_state.manual_test_points) >= 2:
+        sorted_pts = sorted(st.session_state.manual_test_points, key=lambda tp: tp["Restraint (A)"])
+        cal_x_amps = [tp["Restraint (A)"] for tp in sorted_pts]
+        cal_y_amps = [tp["Measured Diff (A)"] for tp in sorted_pts]
+        curve_x = cal_x_amps if use_amps_comm else [x / amps_base for x in cal_x_amps]
+        curve_y = cal_y_amps if use_amps_comm else [y / amps_base for y in cal_y_amps]
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=curve_y, mode="lines", name="CAL.",
+            line=dict(color="#2E8B57", width=3)
+        ))
+    else:
+        if cal_source.startswith("Connect"):
+            st.info("Add at least 2 test points above to draw the CAL. line through them — showing the theoretical characteristic for now.")
+        manual_restraints_pu = [tp["Restraint (A)"] / amps_base for tp in st.session_state.manual_test_points]
+        default_reach = (relay.break_2 + 2.0) if current_mode == "GENERATOR" else 6.0
+        max_restraint = max(manual_restraints_pu + [default_reach]) if manual_restraints_pu else default_reach
+
+        curve_x_pu = np.linspace(0, max_restraint * 1.2 + 0.5, 300)
+        curve_y_pu = [relay.calculate_trip_threshold(x) for x in curve_x_pu]
+        curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
+        curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
+
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=curve_y, mode="lines", name="CAL.",
+            line=dict(color="#2E8B57", width=3)
+        ))
+
+    tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
+    tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}
+
+    for tp in st.session_state.manual_test_points:
+        r_amps = tp["Restraint (A)"]
+        d_amps = tp["Measured Diff (A)"]
+        px = r_amps if use_amps_comm else r_amps / amps_base
+        py = d_amps if use_amps_comm else d_amps / amps_base
+        trace_name = tp["Phase"] + (f' ({tp["Label"]})' if tp["Label"] else "")
+        sweep_fig.add_trace(go.Scatter(
+            x=[px], y=[py], mode="markers", name=trace_name,
+            marker=dict(size=13, color=tp_marker_colors.get(tp["Phase"], "#F59E0B"),
+                        symbol=tp_marker_symbols.get(tp["Phase"], "diamond")),
+            hovertemplate=f"<b>{tp['Phase']}</b><br>Restraint: %{{x:.3f}} {unit_label_comm}<br>Measured Diff: %{{y:.3f}} {unit_label_comm}<extra></extra>"
+        ))
+
+    sweep_fig.update_layout(
+        title="Differential Slope Characteristic Curve",
+        xaxis_title=f"Restraint Current ({unit_label_comm})",
+        yaxis_title=f"Diff. Current ({unit_label_comm})",
+        template="plotly_white",
+        height=450
+    )
+
+    png_filename = f"87G_Differential_Slope_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
+    st.plotly_chart(
+        sweep_fig, use_container_width=True,
+        config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}}
+    )
+    st.caption(
+        "📷 To save this chart as an image: hover over the top-right of the chart and "
+        "click the camera icon — it downloads a PNG directly from your browser, no extra "
+        "software needed."
+    )
