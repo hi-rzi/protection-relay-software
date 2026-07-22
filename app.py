@@ -138,41 +138,63 @@ def generate_pdf_report(unit_name, relay_obj, evals, phases):
     story.append(Paragraph(meta_text, styles['Normal']))
     story.append(Spacer(1, 15))
 
-    story.append(Paragraph("<b>1. Generator & Relay Parameters</b>", styles['Heading2']))
+    story.append(Paragraph("<b>1. Generator Parameters</b>", styles['Heading2']))
 
-    if relay_obj.mode == "GENERATOR_LEGACY":
-        params_data = [
-            ["Parameter", "Value", "Parameter", "Value"],
-            ["Generator Rating", f"{relay_obj.mva_rated} MVA", "Target/Seal-in Pickup", f"{relay_obj.target_amps} A sec." if relay_obj.target_amps is not None else "N/A"],
-            ["Rated Voltage", f"{relay_obj.kv_rated} kV", "Equivalent Pickup", f"{relay_obj.i_pickup:.3f} pu"],
-            ["Rated Current (Pri)", f"{relay_obj.i_rated_pri:.2f} A", "Restraint Slope (GEK-34124E)", f"{relay_obj.s1*100:.1f} %"],
-            ["Neutral CT Ratio", f"{relay_obj.ct_ratio_N:.0f}:{relay_obj.ct_secondary_rating:.0f}", "Breakpoints / 2nd Slope / High-Set", "N/A - fixed by relay design"],
-            ["Terminal CT Ratio", f"{relay_obj.ct_ratio_T:.0f}:{relay_obj.ct_secondary_rating:.0f}", "Relay Type", "GE CFD22B4A (GEK-34124)"]
-        ]
-    else:
-        has_unrestrained = relay_obj.i_unrestrained < 1e5
-        params_data = [
-            ["Parameter", "Value", "Parameter", "Value"],
-            ["Generator Rating", f"{relay_obj.mva_rated} MVA", "Pickup", f"{relay_obj.i_pickup:.3f} pu"],
-            ["Rated Voltage", f"{relay_obj.kv_rated} kV", "Slope 1", f"{relay_obj.s1*100:.0f} %"],
-            ["Rated Current (Pri)", f"{relay_obj.i_rated_pri:.2f} A", "Slope 2", f"{relay_obj.s2*100:.0f} %"],
-            ["Neutral CT Ratio", f"{relay_obj.ct_ratio_N:.0f}:{relay_obj.ct_secondary_rating:.0f}", "Break 1", f"{relay_obj.break_1:.2f} pu"],
-            ["Terminal CT Ratio", f"{relay_obj.ct_ratio_T:.0f}:{relay_obj.ct_secondary_rating:.0f}", "Break 2", f"{relay_obj.break_2:.2f} pu"],
-            ["Relay Type", "GE G60 (Numerical)", "Unrestrained High-Set", f"{relay_obj.i_unrestrained:.2f} pu" if has_unrestrained else "Not enabled / unconfirmed"]
-        ]
-
-    t_params = Table(params_data, colWidths=[130, 130, 130, 130])
-    t_params.setStyle(TableStyle([
+    generator_data = [
+        ["Parameter", "Value"],
+        ["Generator Rating", f"{relay_obj.mva_rated} MVA"],
+        ["Rated Voltage", f"{relay_obj.kv_rated} kV"],
+        ["Rated Current (Pri)", f"{relay_obj.i_rated_pri:.2f} A"],
+        ["Neutral CT Ratio", f"{relay_obj.ct_ratio_N:.0f}:{relay_obj.ct_secondary_rating:.0f}"],
+        ["Terminal CT Ratio", f"{relay_obj.ct_ratio_T:.0f}:{relay_obj.ct_secondary_rating:.0f}"]
+    ]
+    t_generator = Table(generator_data, colWidths=[200, 200])
+    t_generator.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#F3F4F6")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#1F2937")),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
     ]))
-    story.append(t_params)
+    story.append(t_generator)
     story.append(Spacer(1, 15))
 
-    story.append(Paragraph("<b>2. Evaluation Results</b>", styles['Heading2']))
+    story.append(Paragraph("<b>2. Relay Parameters</b>", styles['Heading2']))
+
+    if relay_obj.mode == "GENERATOR_LEGACY":
+        relay_data = [
+            ["Parameter", "Value"],
+            ["Relay Type", "GE CFD22B4A (GEK-34124)"],
+            ["Target/Seal-in Pickup", f"{relay_obj.target_amps} A sec." if relay_obj.target_amps is not None else "N/A"],
+            ["Equivalent Pickup", f"{relay_obj.i_pickup:.3f} pu"],
+            ["Restraint Slope (GEK-34124E)", f"{relay_obj.s1*100:.1f} %"],
+            ["Breakpoints / 2nd Slope / High-Set", "N/A - fixed by relay design"]
+        ]
+    else:
+        has_unrestrained = relay_obj.i_unrestrained < 1e5
+        relay_data = [
+            ["Parameter", "Value"],
+            ["Relay Type", "GE G60 (Numerical)"],
+            ["Pickup", f"{relay_obj.i_pickup:.3f} pu"],
+            ["Slope 1", f"{relay_obj.s1*100:.0f} %"],
+            ["Slope 2", f"{relay_obj.s2*100:.0f} %"],
+            ["Break 1", f"{relay_obj.break_1:.2f} pu"],
+            ["Break 2", f"{relay_obj.break_2:.2f} pu"],
+            ["Unrestrained High-Set", f"{relay_obj.i_unrestrained:.2f} pu" if has_unrestrained else "Not enabled / unconfirmed"]
+        ]
+
+    t_relay = Table(relay_data, colWidths=[200, 200])
+    t_relay.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#F3F4F6")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor("#1F2937")),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    story.append(t_relay)
+    story.append(Spacer(1, 15))
+
+    story.append(Paragraph("<b>3. Evaluation Results</b>", styles['Heading2']))
     results_data = [["Phase", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]]
     for p in phases:
         e = evals[p]
