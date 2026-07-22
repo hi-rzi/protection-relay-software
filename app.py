@@ -689,30 +689,51 @@ with tab2:
     st.markdown("#### 📝 Add Test Points (Actual Measured Results)")
     st.caption(
         "Enter the restraint and differential currents actually read off your test set's "
-        "ammeters during injection testing (in secondary Amps) — each one you add is "
-        "plotted on the curve below, so you can see how real results compare to the "
-        "calculated CAL. line."
+        "ammeters during injection testing — each one you add is plotted on the curve "
+        "below, so you can see how real results compare to the calculated CAL. line. "
+        "Pick whichever unit matches your test set's readout; values are stored and "
+        "converted consistently either way."
     )
 
     if "manual_test_points" not in st.session_state:
         st.session_state.manual_test_points = []
 
     with st.form("add_test_point_form", clear_on_submit=True):
+        tp_unit = st.radio(
+            "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
+            key="tp_entry_unit",
+            help="pu is converted to Amps using the Neutral-side rated secondary current "
+                 "(same base used everywhere else in this app) before it's stored."
+        )
         tc1, tc2, tc3, tc4 = st.columns([1, 1, 1, 1.4])
+        restraint_label = "Restraint Current (A)" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
+        diff_label = "Measured Diff. Current (A)" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
+        restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
+        diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
+        restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
+        diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
         with tc1:
             tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"])
         with tc2:
-            tp_restraint = st.number_input("Restraint Current (A)", min_value=0.0, value=1.0, step=0.1)
+            tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step)
         with tc3:
-            tp_diff = st.number_input("Measured Diff. Current (A)", min_value=0.0, value=0.3, step=0.05)
+            tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
         with tc4:
             tp_label = st.text_input("Label (optional)", value="")
         submitted = st.form_submit_button("➕ Add Test Point")
         if submitted:
+            # Always store in Secondary Amps internally, since that's the base unit
+            # every other chart/table in this app already works from.
+            if tp_unit.startswith("Secondary"):
+                restraint_amps = tp_restraint
+                diff_amps = tp_diff
+            else:
+                restraint_amps = tp_restraint * amps_base
+                diff_amps = tp_diff * amps_base
             st.session_state.manual_test_points.append({
                 "Phase": tp_phase,
-                "Restraint (A)": round(tp_restraint, 3),
-                "Measured Diff (A)": round(tp_diff, 3),
+                "Restraint (A)": round(restraint_amps, 3),
+                "Measured Diff (A)": round(diff_amps, 3),
                 "Label": tp_label
             })
 
