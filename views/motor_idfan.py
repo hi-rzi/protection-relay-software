@@ -164,12 +164,18 @@ with tab1:
             ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
             st.write(f"**100% V:** 51 trips in {t_at_lrc_100:.1f}s at LRC" if t_at_lrc_100 else "**100% V:** No trip at LRC")
             st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
-            st.success("✅ Margin OK") if ok_100 else st.error("⚠️ Check margin")
+            if ok_100:
+                st.success("✅ Margin OK")
+            else:
+                st.error("⚠️ Check margin")
         with c2:
             ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
             st.write(f"**80% V:** 51 trips in {t_at_lrc_80:.1f}s at LRC" if t_at_lrc_80 else "**80% V:** No trip at LRC")
             st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
-            st.success("✅ Margin OK") if ok_80 else st.error("⚠️ Check margin")
+            if ok_80:
+                st.success("✅ Margin OK")
+            else:
+                st.error("⚠️ Check margin")
 
         pdf_bytes = generate_motor_pdf_report(
             selected_preset, relay, eval_result, test_current,
