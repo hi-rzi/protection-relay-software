@@ -140,11 +140,11 @@ with tab1:
                 def_ang_lv = def_ang_hv + 180.0 if ct_polarity == "OPPOSITE" else def_ang_hv
 
                 with c1:
-                    i_hv = st.number_input(f"HV Primary Amps [A]", value=def_val_hv, key=f"hv_i_{phase}")
-                    a_hv = st.number_input(f"HV Angle (°)", value=def_ang_hv, key=f"hv_a_{phase}")
+                    i_hv = st.number_input(f"HV Primary Amps [A]", value=def_val_hv, key=f"exct_hv_i_{phase}")
+                    a_hv = st.number_input(f"HV Angle (°)", value=def_ang_hv, key=f"exct_hv_a_{phase}")
                 with c2:
-                    i_lv = st.number_input(f"LV Primary Amps [A]", value=def_val_lv, key=f"lv_i_{phase}")
-                    a_lv = st.number_input(f"LV Angle (°)", value=def_ang_lv, key=f"lv_a_{phase}")
+                    i_lv = st.number_input(f"LV Primary Amps [A]", value=def_val_lv, key=f"exct_lv_i_{phase}")
+                    a_lv = st.number_input(f"LV Angle (°)", value=def_ang_lv, key=f"exct_lv_a_{phase}")
 
                 inputs[phase] = {"i_hv": i_hv, "a_hv": a_hv, "i_lv": i_lv, "a_lv": a_lv}
 
