@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_transformer_pdf_report
+from common.concepts import render_differential_concept
 from common.sld import overall_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
@@ -162,10 +163,22 @@ phases = ["Phase A", "Phase B", "Phase C"]
 winding_names = ["HV (525kV)", "Generator (23kV)", "UAT (23kV)"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
-tab_sld, tab1, tab2, tab3 = st.tabs([
-    "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
+tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
+    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
     "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
 ])
+
+with tab_concept:
+    render_differential_concept("transformer_3w")
+    with st.expander("🧮 Why three restraint inputs instead of two"):
+        st.markdown(
+            "With three CT inputs (HV, Generator, UAT) instead of two, the same Kirchhoff's Law "
+            "idea just has a third term: current into the zone from the Generator should equal "
+            "current leaving through GSUT's HV side plus current leaving to the Auxiliary "
+            "Transformer, combined. Restraint is likewise built from all three CT magnitudes "
+            "(averaged or summed, per the Restraint Standard setting) rather than just two, so the "
+            "relay still tolerates normal CT/tap error across all three legs simultaneously."
+        )
 
 with tab_sld:
     st.subheader("🗺️ Protection Zone — Single Line Diagram")

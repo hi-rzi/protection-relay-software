@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_generator_pdf_report
+from common.concepts import render_differential_concept
 from common.sld import generator_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input
 from engines.generator import AdvancedDifferentialRelay
@@ -164,10 +165,23 @@ relay = AdvancedDifferentialRelay(
     target_amps=target_amps
 )
 
-tab_sld, tab1, tab2, tab3 = st.tabs([
-    "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
+tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
+    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
     "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
 ])
+
+with tab_concept:
+    render_differential_concept("generator")
+    with st.expander("⚙️ GE G60 vs. GE CFD22B4A: two different restraint philosophies"):
+        st.markdown(
+            "The two relay types this page models don't just use different numbers — they "
+            "compute restraint current differently. The modern **GE G60** uses the standard "
+            "IEEE/IEC average-or-sum restraint described above, with two adjustable slopes and "
+            "breakpoints. The legacy **CFD22A/B** is a product-restraint relay: it balances "
+            "using the *smaller* of the two terminal currents, a simpler, fixed characteristic "
+            "reflecting older electromechanical relay design (GEK-34124E) rather than a "
+            "configurable modern curve."
+        )
 
 with tab_sld:
     st.subheader("🗺️ Protection Zone — Single Line Diagram")

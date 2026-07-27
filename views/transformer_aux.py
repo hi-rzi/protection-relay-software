@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_transformer_pdf_report
+from common.concepts import render_differential_concept
 from common.sld import two_winding_transformer_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_3000_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
@@ -156,10 +157,21 @@ relay = TransformerDifferentialRelay(
 phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
-tab_sld, tab1, tab2, tab3 = st.tabs([
-    "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
+tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
+    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
     "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
 ])
+
+with tab_concept:
+    render_differential_concept("transformer")
+    with st.expander("🔧 Why the Auxiliary Transformer specifically"):
+        st.markdown(
+            "The Unit Auxiliary Transformer feeds the plant's own medium-voltage house loads "
+            "(pumps, fans, and other auxiliaries) directly off the generator bus. Losing it "
+            "doesn't just risk equipment damage at the fault location — it can black out the "
+            "auxiliaries an operating unit depends on to keep running, so it gets the same "
+            "dedicated differential treatment as the main power-delivery transformers."
+        )
 
 with tab_sld:
     st.subheader("🗺️ Protection Zone — Single Line Diagram")

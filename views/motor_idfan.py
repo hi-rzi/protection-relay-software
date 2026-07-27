@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_motor_pdf_report
+from common.concepts import render_overcurrent_concept
 from common.sld import motor_overcurrent_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
@@ -321,7 +322,8 @@ mpr_relay = MotorMPRRelay(
     accel_timer_s=mpr_accel_timer_s, overload_alarm_delay_s=mpr_overload_alarm_delay_s,
 )
 
-tab_sld, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab_concept, tab_sld, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📚 Protection Concept",
     "🗺️ Protection Zone (SLD)",
     "📊 Live Simulation",
     "🧰 Commissioning & Injection Tool",
@@ -329,6 +331,20 @@ tab_sld, tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📄 Settings Summary & Approval",
     "🖥️ SR469 MPR",
 ])
+
+with tab_concept:
+    render_overcurrent_concept(include_thermal_replica=True)
+    with st.expander("🌀 Why the ID Fan specifically needs careful start coordination"):
+        st.markdown(
+            "Induced Draft Fans are large, high-inertia loads — they take noticeably longer to "
+            "reach full speed than a typical motor of similar size, so their acceleration time "
+            "(seconds) sits much closer to their safe stall time (also seconds) than most motors. "
+            "That's why this page tracks acceleration/safe-stall time at *both* 100% and 80% "
+            "voltage separately — a voltage sag during start (from a nearby fault elsewhere in the "
+            "system, for example) meaningfully lengthens how long the motor takes to reach speed, "
+            "eating into the same margin the relay's time-delayed elements need to avoid tripping "
+            "on a legitimate, if slow, start."
+        )
 
 with tab_sld:
     st.subheader("🗺️ Protection Zone — Single Line Diagram")

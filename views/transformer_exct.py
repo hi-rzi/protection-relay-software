@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_transformer_pdf_report
+from common.concepts import render_differential_concept
 from common.sld import two_winding_transformer_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_600_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
@@ -154,10 +155,21 @@ relay = TransformerDifferentialRelay(
 phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
-tab_sld, tab1, tab2, tab3 = st.tabs([
-    "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
+tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
+    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
     "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
 ])
+
+with tab_concept:
+    render_differential_concept("transformer")
+    with st.expander("🔧 Why the Excitation Transformer specifically"):
+        st.markdown(
+            "EXCT steps generator terminal voltage down to feed the excitation control system "
+            "(the AVR and exciter) — a relatively small transformer compared to GSUT, but a "
+            "single failure here can take the AVR/excitation system down along with it, so it "
+            "gets its own dedicated differential zone rather than relying only on the wider "
+            "Overall backup zone to eventually catch a fault here."
+        )
 
 with tab_sld:
     st.subheader("🗺️ Protection Zone — Single Line Diagram")
