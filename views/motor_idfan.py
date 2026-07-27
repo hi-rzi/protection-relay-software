@@ -14,14 +14,14 @@ from common.ui_helpers import slider_with_exact_input
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_sr469 import MotorMPRRelay
 
-st.title("🌀 Induced Draft (ID) Fan Motor Protection")
+st.title("Induced Draft (ID) Fan Motor Protection")
 st.caption(
     "10,001HP, 13.2kV — GE IFC66KD2A electromechanical 50/50/51 time-overcurrent relay, "
     "GE HFC22B2A backup instantaneous relay, and SR469 microprocessor Motor Protection Relay."
 )
 
 st.info(
-    "ℹ️ This page covers the 50/50/51 (IFC66KD2A) and backup 50 (HFC22B2A) discrete "
+    "This page covers the 50/50/51 (IFC66KD2A) and backup 50 (HFC22B2A) discrete "
     "overcurrent relays per the settings doc's Sections 5.1.1–5.1.2, plus the SR469 "
     "microprocessor Motor Protection Relay (Section 5.1.3). The SR469's primary current-based "
     "elements (Overload thermal model, Instantaneous, Ground Fault, Current Unbalance) are "
@@ -32,7 +32,7 @@ st.info(
 )
 
 st.warning(
-    "⚠️ **Engineering review required.** This tool supports settings checks and commissioning "
+    "**Engineering review required.** This tool supports settings checks and commissioning "
     "calculations; it does not approve relay settings. Verify every result against the approved "
     "coordination study, relay manual, and site test procedure before applying settings in service."
 )
@@ -59,7 +59,7 @@ PRESETS = {
         "mpr_mech_jam_pct": 150.0, "mpr_mech_jam_delay_s": 1.0,
         "mpr_accel_timer_s": 25.0, "mpr_overload_alarm_delay_s": 1.0,
     },
-    "✏️ Custom Profile": {
+    "Custom Profile": {
         "motor_fla": 100, "locked_rotor_amps": 600, "locked_rotor_amps_80pct": 480,
         "accel_time_100": 10.0, "accel_time_80": 15.0,
         "safe_stall_100_ambient": 20.0, "safe_stall_80_ambient": 30.0,
@@ -140,7 +140,7 @@ def restore_motor_settings(uploaded_file):
     st.rerun()
 
 
-st.sidebar.header("💾 Settings File")
+st.sidebar.header("Settings File")
 uploaded_settings = st.sidebar.file_uploader(
     "Load ID Fan settings (.json)", type=["json"], key="motor_settings_upload"
 )
@@ -178,7 +178,7 @@ def _load_preset_into_state():
         st.session_state[f"{key}__number"] = value
 
 
-st.sidebar.header("📋 Equipment Presets")
+st.sidebar.header("Equipment Presets")
 ensure_setting("motor_selected_preset", next(iter(PRESETS)))
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(PRESETS.keys()), key="motor_selected_preset",
@@ -188,7 +188,7 @@ selected_preset = st.sidebar.selectbox(
 )
 p_data = PRESETS[selected_preset]
 
-st.sidebar.header("🎯 Protection Characteristic")
+st.sidebar.header("Protection Characteristic")
 
 ensure_setting("motor_ct_ratio", float(p_data["ct_ratio"]))
 ensure_setting("motor_ct_sec", p_data["ct_sec"])
@@ -232,7 +232,7 @@ enable_backup = st.sidebar.checkbox("Enable HFC22B2A backup relay", key="motor_e
 backup_ct_ratio = st.sidebar.number_input("Backup CT Ratio (Primary A, e.g. 3000 in '3000:5')", min_value=1.0, key="motor_backup_ct_ratio", disabled=not enable_backup)
 backup_pickup_50 = st.sidebar.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, step=0.5, key="motor_backup_pickup_50", disabled=not enable_backup)
 
-with st.sidebar.expander("🔧 Advanced Settings (Motor Data & CT Spec)", expanded=False):
+with st.sidebar.expander("Advanced Settings (Motor Data & CT Spec)", expanded=False):
     st.markdown("**Motor Data**")
     ensure_setting("motor_fla", float(p_data["motor_fla"]))
     ensure_setting("motor_lrc_100", float(p_data["locked_rotor_amps"]))
@@ -265,7 +265,7 @@ backup_relay = BackupInstantaneousRelay(
     ct_ratio=backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=backup_pickup_50
 ) if enable_backup else None
 
-with st.sidebar.expander("🔧 Advanced Settings (SR469 MPR)", expanded=False):
+with st.sidebar.expander("Advanced Settings (SR469 MPR)", expanded=False):
     st.markdown("**Overload (51) Thermal Model**")
     ensure_setting("mpr_overload_pickup_pct", p_data["mpr_overload_pickup_pct"])
     ensure_setting("mpr_curve_multiplier", p_data["mpr_curve_multiplier"])
@@ -323,18 +323,18 @@ mpr_relay = MotorMPRRelay(
 )
 
 tab_concept, tab_sld, tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📚 Protection Concept",
-    "🗺️ Protection Zone (SLD)",
-    "📊 Live Simulation",
-    "🧰 Commissioning & Injection Tool",
-    "📈 TCC Curve",
-    "📄 Settings Summary & Approval",
-    "🖥️ SR469 MPR",
+    "Protection Concept",
+    "Protection Zone (SLD)",
+    "Live Simulation",
+    "Commissioning & Injection Tool",
+    "TCC Curve",
+    "Settings Summary & Approval",
+    "SR469 MPR",
 ])
 
 with tab_concept:
     render_overcurrent_concept(include_thermal_replica=True)
-    with st.expander("🌀 Why the ID Fan specifically needs careful start coordination"):
+    with st.expander("Why the ID Fan specifically needs careful start coordination"):
         st.markdown(
             "Induced Draft Fans are large, high-inertia loads — they take noticeably longer to "
             "reach full speed than a typical motor of similar size, so their acceleration time "
@@ -347,7 +347,7 @@ with tab_concept:
         )
 
 with tab_sld:
-    st.subheader("🗺️ Protection Zone — Single Line Diagram")
+    st.subheader("Protection Zone — Single Line Diagram")
     st.caption(
         "Shows the CT(s) and discrete overcurrent relay(s) ahead of the motor breaker."
     )
@@ -385,11 +385,11 @@ with tab1:
         st.subheader("Real-time Protection Verdict")
 
         if eval_result["is_trip"]:
-            st.error(f"🚨 {eval_result['status']}")
+            st.error(f"{eval_result['status']}")
         elif eval_result["alarm_50b"]:
-            st.warning(f"⚠️ {eval_result['status']}")
+            st.warning(f"{eval_result['status']}")
         else:
-            st.success("✅ SYSTEM HEALTHY (Below Pickup)")
+            st.success("SYSTEM HEALTHY (Below Pickup)")
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Relay Secondary", f"{eval_result['i_relay_sec']:.3f} A")
@@ -422,17 +422,17 @@ with tab1:
             st.write(f"**100% V:** 51 trips in {t_at_lrc_100:.1f}s at LRC" if t_at_lrc_100 else "**100% V:** No trip at LRC")
             st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
             if ok_100:
-                st.success("✅ Margin OK")
+                st.success("Margin OK")
             else:
-                st.error("⚠️ Check margin")
+                st.error("Check margin")
         with c2:
             ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
             st.write(f"**80% V:** 51 trips in {t_at_lrc_80:.1f}s at LRC" if t_at_lrc_80 else "**80% V:** No trip at LRC")
             st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
             if ok_80:
-                st.success("✅ Margin OK")
+                st.success("Margin OK")
             else:
-                st.error("⚠️ Check margin")
+                st.error("Check margin")
 
         st.markdown("---")
         st.markdown("**Engineering Input Checks**")
@@ -488,16 +488,16 @@ with tab1:
 
         for label, passed, detail, review_note in checks:
             if passed:
-                st.success(f"✅ **{label}:** {detail}")
+                st.success(f"**{label}:** {detail}")
             else:
-                st.error(f"⚠️ **{label}:** {review_note} ({detail})")
+                st.error(f"**{label}:** {review_note} ({detail})")
 
         pdf_bytes = generate_motor_pdf_report(
             selected_preset, relay, eval_result, test_current,
             backup_relay_obj=backup_relay, backup_eval_result=backup_result
         )
         st.download_button(
-            label="📄 Export Certified Protection Audit Report",
+            label="Export Certified Protection Audit Report",
             data=pdf_bytes,
             file_name=f"IDFan_Motor_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
@@ -507,13 +507,13 @@ with tab1:
 # TAB 2 — Commissioning & Injection Tool
 # ---------------------------------------------------------------------------
 with tab2:
-    st.subheader("🧰 Commissioning & Secondary Current Injection Assistant")
+    st.subheader("Commissioning & Secondary Current Injection Assistant")
     st.write(
         "Pick a target multiple of the 51 pickup to calculate the exact secondary Amps to "
         "inject at your test set, and see the expected trip time."
     )
 
-    st.markdown("#### 🎯 51 Element Injection Calculator")
+    st.markdown("#### 51 Element Injection Calculator")
     ic1, ic2 = st.columns(2)
     with ic1:
         target_multiple = slider_with_exact_input(
@@ -529,7 +529,7 @@ with tab2:
         st.metric("Expected 51 Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
 
     st.markdown("---")
-    st.subheader("🔁 Auto-Sweep Full Curve Test Table")
+    st.subheader("Auto-Sweep Full Curve Test Table")
     sw1, sw2, sw3 = st.columns(3)
     with sw1:
         sweep_start = st.number_input("Sweep Start (Multiple)", value=1.5, min_value=1.05, step=0.1)
@@ -538,7 +538,7 @@ with tab2:
     with sw3:
         sweep_step = st.number_input("Sweep Step (Multiple)", value=0.5, min_value=0.1, step=0.1)
 
-    if st.button("▶️ Generate Sweep Table"):
+    if st.button("Generate Sweep Table"):
         if sweep_end <= sweep_start or sweep_step <= 0:
             st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
         else:
@@ -559,7 +559,7 @@ with tab2:
         st.dataframe(st.session_state["motor_sweep_df"], use_container_width=True)
         csv_sweep = st.session_state["motor_sweep_df"].to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="⬇️ Download Sweep Table as CSV",
+            label="Download Sweep Table as CSV",
             data=csv_sweep,
             file_name=f"50-51_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
@@ -569,7 +569,7 @@ with tab2:
 # TAB 3 — TCC Curve
 # ---------------------------------------------------------------------------
 with tab3:
-    st.subheader("📈 Time-Current Characteristic (TCC) Curve")
+    st.subheader("Time-Current Characteristic (TCC) Curve")
     st.write(
         "51 Long Time Inverse curve, plotted alongside the motor's starting profile "
         "(locked rotor current vs. acceleration time) and safe stall limits, plus the "
@@ -636,7 +636,7 @@ with tab3:
     st.plotly_chart(fig, use_container_width=True)
     st.caption(
         "The 51 curve should pass BELOW both safe-stall markers (X) and ABOVE both starting "
-        "markers (▲) for correct coordination — i.e. the relay must not trip during a normal "
+        "markers () for correct coordination — i.e. the relay must not trip during a normal "
         "start, but must trip before the motor's insulation is thermally damaged on a stall."
     )
 
@@ -645,7 +645,7 @@ with tab3:
 # TAB 4 — Settings Summary & Approval
 # ---------------------------------------------------------------------------
 with tab4:
-    st.subheader("📄 Settings Summary & Approval Record")
+    st.subheader("Settings Summary & Approval Record")
     st.caption(
         "Record the settings basis and review status before exporting a controlled report. "
         "This record supports engineering review; it does not replace the approved protection study."
@@ -722,9 +722,9 @@ with tab4:
 
     all_checks_pass = all(check["passed"] for check in summary_checks)
     if all_checks_pass:
-        st.success("✅ All displayed coordination checks pass. Engineering approval is still required before issue.")
+        st.success("All displayed coordination checks pass. Engineering approval is still required before issue.")
     else:
-        st.error("⚠️ One or more coordination checks require engineering review before approval.")
+        st.error("One or more coordination checks require engineering review before approval.")
     st.dataframe(
         pd.DataFrame([
             {"Check": check["label"], "Result": "PASS" if check["passed"] else "REVIEW REQUIRED", "Basis": check["detail"]}
@@ -753,7 +753,7 @@ with tab4:
         coordination_checks=summary_checks,
     )
     st.download_button(
-        label="📄 Download Settings Summary & Approval Report (PDF)",
+        label="Download Settings Summary & Approval Report (PDF)",
         data=approval_pdf_bytes,
         file_name=f"IDFan_Settings_Summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
@@ -767,7 +767,7 @@ with tab4:
         "settings": {key: st.session_state[key] for key in MOTOR_CONFIG_FIELDS},
     }
     st.download_button(
-        label="💾 Save ID Fan Settings (.json)",
+        label="Save ID Fan Settings (.json)",
         data=json.dumps(settings_export, indent=2),
         file_name=f"IDFan_Settings_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
         mime="application/json",
@@ -778,7 +778,7 @@ with tab4:
 # TAB 5 — SR469 Microprocessor MPR
 # ---------------------------------------------------------------------------
 with tab5:
-    st.subheader("🖥️ SR469 Motor Management Relay (Multilin)")
+    st.subheader("SR469 Motor Management Relay (Multilin)")
     st.caption(
         "Per the settings doc's Section 5.1.3. Live-simulates the primary current-based "
         "elements (Overload thermal model, Instantaneous, Ground Fault, Current Unbalance); "
@@ -809,9 +809,9 @@ with tab5:
     with col_mpr_out:
         st.markdown("#### Real-time Protection Verdict")
         if mpr_any_trip:
-            st.error("🚨 SR469 TRIP INITIATED!")
+            st.error("SR469 TRIP INITIATED!")
         else:
-            st.success("✅ SYSTEM HEALTHY")
+            st.success("SYSTEM HEALTHY")
         st.table([
             {"Function": "Overload (51) / Instantaneous (50)", "Multiple": f"{mpr_eval['multiple_of_fla']:.2f}x FLA", "Status": mpr_eval["status"]},
             {"Function": "Ground Fault (50G/51G)", "Multiple": f"{mpr_ground_current:.1f} A", "Status": mpr_gf_eval["status"]},
@@ -819,7 +819,7 @@ with tab5:
         ])
 
     st.markdown("---")
-    st.markdown("#### 📈 Overload (51) Time-Current Characteristic")
+    st.markdown("#### Overload (51) Time-Current Characteristic")
     max_mult = max(6.0, mpr_eval["multiple_of_fla"] + 1.0)
     mult_line = np.linspace(1.01, max_mult, 300)
     t_line = [mpr_relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
@@ -843,7 +843,7 @@ with tab5:
     )
 
     st.markdown("---")
-    st.markdown("#### 📋 Other SR469 Functions — Settings Reference (not live-simulated)")
+    st.markdown("#### Other SR469 Functions — Settings Reference (not live-simulated)")
     st.dataframe(pd.DataFrame([
         {"Function": "Overload Alarm", "Setting": f"{mpr_overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
         {"Function": "Mechanical Jam Trip", "Setting": f"{mpr_mech_jam_pct:.0f}% FLA, {mpr_mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},

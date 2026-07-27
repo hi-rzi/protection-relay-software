@@ -42,7 +42,7 @@ def _nav_links():
         for page in pages:
             sections.append(
                 dbc.NavLink(
-                    [page.get("icon", ""), " ", page["name"]],
+                    page["name"],
                     href=page["path"], active="exact",
                     className="px-2 py-1",
                 )
@@ -54,7 +54,7 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col(
             html.Div([
-                html.H5("⚡ POMI Relay Suite", className="px-2 mt-2 mb-3"),
+                html.H5("POMI Relay Suite", className="px-2 mt-2 mb-3"),
                 dbc.Nav(_nav_links(), vertical=True, pills=True),
             ], className="border-end vh-100 pt-2"),
             width=2,

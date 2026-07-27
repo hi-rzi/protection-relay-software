@@ -11,7 +11,7 @@ from common.sld import two_winding_transformer_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
 
-st.title("🔌 Generator Step-Up Transformer (GSUT) Differential Protection")
+st.title("Generator Step-Up Transformer (GSUT) Differential Protection")
 st.caption(
     "873.6MVA, 525kV Grounded Wye / 23kV Delta — CAC1-10-M3 percentage-bias "
     "differential relay (Mitsubishi, 2-winding)."
@@ -30,7 +30,7 @@ PRESETS = {
         "tap_hv": 1.0, "tap_lv": 1.1,
         "bias": 30, "min_operate": 30, "hoc": 5,
     },
-    "✏️ Custom Profile": {
+    "Custom Profile": {
         "mva": 10.0,
         "kv_hv": 11.0, "kv_lv": 0.4,
         "ct_hv": 100, "ct_lv": 100, "ct_sec": 5.0,
@@ -40,16 +40,16 @@ PRESETS = {
     },
 }
 
-st.sidebar.header("📋 Equipment Presets")
+st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(PRESETS.keys()),
     help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
          "CT specs, and protection settings — this app isn't limited to POMI equipment."
 )
 p_data = PRESETS[selected_preset]
-is_custom = selected_preset == "✏️ Custom Profile"
+is_custom = selected_preset == "Custom Profile"
 
-st.sidebar.header("🎯 Protection Characteristic")
+st.sidebar.header("Protection Characteristic")
 bias_pct = slider_with_exact_input(
     st.sidebar, "Bias, τ (%)", 5, 60, p_data["bias"], 1,
     key=f"{selected_preset}__bias",
@@ -68,7 +68,7 @@ hoc_multiple = slider_with_exact_input(
                "transformer inrush current (see Calculation/Discussion)."
 )
 
-with st.sidebar.expander("🔧 Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
+with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
     st.markdown("**Transformer & CT Spec**")
     mva = st.number_input("Transformer Rating (MVA)", value=p_data["mva"], step=0.1, format="%.3f", key=f"{selected_preset}__mva")
 
@@ -135,7 +135,7 @@ windings = [
     {"name": "LV (23kV)", "kv": kv_lv, "ct_ratio": ct_lv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_lv, "ct_connection": ct_conn_lv},
 ]
 st.sidebar.caption(
-    "ℹ️ Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
+    "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
     "shift (see engines/transformer.py) — the standard compensation for a Wye/Delta "
     "power transformer so healthy through-load doesn't read as a fault."
 )
@@ -150,13 +150,13 @@ phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
 tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
-    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
-    "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
+    "Protection Concept", "Protection Zone (SLD)", "Live Vector Simulation",
+    "Commissioning & Injection Tool", "Test Point Verification & Curve"
 ])
 
 with tab_concept:
     render_differential_concept("transformer")
-    with st.expander("🔧 Why GSUT specifically"):
+    with st.expander("Why GSUT specifically"):
         st.markdown(
             "GSUT carries the *entire* generator output to the grid — it's the single highest-"
             "consequence transformer in the unit, so its differential zone is set as sensitively "
@@ -166,7 +166,7 @@ with tab_concept:
         )
 
 with tab_sld:
-    st.subheader("🗺️ Protection Zone — Single Line Diagram")
+    st.subheader("Protection Zone — Single Line Diagram")
     st.caption(
         "Shows where the CTs sit and what falls inside the 87GT differential zone."
     )
@@ -195,7 +195,7 @@ with tab1:
 
         inputs = {}
         for idx, phase in enumerate(phases):
-            with st.expander(f"📌 {phase} Settings", expanded=(phase == "Phase A")):
+            with st.expander(f"{phase} Settings", expanded=(phase == "Phase A")):
                 c1, c2 = st.columns(2)
                 def_ang_hv = -120.0 * idx
                 if phase == "Phase A":
@@ -236,9 +236,9 @@ with tab1:
 
         any_trip = any(res["is_trip"] for res in evals.values())
         if any_trip:
-            st.error("🚨 PROTECTIVE RELAY TRIP INITIATED!")
+            st.error("PROTECTIVE RELAY TRIP INITIATED!")
         else:
-            st.success("✅ SYSTEM HEALTHY (Stability / Restraint Zone)")
+            st.success("SYSTEM HEALTHY (Stability / Restraint Zone)")
 
         table_rows = []
         for p in phases:
@@ -254,13 +254,13 @@ with tab1:
 
         pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases)
         st.download_button(
-            label="📄 Export Certified Protection Audit Report",
+            label="Export Certified Protection Audit Report",
             data=pdf_bytes,
             file_name=f"GSUT_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
 
-    st.subheader("📈 Differential Bias Characteristic Curve")
+    st.subheader("Differential Bias Characteristic Curve")
 
     chart_units = st.radio(
         "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
@@ -313,14 +313,14 @@ with tab1:
 # TAB 2 — Commissioning & Injection Tool
 # ---------------------------------------------------------------------------
 with tab2:
-    st.subheader("🧰 Commissioning & Secondary Current Injection Assistant")
+    st.subheader("Commissioning & Secondary Current Injection Assistant")
     st.write(
         "Pick a target restraint current for each phase to calculate the exact secondary "
         "Amps to inject at your test set for that phase."
     )
 
     default_restraints = {"Phase A": 0.5, "Phase B": 2.5, "Phase C": 5.0}
-    st.markdown("#### 🎯 Boundary Injection Calculator")
+    st.markdown("#### Boundary Injection Calculator")
     cols = st.columns(3)
     for p, col in zip(phases, cols):
         with col:
@@ -338,7 +338,7 @@ with tab2:
             st.caption(f"LV inject: **{sec_lv:.3f} A**")
 
     st.markdown("---")
-    st.subheader("🔁 Auto-Sweep Full Curve Test Table")
+    st.subheader("Auto-Sweep Full Curve Test Table")
     sw1, sw2, sw3 = st.columns(3)
     with sw1:
         sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1)
@@ -347,7 +347,7 @@ with tab2:
     with sw3:
         sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1)
 
-    if st.button("▶️ Generate Sweep Table"):
+    if st.button("Generate Sweep Table"):
         if sweep_end <= sweep_start or sweep_step <= 0:
             st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
         else:
@@ -369,7 +369,7 @@ with tab2:
         st.dataframe(st.session_state["gsut_sweep_df"], use_container_width=True)
         csv_sweep = st.session_state["gsut_sweep_df"].to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="⬇️ Download Sweep Table as CSV",
+            label="Download Sweep Table as CSV",
             data=csv_sweep,
             file_name=f"87GT_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
@@ -379,7 +379,7 @@ with tab2:
 # TAB 3 — Test Point Verification & Curve
 # ---------------------------------------------------------------------------
 with tab3:
-    st.subheader("🧪 Test Point Verification & Curve")
+    st.subheader("Test Point Verification & Curve")
     st.write("Enter measured test results and see them plotted against the calculated characteristic curve.")
 
     if "gsut_manual_test_points" not in st.session_state:
@@ -404,7 +404,7 @@ with tab3:
             tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
         with tc4:
             tp_label = st.text_input("Label (optional)", value="")
-        submitted = st.form_submit_button("➕ Add Test Point")
+        submitted = st.form_submit_button("Add Test Point")
         if submitted:
             if tp_unit.startswith("Secondary"):
                 restraint_amps, diff_amps = tp_restraint, tp_diff
@@ -440,18 +440,18 @@ with tab3:
                 "Row # to remove (0-indexed)", min_value=0,
                 max_value=max(len(st.session_state.gsut_manual_test_points) - 1, 0), value=0, step=1
             )
-            if st.button("🗑️ Remove Row"):
+            if st.button("Remove Row"):
                 st.session_state.gsut_manual_test_points.pop(int(remove_idx))
                 st.rerun()
         with rc2:
-            if st.button("🗑️ Clear All Test Points"):
+            if st.button("Clear All Test Points"):
                 st.session_state.gsut_manual_test_points = []
                 st.rerun()
     else:
         st.info("No test points added yet — add some above to see them plotted below.")
 
     st.markdown("---")
-    st.markdown("#### 📈 Differential Bias Characteristic Curve")
+    st.markdown("#### Differential Bias Characteristic Curve")
 
     comm_chart_units = st.radio("Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="gsut_comm_chart_units")
     use_amps_comm = comm_chart_units == "Secondary Amps (A)"

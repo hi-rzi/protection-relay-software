@@ -12,7 +12,7 @@ MR_CT_TAPS_2000_5 = [200, 400, 500, 600, 800, 1000, 1200, 1500, 1600, 2000]
 MR_CT_TAPS_3000_5 = [300, 500, 750, 1000, 1250, 1500, 2000, 2400, 2800, 3000]
 
 
-def render_placeholder(title, caption, note="🚧 Coming soon — this relay type is being added next."):
+def render_placeholder(title, caption, note="Coming soon — this relay type is being added next."):
     st.title(title)
     st.caption(caption)
     st.info(note)

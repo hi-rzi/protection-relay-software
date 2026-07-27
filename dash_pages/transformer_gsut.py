@@ -15,7 +15,7 @@ from dash import Input, Output, State, callback, ctx, dash_table, dcc, html
 from common.ui_helpers import MR_CT_TAPS_2000_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
 
-dash.register_page(__name__, path="/transformer_gsut", name="Generator Step-Up Transformer", icon="🔌", category="Transformer")
+dash.register_page(__name__, path="/transformer_gsut", name="Generator Step-Up Transformer", category="Transformer")
 
 PRESET = {
     "mva": 873.6,
@@ -52,11 +52,11 @@ def sidebar():
     return dbc.Card(dbc.CardBody([
         html.H5("Equipment Presets"),
         html.P("POMI GSUT 87GT7/87GT8 — 873.6 MVA", className="small text-muted"),
-        html.H6("🎯 Protection Characteristic", className="mt-3"),
+        html.H6("Protection Characteristic", className="mt-3"),
         labeled("Bias, τ (%)", slider("bias", 5, 60, 1, PRESET["bias"])),
         labeled("Minimum Operate (%)", slider("min_operate", 5, 60, 1, PRESET["min_operate"])),
         labeled("HOC (x tap current)", slider("hoc", 2, 20, 0.5, PRESET["hoc"])),
-        dbc.Button("🔧 Advanced Settings", id="adv_toggle", size="sm", color="secondary", outline=True, className="mt-2"),
+        dbc.Button("Advanced Settings", id="adv_toggle", size="sm", color="secondary", outline=True, className="mt-2"),
         dbc.Collapse(id="adv_collapse", is_open=False, children=[
             html.Hr(),
             html.H6("Transformer & CT Spec"),
@@ -86,7 +86,7 @@ def sidebar():
             )),
         ]),
         dbc.Alert(
-            "ℹ️ Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
+            "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
             "shift — the standard compensation for a Wye/Delta power transformer.",
             color="light", className="small mt-3"
         ),
@@ -107,7 +107,7 @@ def phase_row(phase, idx):
 
 def sld_tab():
     return dbc.Card(dbc.CardBody([
-        html.H5("🗺️ Protection Zone — Single Line Diagram"),
+        html.H5("Protection Zone — Single Line Diagram"),
         html.P("Shows where the CTs sit and what falls inside the 87GT differential zone.", className="small text-muted"),
         html.Img(src=dash.get_asset_url("sld/gsut.png"), style={"width": "100%", "maxWidth": "700px"}),
     ]))
@@ -116,7 +116,7 @@ def sld_tab():
 def live_sim_tab():
     return html.Div([
         dbc.Card(dbc.CardBody([
-            html.H5("📊 Live Vector Simulation"),
+            html.H5("Live Vector Simulation"),
             html.P("Winding Operating Phase Inputs", className="fw-bold mb-2"),
             html.Div(id="rated_info", className="mb-2"),
             phase_row("Phase A", 0),
@@ -126,7 +126,7 @@ def live_sim_tab():
             html.Div(id="verdict-table", className="mt-3"),
         ]), className="my-3"),
         dbc.Card(dbc.CardBody([
-            html.H5("📈 Differential Bias Characteristic Curve"),
+            html.H5("Differential Bias Characteristic Curve"),
             dcc.Graph(id="char-curve"),
         ])),
     ])
@@ -145,20 +145,20 @@ def commissioning_tab():
 
     return html.Div([
         dbc.Card(dbc.CardBody([
-            html.H5("🧰 Commissioning & Secondary Current Injection Assistant"),
+            html.H5("Commissioning & Secondary Current Injection Assistant"),
             html.P("Pick a target restraint current for each phase to calculate the exact secondary Amps to inject."),
             dbc.Row(cols),
         ]), className="mb-3"),
         dbc.Card(dbc.CardBody([
-            html.H5("🔁 Auto-Sweep Full Curve Test Table"),
+            html.H5("Auto-Sweep Full Curve Test Table"),
             dbc.Row([
                 dbc.Col(labeled("Sweep Start (pu)", dbc.Input(id="sweep_start", type="number", value=0.2, step=0.1)), width=4),
                 dbc.Col(labeled("Sweep End (pu)", dbc.Input(id="sweep_end", type="number", value=6.0, step=0.5)), width=4),
                 dbc.Col(labeled("Sweep Step (pu)", dbc.Input(id="sweep_step", type="number", value=0.5, step=0.1)), width=4),
             ]),
-            dbc.Button("▶️ Generate Sweep Table", id="sweep_btn", color="primary", size="sm"),
+            dbc.Button("Generate Sweep Table", id="sweep_btn", color="primary", size="sm"),
             html.Div(id="sweep_table", className="mt-3"),
-            dbc.Button("⬇️ Download Sweep Table as CSV", id="sweep_csv_btn", size="sm", color="secondary", className="mt-2"),
+            dbc.Button("Download Sweep Table as CSV", id="sweep_csv_btn", size="sm", color="secondary", className="mt-2"),
             dcc.Download(id="sweep_csv_download"),
             dcc.Store(id="sweep_store"),
         ])),
@@ -168,25 +168,25 @@ def commissioning_tab():
 def test_point_tab():
     return html.Div([
         dbc.Card(dbc.CardBody([
-            html.H5("🧪 Test Point Verification & Curve"),
+            html.H5("Test Point Verification & Curve"),
             html.P("Enter measured test results and see them plotted against the calculated characteristic curve."),
             dbc.Row([
                 dbc.Col(dcc.Dropdown(id="tp_phase", options=[{"label": p, "value": p} for p in PHASES + ["Other"]], value="Phase A", clearable=False), width=2),
                 dbc.Col(dbc.Input(id="tp_restraint", type="number", placeholder="Restraint (A)", value=1.0), width=2),
                 dbc.Col(dbc.Input(id="tp_diff", type="number", placeholder="Measured Diff (A)", value=0.3), width=2),
                 dbc.Col(dbc.Input(id="tp_label", type="text", placeholder="Label (optional)"), width=3),
-                dbc.Col(dbc.Button("➕ Add Test Point", id="tp_add_btn", color="primary", size="sm"), width=3),
+                dbc.Col(dbc.Button("Add Test Point", id="tp_add_btn", color="primary", size="sm"), width=3),
             ], className="mb-3 align-items-center"),
             dbc.ButtonGroup([
                 dbc.Input(id="tp_remove_idx", type="number", value=0, min=0, size="sm", style={"width": "80px"}),
-                dbc.Button("🗑️ Remove Row", id="tp_remove_btn", size="sm", color="secondary"),
-                dbc.Button("🗑️ Clear All", id="tp_clear_btn", size="sm", color="danger"),
+                dbc.Button("Remove Row", id="tp_remove_btn", size="sm", color="secondary"),
+                dbc.Button("Clear All", id="tp_clear_btn", size="sm", color="danger"),
             ], className="mb-3"),
             html.Div(id="tp_table"),
             dcc.Store(id="tp_store", data=[]),
         ]), className="mb-3"),
         dbc.Card(dbc.CardBody([
-            html.H5("📈 Differential Bias Characteristic Curve"),
+            html.H5("Differential Bias Characteristic Curve"),
             dbc.RadioItems(
                 id="cal_source", inline=True,
                 options=[
@@ -200,7 +200,7 @@ def test_point_tab():
 
 
 layout = dbc.Container([
-    html.H3("🔌 Generator Step-Up Transformer (GSUT) Differential Protection"),
+    html.H3("Generator Step-Up Transformer (GSUT) Differential Protection"),
     html.P(
         "873.6MVA, 525kV Grounded Wye / 23kV Delta — CAC1-10-M3 percentage-bias differential relay "
         "(Mitsubishi, 2-winding).", className="text-muted"
@@ -209,10 +209,10 @@ layout = dbc.Container([
         dbc.Col(sidebar(), width=3),
         dbc.Col([
             dcc.Tabs(id="gsut_tabs", value="tab-sld", children=[
-                dcc.Tab(label="🗺️ Protection Zone (SLD)", value="tab-sld", children=[sld_tab()]),
-                dcc.Tab(label="📊 Live Vector Simulation", value="tab-sim", children=[live_sim_tab()]),
-                dcc.Tab(label="🧰 Commissioning & Injection Tool", value="tab-comm", children=[commissioning_tab()]),
-                dcc.Tab(label="🧪 Test Point Verification & Curve", value="tab-tp", children=[test_point_tab()]),
+                dcc.Tab(label="Protection Zone (SLD)", value="tab-sld", children=[sld_tab()]),
+                dcc.Tab(label="Live Vector Simulation", value="tab-sim", children=[live_sim_tab()]),
+                dcc.Tab(label="Commissioning & Injection Tool", value="tab-comm", children=[commissioning_tab()]),
+                dcc.Tab(label="Test Point Verification & Curve", value="tab-tp", children=[test_point_tab()]),
             ]),
         ], width=9),
     ]),
@@ -286,7 +286,7 @@ def update_live_sim(mva, kv_hv, ct_hv, kv_lv, ct_lv, ct_sec, tap_hv, tap_lv, bia
     evals = {p: relay.evaluate_protection(pts) for p, pts in phase_pts.items()}
 
     any_trip = any(e["is_trip"] for e in evals.values())
-    banner_text = "🚨 PROTECTIVE RELAY TRIP INITIATED!" if any_trip else "✅ SYSTEM HEALTHY (Stability / Restraint Zone)"
+    banner_text = "PROTECTIVE RELAY TRIP INITIATED!" if any_trip else "SYSTEM HEALTHY (Stability / Restraint Zone)"
     banner_class = "alert mt-2 " + ("alert-danger" if any_trip else "alert-success")
 
     df = pd.DataFrame([{

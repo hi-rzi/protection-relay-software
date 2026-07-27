@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title("⚡ Electrical Equipment Protection Suite")
+st.title("Electrical Equipment Protection Suite")
 st.caption("Protection settings calculation, commissioning-injection assistance, and settings verification for generator, transformer, and motor protection relays.")
 
 st.markdown(
@@ -21,12 +21,12 @@ Pick an equipment category from the sidebar to get started.
 """
 )
 
-st.markdown("### 🧭 Available Equipment")
+st.markdown("### Available Equipment")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("#### ⚡ Generator")
+    st.markdown("#### Generator")
     st.write(
         "Generator differential protection (87G) covering:\n"
         "- GE G60 numerical dual-breakpoint characteristic\n"
@@ -34,7 +34,7 @@ with col1:
     )
 
 with col2:
-    st.markdown("#### 🔌 Transformer")
+    st.markdown("#### Transformer")
     st.write(
         "Transformer differential protection covering:\n"
         "- Excitation Transformer (EXCT)\n"
@@ -44,7 +44,7 @@ with col2:
     )
 
 with col3:
-    st.markdown("#### 🌀 Motor")
+    st.markdown("#### Motor")
     st.write(
         "Motor protection covering:\n"
         "- Induced Draft (ID) Fan — 50/50/51 time-overcurrent, SR469 microprocessor MPR"

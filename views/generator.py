@@ -11,10 +11,10 @@ from common.sld import generator_zone_svg, render_zone_diagram
 from common.ui_helpers import slider_with_exact_input
 from engines.generator import AdvancedDifferentialRelay
 
-st.title("⚡ Enterprise Generator Differential Protection (87G) Suite")
+st.title("Enterprise Generator Differential Protection (87G) Suite")
 st.caption("Active Phase Vector Analysis, GE G60 Dual-Breakpoint Curve Engine & Secondary Injection Testing")
 
-st.markdown("### 🎛️ Generator Relay Type Select")
+st.markdown("### Generator Relay Type Select")
 mode_selection = st.radio(
     "Choose Relay Implementation:",
     ["GE G60", "GE CFD22B4A"],
@@ -30,25 +30,25 @@ else:
 PRESETS = {
     "GENERATOR": {
         "POMI Unit 7 & 8 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "pickup": 0.06, "s1": 20, "break_1": 1.15, "s2": 80, "break_2": 8.00},
-        "✏️ Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "pickup": 0.1, "s1": 20, "break_1": 1.15, "s2": 60, "break_2": 6.00},
+        "Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "pickup": 0.1, "s1": 20, "break_1": 1.15, "s2": 60, "break_2": 6.00},
     },
     "GENERATOR_LEGACY": {
         "POMI Unit 7 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "target_amps": 0.2, "s1": 10},
-        "✏️ Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "target_amps": 0.2, "s1": 10},
+        "Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "target_amps": 0.2, "s1": 10},
     },
 }
 
 current_mode_presets = PRESETS[current_mode]
-st.sidebar.header("📋 Equipment Presets")
+st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(current_mode_presets.keys()),
     help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
          "CT specs, and protection settings — this app isn't limited to POMI equipment."
 )
 p_data = current_mode_presets[selected_preset]
-is_custom = selected_preset == "✏️ Custom Profile"
+is_custom = selected_preset == "Custom Profile"
 
-st.sidebar.header("🎯 Protection Characteristic")
+st.sidebar.header("Protection Characteristic")
 target_amps = None
 i_unrestrained_value = None
 
@@ -112,7 +112,7 @@ else:
             key=f"{current_mode}__{selected_preset}__unrestrained"
         )
 
-with st.sidebar.expander("🔧 Advanced Settings (CT Spec & Wiring)", expanded=False):
+with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False):
     st.markdown("**Generator & CT Spec**")
     mva = st.number_input("Generator Rating (MVA)", value=p_data["mva"], step=10.0, key=f"{current_mode}__{selected_preset}__mva")
     kv = st.number_input("Rated Voltage (kV)", value=p_data["kv"], step=1.0, key=f"{current_mode}__{selected_preset}__kv")
@@ -166,13 +166,13 @@ relay = AdvancedDifferentialRelay(
 )
 
 tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
-    "📚 Protection Concept", "🗺️ Protection Zone (SLD)", "📊 Live Vector Simulation",
-    "🧰 Commissioning & Injection Tool", "🧪 Test Point Verification & Curve"
+    "Protection Concept", "Protection Zone (SLD)", "Live Vector Simulation",
+    "Commissioning & Injection Tool", "Test Point Verification & Curve"
 ])
 
 with tab_concept:
     render_differential_concept("generator")
-    with st.expander("⚙️ GE G60 vs. GE CFD22B4A: two different restraint philosophies"):
+    with st.expander("GE G60 vs. GE CFD22B4A: two different restraint philosophies"):
         st.markdown(
             "The two relay types this page models don't just use different numbers — they "
             "compute restraint current differently. The modern **GE G60** uses the standard "
@@ -184,7 +184,7 @@ with tab_concept:
         )
 
 with tab_sld:
-    st.subheader("🗺️ Protection Zone — Single Line Diagram")
+    st.subheader("Protection Zone — Single Line Diagram")
     st.caption(
         "Shows where the CTs sit and what falls inside the 87G differential zone."
     )
@@ -211,7 +211,7 @@ with tab1:
         inputs = {}
 
         for idx, phase in enumerate(phases):
-            with st.expander(f"📌 {phase} Settings", expanded=(phase == "Phase A")):
+            with st.expander(f"{phase} Settings", expanded=(phase == "Phase A")):
                 c1, c2 = st.columns(2)
 
                 def_val = relay.i_rated_pri if phase == "Phase A" else 0.0
@@ -237,9 +237,9 @@ with tab1:
 
         any_trip = any(res["is_trip"] for res in evals.values())
         if any_trip:
-            st.error("🚨 PROTECTIVE RELAY TRIP INITIATED!")
+            st.error("PROTECTIVE RELAY TRIP INITIATED!")
         else:
-            st.success("✅ SYSTEM HEALTHY (Stability / Restraint Zone)")
+            st.success("SYSTEM HEALTHY (Stability / Restraint Zone)")
 
         table_rows = []
         for p in phases:
@@ -255,14 +255,14 @@ with tab1:
 
         pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases)
         st.download_button(
-            label="📄 Export Certified Protection Audit Report",
+            label="Export Certified Protection Audit Report",
             data=pdf_bytes,
             file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
 
 
-    st.subheader("📈 Differential Slope Characteristic Curve")
+    st.subheader("Differential Slope Characteristic Curve")
 
     chart_units = st.radio(
         "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
@@ -333,7 +333,7 @@ with tab1:
 
 
 with tab2:
-    st.subheader("🧰 Commissioning & Secondary Current Injection Assistant")
+    st.subheader("Commissioning & Secondary Current Injection Assistant")
     st.write(
         "Pick a target restraint current for each phase to calculate the exact secondary "
         "Amps to inject at your test set for that phase — this is your test plan, telling "
@@ -343,7 +343,7 @@ with tab2:
     n_inj_label, t_inj_label = "Neutral Side", "Terminal Side"
     default_restraints = {"Phase A": 0.5, "Phase B": 2.5, "Phase C": 5.0}
 
-    st.markdown("#### 🎯 Boundary Injection Calculator")
+    st.markdown("#### Boundary Injection Calculator")
     phase_test_points = {}
     cols = st.columns(3)
     for p, col in zip(phases, cols):
@@ -362,7 +362,7 @@ with tab2:
             st.caption(f"{t_inj_label} inject: **{sec_T:.3f} A**")
 
     st.markdown("---")
-    st.subheader("🔁 Auto-Sweep Full Curve Test Table")
+    st.subheader("Auto-Sweep Full Curve Test Table")
     st.write(
         "Generates a full table of boundary test points across the restraint range in one go, "
         "instead of testing one point at a time — useful for a complete commissioning verification."
@@ -380,7 +380,7 @@ with tab2:
     with sw3:
         sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1)
 
-    if st.button("▶️ Generate Sweep Table"):
+    if st.button("Generate Sweep Table"):
         if sweep_end <= sweep_start or sweep_step <= 0:
             st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
         else:
@@ -402,7 +402,7 @@ with tab2:
         st.dataframe(st.session_state["sweep_df"], use_container_width=True)
         csv_sweep = st.session_state["sweep_df"].to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="⬇️ Download Sweep Table as CSV",
+            label="Download Sweep Table as CSV",
             data=csv_sweep,
             file_name=f"87G_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
@@ -410,12 +410,12 @@ with tab2:
 
 
 with tab3:
-    st.subheader("🧪 Test Point Verification & Curve")
+    st.subheader("Test Point Verification & Curve")
     st.write(
         "Enter measured test results and see them plotted against the calculated "
         "characteristic curve, all in one place."
     )
-    st.markdown("#### 📝 Add Test Points (Actual Measured Results)")
+    st.markdown("#### Add Test Points (Actual Measured Results)")
     st.caption(
         "Enter the restraint and differential currents actually read off your test set's "
         "ammeters during injection testing — each one you add is plotted on the curve "
@@ -449,7 +449,7 @@ with tab3:
             tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
         with tc4:
             tp_label = st.text_input("Label (optional)", value="")
-        submitted = st.form_submit_button("➕ Add Test Point")
+        submitted = st.form_submit_button("Add Test Point")
         if submitted:
             if tp_unit.startswith("Secondary"):
                 restraint_amps = tp_restraint
@@ -495,18 +495,18 @@ with tab3:
                 max_value=max(len(st.session_state.manual_test_points) - 1, 0),
                 value=0, step=1
             )
-            if st.button("🗑️ Remove Row"):
+            if st.button("Remove Row"):
                 st.session_state.manual_test_points.pop(int(remove_idx))
                 st.rerun()
         with rc2:
-            if st.button("🗑️ Clear All Test Points"):
+            if st.button("Clear All Test Points"):
                 st.session_state.manual_test_points = []
                 st.rerun()
     else:
         st.info("No test points added yet — add some above to see them plotted below.")
 
     st.markdown("---")
-    st.markdown("#### 📈 Differential Slope Characteristic Curve")
+    st.markdown("#### Differential Slope Characteristic Curve")
 
     comm_chart_units = st.radio(
         "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
@@ -589,7 +589,7 @@ with tab3:
         config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}}
     )
     st.caption(
-        "📷 To save this chart as an image: hover over the top-right of the chart and "
+        "To save this chart as an image: hover over the top-right of the chart and "
         "click the camera icon — it downloads a PNG directly from your browser, no extra "
         "software needed."
     )

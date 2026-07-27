@@ -12,7 +12,7 @@ import streamlit as st
 
 def render_differential_concept(variant):
     """variant: 'generator', 'transformer', or 'transformer_3w'."""
-    st.markdown("### ⚡ How Percentage (Biased) Differential Protection Works")
+    st.markdown("### How Percentage (Biased) Differential Protection Works")
 
     st.markdown(
         "**The zone concept & Kirchhoff's Current Law** — A differential relay watches every "
@@ -22,7 +22,7 @@ def render_differential_concept(variant):
         "leaving the zone somewhere the relay didn't expect — a fault *inside* the zone."
     )
 
-    with st.expander("📐 Operate current, restraint current, and why the trip line is sloped"):
+    with st.expander("Operate current, restraint current, and why the trip line is sloped"):
         st.markdown(
             "- **Operate current (I_op)** — the vector sum of all CT currents into the zone. "
             "Should sit at ~0 whenever the zone is healthy.\n"
@@ -39,7 +39,7 @@ def render_differential_concept(variant):
         )
         st.latex(r"I_{threshold} = \max(\text{Minimum Operate}, \ \text{Bias\%} \times I_{rest})")
 
-    with st.expander("🚦 Minimum Operate and the unrestrained instantaneous element (HOC)"):
+    with st.expander("Minimum Operate and the unrestrained instantaneous element (HOC)"):
         st.markdown(
             "**Minimum Operate** is a flat pickup floor. At near-zero restraint current, the "
             "sloped formula alone would demand an unrealistically tiny I_op to trip — easily "
@@ -52,7 +52,7 @@ def render_differential_concept(variant):
             "produce differential current that large."
         )
 
-    with st.expander("🔌 Why CT polarity matters"):
+    with st.expander("Why CT polarity matters"):
         st.markdown(
             "The whole \"current in = current out\" comparison only works if every CT's polarity "
             "mark is correctly oriented *and* correctly told to the relay. Get the polarity wrong "
@@ -63,8 +63,8 @@ def render_differential_concept(variant):
         )
 
     if variant in ("transformer", "transformer_3w"):
-        st.markdown("### 🔧 Transformer-Specific: CT Tap Matching & Vector Group Compensation")
-        with st.expander("⚖️ Why every winding needs its own CT matching tap"):
+        st.markdown("### Transformer-Specific: CT Tap Matching & Vector Group Compensation")
+        with st.expander("Why every winding needs its own CT matching tap"):
             st.markdown(
                 "A transformer's two sides operate at completely different voltages — and "
                 "therefore completely different currents. Even with perfect CTs, the raw "
@@ -76,7 +76,7 @@ def render_differential_concept(variant):
                 "transformer in the first place. A small residual mismatch (~1%, from tap "
                 "rounding) is normal and expected, not an error."
             )
-        with st.expander("🔺 Why Delta/Wye transformers need √3 + 30° CT compensation"):
+        with st.expander("Why Delta/Wye transformers need √3 + 30° CT compensation"):
             st.markdown(
                 "When a transformer has one Wye winding and one Delta winding, the phase "
                 "relationship between the two sides' currents is inherently shifted (typically "
@@ -91,8 +91,8 @@ def render_differential_concept(variant):
             )
 
     if variant == "transformer_3w":
-        st.markdown("### 🛡️ Why an \"Overall\" Backup Zone Exists")
-        with st.expander("🗺️ Overlapping zones of protection"):
+        st.markdown("### Why an \"Overall\" Backup Zone Exists")
+        with st.expander("Overlapping zones of protection"):
             st.markdown(
                 "Protection zones are deliberately designed to *overlap*. The Generator's own "
                 "87G relay protects only the stator winding; GSUT's own 87GT relay protects only "
@@ -106,9 +106,9 @@ def render_differential_concept(variant):
 
 
 def render_overcurrent_concept(include_thermal_replica=False):
-    st.markdown("### ⏱️ How Motor Time-Overcurrent Protection Works")
+    st.markdown("### How Motor Time-Overcurrent Protection Works")
 
-    with st.expander("🏁 Coordinating with the starting characteristic"):
+    with st.expander("Coordinating with the starting characteristic"):
         st.markdown(
             "A motor draws several times its running (FLA) current for several seconds every "
             "time it starts — completely normal, and must *not* trip the relay. But if the rotor "
@@ -118,7 +118,7 @@ def render_overcurrent_concept(include_thermal_replica=False):
             "stall time on a genuine locked-rotor condition."
         )
 
-    with st.expander("📉 Why inverse-time curves, not a fixed time delay"):
+    with st.expander("Why inverse-time curves, not a fixed time delay"):
         st.markdown(
             "An inverse-time curve trips *faster* as current increases — which happens to match "
             "how motor thermal damage accelerates with current too. A single curve shape can "
@@ -127,7 +127,7 @@ def render_overcurrent_concept(include_thermal_replica=False):
             "logic for each condition."
         )
 
-    with st.expander("⚡ Why there's also an instantaneous element"):
+    with st.expander("Why there's also an instantaneous element"):
         st.markdown(
             "For a genuine short-circuit fault (as opposed to starting or stall, which are "
             "thermal/mechanical events, not electrical faults), current can reach many times even "
@@ -137,7 +137,7 @@ def render_overcurrent_concept(include_thermal_replica=False):
         )
 
     if include_thermal_replica:
-        with st.expander("🌡️ Thermal replica / memory (why the SR469 goes further than a re-timed curve)"):
+        with st.expander("Thermal replica / memory (why the SR469 goes further than a re-timed curve)"):
             st.markdown(
                 "A microprocessor relay like the SR469 maintains a running **Thermal Capacity "
                 "Used** — a percentage-like memory of how hot the motor's internal model currently "
@@ -148,7 +148,7 @@ def render_overcurrent_concept(include_thermal_replica=False):
                 "the motor was already warm, rather than treating every new event as starting from "
                 "cold, the way a simple discrete electromechanical relay effectively does."
             )
-        with st.expander("🌀 K-factor & why unbalance causes extra heating"):
+        with st.expander("K-factor & why unbalance causes extra heating"):
             st.markdown(
                 "Unbalanced supply voltage (or single-phasing) creates negative-sequence current "
                 "in the motor. Even a *small* negative-sequence current causes disproportionately "
