@@ -169,12 +169,18 @@ with tab1:
                 def_ang_hv = -120.0 * idx
                 if phase == "Phase A":
                     def_val_hv = relay.windings[0]["i_rated_pri"]
-                    # Solve LV's default so a healthy through-load actually cancels
-                    # to ~0 pu, accounting for each winding's own Delta/Wye CT
-                    # compensation - not just a naive +-180 degree guess.
+                    def_val_lv = relay.windings[1]["i_rated_pri"]
+                    # Solve only the ANGLE that makes a healthy through-load cancel,
+                    # accounting for each winding's own Delta/Wye CT compensation -
+                    # not just a naive +-180 degree guess. Magnitude is left at LV's
+                    # own Nominal Rated Current (matching the info box above) rather
+                    # than solved-for, so a small residual (~1%, the same order as
+                    # the settings doc's documented tap mismatch) is expected and
+                    # correct, not a bug - a perfect 0.000 would actually be less
+                    # realistic.
                     vec_hv_internal = winding_internal_vector(relay, 0, def_val_hv, def_ang_hv)
                     target_lv_internal = vec_hv_internal if ct_polarity == "OPPOSITE" else -vec_hv_internal
-                    def_val_lv, def_ang_lv = raw_input_for_internal_vector(relay, 1, target_lv_internal)
+                    _, def_ang_lv = raw_input_for_internal_vector(relay, 1, target_lv_internal)
                 else:
                     def_val_hv = 0.0
                     def_val_lv = 0.0

@@ -183,13 +183,17 @@ with tab1:
                 def_val_uat = 0.0  # UAT typically carries house-load current, not full rating, by default
                 if phase == "Phase A":
                     def_val_hv = relay.windings[0]["i_rated_pri"]
-                    # Solve Generator's default so a healthy through-load (with UAT
-                    # off-load, i.e. 0A by default, so HV and Generator alone must
-                    # cancel) actually nets to ~0 pu, accounting for HV's Delta CT
-                    # compensation - not just a naive +-180 degree guess.
+                    def_val_gen = relay.windings[1]["i_rated_pri"]
+                    # Solve only the ANGLE that makes a healthy through-load (with
+                    # UAT off-load, i.e. 0A by default, so HV and Generator alone
+                    # must cancel) net to ~0 pu, accounting for HV's Delta CT
+                    # compensation - not just a naive +-180 degree guess. Magnitude
+                    # is left at Generator's own Nominal Rated Current (matching the
+                    # info box above) rather than solved-for, so a small residual is
+                    # expected and correct, not a bug.
                     vec_hv_internal = winding_internal_vector(relay, 0, def_val_hv, def_ang_hv)
                     target_gen_internal = vec_hv_internal if ct_polarity == "OPPOSITE" else -vec_hv_internal
-                    def_val_gen, def_ang_gen = raw_input_for_internal_vector(relay, 1, target_gen_internal)
+                    _, def_ang_gen = raw_input_for_internal_vector(relay, 1, target_gen_internal)
                 else:
                     def_val_hv = 0.0
                     def_val_gen = 0.0
