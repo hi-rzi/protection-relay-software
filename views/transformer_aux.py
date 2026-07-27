@@ -28,12 +28,25 @@ PRESETS = {
         "ct_conn_hv": "WYE", "ct_conn_lv": "DELTA",
         "tap_hv": 1.02, "tap_lv": 0.48,
         "bias": 20, "min_operate": 20, "hoc": 5,
-    }
+    },
+    "✏️ Custom Profile": {
+        "mva": 10.0,
+        "kv_hv": 11.0, "kv_lv": 0.4,
+        "ct_hv": 100, "ct_lv": 100, "ct_sec": 5.0,
+        "ct_conn_hv": "WYE", "ct_conn_lv": "WYE",
+        "tap_hv": 1.0, "tap_lv": 1.0,
+        "bias": 25, "min_operate": 20, "hoc": 8,
+    },
 }
 
 st.sidebar.header("📋 Equipment Presets")
-selected_preset = st.sidebar.selectbox("Load Standard Profile", list(PRESETS.keys()))
+selected_preset = st.sidebar.selectbox(
+    "Load Standard Profile", list(PRESETS.keys()),
+    help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
+         "CT specs, and protection settings — this app isn't limited to POMI equipment."
+)
 p_data = PRESETS[selected_preset]
+is_custom = selected_preset == "✏️ Custom Profile"
 
 st.sidebar.header("🎯 Protection Characteristic")
 bias_pct = slider_with_exact_input(
@@ -56,32 +69,40 @@ hoc_multiple = slider_with_exact_input(
 
 with st.sidebar.expander("🔧 Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
     st.markdown("**Transformer & CT Spec**")
-    mva = st.number_input("Transformer Rating (MVA)", value=p_data["mva"], step=1.0, format="%.3f")
+    mva = st.number_input("Transformer Rating (MVA)", value=p_data["mva"], step=1.0, format="%.3f", key=f"{selected_preset}__mva")
 
-    st.markdown("**HV Winding (23kV side, Delta) — Multi-Ratio Wye CT**")
+    st.markdown("**HV Winding (23kV side, Delta) — Multi-Ratio Wye CT**" if not is_custom else "**HV Winding**")
     kv_hv = st.number_input("HV Rated Voltage (kV)", value=p_data["kv_hv"], step=1.0, format="%.3f",
+        key=f"{selected_preset}__kv_hv",
         help="Uses Tap Position 3 (22.425kV) per the settings doc's full-load calc, not the 23kV nameplate.")
-    ct_hv = st.select_slider(
-        "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_3000_5,
-        value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_3000_5 else 3000,
-        help="3000:5 Wye-connected multi-ratio bushing CT — the tap can be reselected in the "
-             "field based on the actual/expected load current. Documented as set on 3000:5 (max)."
-    )
+    if is_custom:
+        ct_hv = st.number_input("HV CT Ratio (Primary A, e.g. 100 in '100:5')", value=float(p_data["ct_hv"]), key=f"{selected_preset}__ct_hv")
+    else:
+        ct_hv = st.select_slider(
+            "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_3000_5,
+            value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_3000_5 else 3000,
+            key=f"{selected_preset}__ct_hv",
+            help="3000:5 Wye-connected multi-ratio bushing CT — the tap can be reselected in the "
+                 "field based on the actual/expected load current. Documented as set on 3000:5 (max)."
+        )
     ct_conn_hv = st.selectbox(
         "HV CT Connection", ["WYE", "DELTA"],
-        index=0 if p_data.get("ct_conn_hv", "WYE") == "WYE" else 1
+        index=0 if p_data.get("ct_conn_hv", "WYE") == "WYE" else 1,
+        key=f"{selected_preset}__ct_conn_hv"
     )
 
-    st.markdown("**LV Winding (13.8kV side, Resistance-Grounded Wye) — Delta CT**")
-    kv_lv = st.number_input("LV Rated Voltage (kV)", value=p_data["kv_lv"], step=0.1, format="%.3f")
-    ct_lv = st.number_input("LV CT Ratio (Primary A, e.g. 4000 in '4000:5')", value=p_data["ct_lv"])
+    st.markdown("**LV Winding (13.8kV side, Resistance-Grounded Wye) — Delta CT**" if not is_custom else "**LV Winding**")
+    kv_lv = st.number_input("LV Rated Voltage (kV)", value=p_data["kv_lv"], step=0.1, format="%.3f", key=f"{selected_preset}__kv_lv")
+    ct_lv = st.number_input("LV CT Ratio (Primary A, e.g. 4000 in '4000:5')", value=float(p_data["ct_lv"]), key=f"{selected_preset}__ct_lv")
     ct_conn_lv = st.selectbox(
         "LV CT Connection", ["DELTA", "WYE"],
-        index=0 if p_data.get("ct_conn_lv", "DELTA") == "DELTA" else 1
+        index=0 if p_data.get("ct_conn_lv", "DELTA") == "DELTA" else 1,
+        key=f"{selected_preset}__ct_conn_lv"
     )
 
     ct_secondary_rating = st.selectbox(
-        "CT Secondary Rating (A)", [1.0, 5.0], index=1,
+        "CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0,
+        key=f"{selected_preset}__ct_sec",
         help="The rated secondary current stamped on the CT nameplate (the '5' in '4000:5'). "
              "Applied to both CTs to determine the true turns ratio used in all per-unit scaling."
     )

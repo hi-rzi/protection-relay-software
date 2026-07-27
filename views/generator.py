@@ -28,17 +28,24 @@ else:
 
 PRESETS = {
     "GENERATOR": {
-        "POMI Unit 7 & 8 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "pickup": 0.06, "s1": 20, "break_1": 1.15, "s2": 80, "break_2": 8.00}
+        "POMI Unit 7 & 8 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "pickup": 0.06, "s1": 20, "break_1": 1.15, "s2": 80, "break_2": 8.00},
+        "✏️ Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "pickup": 0.1, "s1": 20, "break_1": 1.15, "s2": 60, "break_2": 6.00},
     },
     "GENERATOR_LEGACY": {
-        "POMI Unit 7 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "target_amps": 0.2, "s1": 10}
-    }
+        "POMI Unit 7 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "target_amps": 0.2, "s1": 10},
+        "✏️ Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "target_amps": 0.2, "s1": 10},
+    },
 }
 
 current_mode_presets = PRESETS[current_mode]
 st.sidebar.header("📋 Equipment Presets")
-selected_preset = st.sidebar.selectbox("Load Standard Profile", list(current_mode_presets.keys()))
+selected_preset = st.sidebar.selectbox(
+    "Load Standard Profile", list(current_mode_presets.keys()),
+    help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
+         "CT specs, and protection settings — this app isn't limited to POMI equipment."
+)
 p_data = current_mode_presets[selected_preset]
+is_custom = selected_preset == "✏️ Custom Profile"
 
 st.sidebar.header("🎯 Protection Characteristic")
 target_amps = None
@@ -106,13 +113,13 @@ else:
 
 with st.sidebar.expander("🔧 Advanced Settings (CT Spec & Wiring)", expanded=False):
     st.markdown("**Generator & CT Spec**")
-    mva = st.number_input("Generator Rating (MVA)", value=p_data["mva"], step=10.0)
-    kv = st.number_input("Rated Voltage (kV)", value=p_data["kv"], step=1.0)
-    ct_ratio_N = st.number_input("Neutral Side CT Rating (Primary A, e.g. 20000 in '20000:5')", value=p_data["ct_n"])
-    ct_ratio_T = st.number_input("Terminal Side CT Rating (Primary A)", value=p_data["ct_t"])
+    mva = st.number_input("Generator Rating (MVA)", value=p_data["mva"], step=10.0, key=f"{current_mode}__{selected_preset}__mva")
+    kv = st.number_input("Rated Voltage (kV)", value=p_data["kv"], step=1.0, key=f"{current_mode}__{selected_preset}__kv")
+    ct_ratio_N = st.number_input("Neutral Side CT Rating (Primary A, e.g. 20000 in '20000:5')", value=float(p_data["ct_n"]), key=f"{current_mode}__{selected_preset}__ct_n")
+    ct_ratio_T = st.number_input("Terminal Side CT Rating (Primary A)", value=float(p_data["ct_t"]), key=f"{current_mode}__{selected_preset}__ct_t")
 
     ct_secondary_rating = st.selectbox(
-        "CT Secondary Rating (A)", [1.0, 5.0], index=1,
+        "CT Secondary Rating (A)", [1.0, 5.0], index=1, key=f"{current_mode}__{selected_preset}__ct_sec",
         help="The rated secondary current stamped on the CT nameplate (e.g. the '5' in '2000:5'). "
              "This is applied to both CTs and determines the true turns ratio used in all "
              "per-unit scaling — entering only the primary rating without this was a labelling bug."

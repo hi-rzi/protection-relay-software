@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.set_page_config(page_title="POMI Protection Relay Suite", layout="wide")
+st.set_page_config(page_title="Electrical Equipment Protection Suite", layout="wide")
 
 pg = st.navigation({
     "": [st.Page("views/home.py", title="Home", icon="🏠", default=True)],

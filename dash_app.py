@@ -1,5 +1,5 @@
 """
-POMI Protection Relay Suite - Dash edition.
+Electrical Equipment Protection Suite - Dash edition.
 
 Same engines/ and common/pdf_report.py as the Streamlit app (app.py) -
 only the UI layer is different. Uses Dash's built-in multi-page routing
@@ -17,7 +17,7 @@ app = dash.Dash(
     use_pages=True,
     pages_folder="dash_pages",
     external_stylesheets=[dbc.themes.BOOTSTRAP],
-    title="POMI Protection Relay Suite",
+    title="Electrical Equipment Protection Suite",
     suppress_callback_exceptions=True,
 )
 server = app.server

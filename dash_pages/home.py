@@ -5,7 +5,7 @@ from dash import html
 dash.register_page(__name__, path="/", name="Home", icon="🏠", category="")
 
 layout = dbc.Container([
-    html.H2("⚡ POMI Protection Relay Suite"),
+    html.H2("⚡ Electrical Equipment Protection Suite"),
     html.P(
         "Protection settings calculation, commissioning-injection assistance, and settings "
         "verification for POMI's generator, transformer, and motor protection relays.",

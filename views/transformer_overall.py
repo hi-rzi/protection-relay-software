@@ -30,12 +30,25 @@ PRESETS = {
         "ct_conn_hv": "DELTA", "ct_conn_gen": "WYE", "ct_conn_uat": "WYE",
         "tap_hv": 1.0, "tap_gen": 1.1, "tap_uat": 1.1,
         "bias": 30, "min_operate": 30, "hoc": 5,
-    }
+    },
+    "✏️ Custom Profile": {
+        "mva": 10.0,
+        "kv_hv": 11.0, "kv_gen": 11.0, "kv_uat": 11.0,
+        "ct_hv": 100, "ct_gen": 100, "ct_uat": 100, "ct_sec": 5.0,
+        "ct_conn_hv": "WYE", "ct_conn_gen": "WYE", "ct_conn_uat": "WYE",
+        "tap_hv": 1.0, "tap_gen": 1.0, "tap_uat": 1.0,
+        "bias": 30, "min_operate": 30, "hoc": 5,
+    },
 }
 
 st.sidebar.header("📋 Equipment Presets")
-selected_preset = st.sidebar.selectbox("Load Standard Profile", list(PRESETS.keys()))
+selected_preset = st.sidebar.selectbox(
+    "Load Standard Profile", list(PRESETS.keys()),
+    help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
+         "CT specs, and protection settings — this app isn't limited to POMI equipment."
+)
 p_data = PRESETS[selected_preset]
+is_custom = selected_preset == "✏️ Custom Profile"
 
 st.sidebar.header("🎯 Protection Characteristic")
 bias_pct = slider_with_exact_input(
@@ -52,40 +65,46 @@ hoc_options = [5, 6, 8, 10, 12]
 hoc_multiple = st.sidebar.select_slider(
     "HOC (x tap value current)", options=hoc_options,
     value=p_data["hoc"] if p_data["hoc"] in hoc_options else 5,
+    key=f"{selected_preset}__hoc",
     help="CAC2-10-M3 available settings: 5, 6, 8, 10, or 12 times tap value current. Not "
          "harmonically restrained — operates on differential current only, so LV-side faults won't trip it."
 )
 
 with st.sidebar.expander("🔧 Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
-    st.markdown("**Winding 1 — HV (525kV side, Multi-Ratio Delta CT)**")
+    st.markdown("**Winding 1 — HV (525kV side, Multi-Ratio Delta CT)**" if not is_custom else "**Winding 1 — HV**")
     kv_hv = st.number_input("HV Rated Voltage (kV)", value=p_data["kv_hv"], step=1.0, format="%.3f",
+        key=f"{selected_preset}__kv_hv",
         help="Uses the center-of-tap-range voltage (538.125kV) per the settings doc's full-load calc, not the 525kV nameplate.")
-    ct_hv = st.select_slider(
-        "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_2000_5,
-        value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_2000_5 else 1600,
-        help="Same 2000:5 Delta-connected multi-ratio bushing CT as the GSUT page (it's the same "
-             "physical CT feeding both relays) — documented as set on 1600:5."
-    )
-    ct_conn_hv = st.selectbox("HV CT Connection", ["DELTA", "WYE"], index=0 if p_data["ct_conn_hv"] == "DELTA" else 1, key="ov_ct_conn_hv")
+    if is_custom:
+        ct_hv = st.number_input("HV CT Ratio (Primary A, e.g. 100 in '100:5')", value=float(p_data["ct_hv"]), key=f"{selected_preset}__ct_hv")
+    else:
+        ct_hv = st.select_slider(
+            "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_2000_5,
+            value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_2000_5 else 1600,
+            key=f"{selected_preset}__ct_hv",
+            help="Same 2000:5 Delta-connected multi-ratio bushing CT as the GSUT page (it's the same "
+                 "physical CT feeding both relays) — documented as set on 1600:5."
+        )
+    ct_conn_hv = st.selectbox("HV CT Connection", ["DELTA", "WYE"], index=0 if p_data["ct_conn_hv"] == "DELTA" else 1, key=f"{selected_preset}__ct_conn_hv")
 
-    st.markdown("**Winding 2 — Generator (23kV side, Wye CT)**")
-    kv_gen = st.number_input("Generator Rated Voltage (kV)", value=p_data["kv_gen"], step=0.1, format="%.3f")
-    ct_gen = st.number_input("Generator CT Ratio (Primary A, e.g. 24000 in '24000:5')", value=p_data["ct_gen"])
-    ct_conn_gen = st.selectbox("Generator CT Connection", ["WYE", "DELTA"], index=0 if p_data["ct_conn_gen"] == "WYE" else 1, key="ov_ct_conn_gen")
+    st.markdown("**Winding 2 — Generator (23kV side, Wye CT)**" if not is_custom else "**Winding 2 — Generator**")
+    kv_gen = st.number_input("Generator Rated Voltage (kV)", value=p_data["kv_gen"], step=0.1, format="%.3f", key=f"{selected_preset}__kv_gen")
+    ct_gen = st.number_input("Generator CT Ratio (Primary A, e.g. 24000 in '24000:5')", value=float(p_data["ct_gen"]), key=f"{selected_preset}__ct_gen")
+    ct_conn_gen = st.selectbox("Generator CT Connection", ["WYE", "DELTA"], index=0 if p_data["ct_conn_gen"] == "WYE" else 1, key=f"{selected_preset}__ct_conn_gen")
 
-    st.markdown("**Winding 3 — Unit Auxiliary Transformer (23kV side, Wye CT)**")
-    kv_uat = st.number_input("UAT Rated Voltage (kV)", value=p_data["kv_uat"], step=0.1, format="%.3f")
-    ct_uat = st.number_input("UAT CT Ratio (Primary A, e.g. 24000 in '24000:5')", value=p_data["ct_uat"])
-    ct_conn_uat = st.selectbox("UAT CT Connection", ["WYE", "DELTA"], index=0 if p_data["ct_conn_uat"] == "WYE" else 1, key="ov_ct_conn_uat")
+    st.markdown("**Winding 3 — Unit Auxiliary Transformer (23kV side, Wye CT)**" if not is_custom else "**Winding 3 — Auxiliary**")
+    kv_uat = st.number_input("UAT Rated Voltage (kV)", value=p_data["kv_uat"], step=0.1, format="%.3f", key=f"{selected_preset}__kv_uat")
+    ct_uat = st.number_input("UAT CT Ratio (Primary A, e.g. 24000 in '24000:5')", value=float(p_data["ct_uat"]), key=f"{selected_preset}__ct_uat")
+    ct_conn_uat = st.selectbox("UAT CT Connection", ["WYE", "DELTA"], index=0 if p_data["ct_conn_uat"] == "WYE" else 1, key=f"{selected_preset}__ct_conn_uat")
 
     mva = st.number_input(
-        "Base Rating (MVA)", value=p_data["mva"], step=10.0,
+        "Base Rating (MVA)", value=p_data["mva"], step=10.0, key=f"{selected_preset}__mva",
         help="Relay currents are calculated assuming each device carries the full rating of the "
              "Generator Step-Up Transformer (per the settings doc's Calculation/Discussion)."
     )
 
     ct_secondary_rating = st.selectbox(
-        "CT Secondary Rating (A)", [1.0, 5.0], index=1, key="ov_ct_sec",
+        "CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0, key=f"{selected_preset}__ct_sec",
         help="The rated secondary current stamped on the CT nameplate (the '5' in 'x:5'). Applied to all three CTs."
     )
     st.caption(

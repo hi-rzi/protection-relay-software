@@ -44,7 +44,17 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 4.5,
         "pickup_50a": 47.0, "dropout_50b": 3.3, "target_seal_in": 0.2,
         "backup_ct_ratio": 3000, "backup_pickup_50": 10.0,
-    }
+    },
+    "✏️ Custom Profile": {
+        "motor_fla": 100, "locked_rotor_amps": 600, "locked_rotor_amps_80pct": 480,
+        "accel_time_100": 10.0, "accel_time_80": 15.0,
+        "safe_stall_100_ambient": 20.0, "safe_stall_80_ambient": 30.0,
+        "safe_stall_100_hot": 18.0, "safe_stall_80_hot": 27.0,
+        "ct_ratio": 100, "ct_sec": 5.0,
+        "tap_51": 4.0, "time_dial": 5.0,
+        "pickup_50a": 50.0, "dropout_50b": 3.0, "target_seal_in": 0.2,
+        "backup_ct_ratio": 200, "backup_pickup_50": 10.0,
+    },
 }
 
 MOTOR_CONFIG_FIELDS = (
@@ -109,9 +119,37 @@ uploaded_settings = st.sidebar.file_uploader(
 if uploaded_settings is not None:
     restore_motor_settings(uploaded_settings)
 
+def _load_preset_into_state():
+    """Force every field to the newly-selected preset's values, bypassing
+    ensure_setting()'s "only if unset" guard - otherwise switching presets
+    silently does nothing once the fields already hold a value."""
+    pd_ = PRESETS[st.session_state["motor_selected_preset"]]
+    plain_fields = {
+        "motor_ct_ratio": float(pd_["ct_ratio"]), "motor_ct_sec": pd_["ct_sec"],
+        "motor_tap_51": pd_["tap_51"], "motor_target_seal_in": pd_["target_seal_in"],
+        "motor_backup_ct_ratio": float(pd_["backup_ct_ratio"]), "motor_backup_pickup_50": pd_["backup_pickup_50"],
+        "motor_fla": float(pd_["motor_fla"]), "motor_lrc_100": float(pd_["locked_rotor_amps"]),
+        "motor_lrc_80": float(pd_["locked_rotor_amps_80pct"]),
+        "motor_accel_time_100": pd_["accel_time_100"], "motor_accel_time_80": pd_["accel_time_80"],
+        "motor_safe_stall_100": pd_["safe_stall_100_hot"], "motor_safe_stall_80": pd_["safe_stall_80_hot"],
+    }
+    for k, v in plain_fields.items():
+        st.session_state[k] = v
+    # slider_with_exact_input-backed fields track a slider/number sub-key pair too.
+    for key, value in {"motor_time_dial": pd_["time_dial"], "motor_pickup_50a": pd_["pickup_50a"], "motor_dropout_50b": pd_["dropout_50b"]}.items():
+        st.session_state[key] = value
+        st.session_state[f"{key}__slider"] = value
+        st.session_state[f"{key}__number"] = value
+
+
 st.sidebar.header("📋 Equipment Presets")
 ensure_setting("motor_selected_preset", next(iter(PRESETS)))
-selected_preset = st.sidebar.selectbox("Load Standard Profile", list(PRESETS.keys()), key="motor_selected_preset")
+selected_preset = st.sidebar.selectbox(
+    "Load Standard Profile", list(PRESETS.keys()), key="motor_selected_preset",
+    on_change=_load_preset_into_state,
+    help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
+         "CT specs, and protection settings — this app isn't limited to POMI equipment."
+)
 p_data = PRESETS[selected_preset]
 
 st.sidebar.header("🎯 Protection Characteristic")
@@ -613,7 +651,7 @@ with tab4:
     )
 
     settings_export = {
-        "format": "POMI Protection Relay Suite settings",
+        "format": "Electrical Equipment Protection Suite settings",
         "version": 1,
         "equipment": "id_fan_motor",
         "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
