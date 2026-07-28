@@ -8,7 +8,8 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
+from common.ui_helpers import slider_with_exact_input, effect_note, MR_CT_TAPS_2000_5
+from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
@@ -57,11 +58,16 @@ bias_pct = slider_with_exact_input(
     key=f"{selected_preset}__bias",
     help_text="CAC2-10-M3 available settings: 20%, 30%, or 40%."
 )
+effect_note("Higher tolerates more CT/tap mismatch across all three windings on heavy through-load "
+            "without tripping, but also desensitizes the relay to a genuine internal fault.")
 min_operate_pct = slider_with_exact_input(
     st.sidebar, "Minimum Operate (%)", 20, 40, p_data["min_operate"], 10,
     key=f"{selected_preset}__min_operate",
     help_text="CAC2-10-M3 available settings: IT x 20%, 30%, or 40% (IT = tap value current)."
 )
+effect_note("The trip floor at LIGHT load. With three CT/tap pairs stacking error instead of two, "
+            "set too low and normal load alone can trip; set too high and a genuine light-load "
+            "internal fault won't clear.")
 hoc_options = [5, 6, 8, 10, 12]
 hoc_multiple = st.sidebar.select_slider(
     "HOC (x tap value current)", options=hoc_options,
@@ -70,6 +76,8 @@ hoc_multiple = st.sidebar.select_slider(
     help="CAC2-10-M3 available settings: 5, 6, 8, 10, or 12 times tap value current. Not "
          "harmonically restrained — operates on differential current only, so LV-side faults won't trip it."
 )
+effect_note("Bypasses the slope entirely for a severe internal fault. As a 3-winding backup zone, "
+            "must clear the worst-case combined inrush from GSUT + Generator + UAT energization.")
 
 with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
     st.markdown("**Winding 1 — HV (525kV side, Multi-Ratio Delta CT)**" if not is_custom else "**Winding 1 — HV**")
@@ -130,11 +138,16 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
         key=f"{selected_preset}__tap_uat",
         help_text="CAC2-10-M3 setting range: 0.4-2.18 in steps of 0.02."
     )
+    effect_note("Mismatched taps across HV/Generator/UAT at rated load create a permanent 'phantom' "
+                "operate current — shows up as I_op even with zero fault. Recompute all three "
+                "whenever a CT ratio changes (see the Settings Calculator below).")
 
     st.markdown("**Wiring & Convention**")
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.", key="ov_convention")
+        effect_note("IEC's sum roughly triples the restraint value versus IEEE's average for this "
+                    "3-winding relay — the same Bias% is effectively far less sensitive under IEC.")
     with col_pol:
         def _on_polarity_change():
             # Streamlit widgets stop re-reading their value= argument once
@@ -165,6 +178,40 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
             help="OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped "
                  "relative to it, as current flows into the zone from HV and out to the other two."
         )
+        effect_note("Picking the wrong one makes healthy through-load look like a fault (windings "
+                    "add instead of cancel) — verify with a low-current injection test before "
+                    "commissioning, don't rely on this setting alone.")
+
+with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
+    st.caption(
+        "Derives a starting point FROM the ratings above, the same direction the settings doc's own "
+        "worked example works in (Section A-D) — CT-matching taps are exact math; Bias/Min Operate/HOC "
+        "are rule-of-thumb starting points that still need engineering review."
+    )
+    delta_factor_hv = 1.7320508 if ct_conn_hv.upper() == "DELTA" else 1.0
+    delta_factor_gen = 1.7320508 if ct_conn_gen.upper() == "DELTA" else 1.0
+    delta_factor_uat = 1.7320508 if ct_conn_uat.upper() == "DELTA" else 1.0
+    i_rated_pri = (mva * 1000.0) / (1.7320508 * kv_hv) if kv_hv > 0 else 0.0
+    i_rated_pri_gen = (mva * 1000.0) / (1.7320508 * kv_gen) if kv_gen > 0 else 0.0
+    i_rated_pri_uat = (mva * 1000.0) / (1.7320508 * kv_uat) if kv_uat > 0 else 0.0
+    t1_e = suggest_ct_matching_tap(i_rated_pri, ct_hv, ct_secondary_rating, delta_factor_hv)
+    t2_e = suggest_ct_matching_tap(i_rated_pri_gen, ct_gen, ct_secondary_rating, delta_factor_gen)
+    t3_e = suggest_ct_matching_tap(i_rated_pri_uat, ct_uat, ct_secondary_rating, delta_factor_uat)
+    cc1, cc2, cc3 = st.columns(3)
+    cc1.metric("Ideal HV Tap (T1_E)", f"{t1_e:.3f}" if t1_e else "—")
+    cc2.metric("Ideal Gen Tap (T2_E)", f"{t2_e:.3f}" if t2_e else "—")
+    cc3.metric("Ideal UAT Tap (T3_E)", f"{t3_e:.3f}" if t3_e else "—")
+    i_relay_hv_at_set_tap = (i_rated_pri / (ct_hv / ct_secondary_rating) * delta_factor_hv * tap_hv) if ct_hv > 0 else None
+    i_relay_gen_at_set_tap = (i_rated_pri_gen / (ct_gen / ct_secondary_rating) * delta_factor_gen * tap_gen) if ct_gen > 0 else None
+    i_relay_uat_at_set_tap = (i_rated_pri_uat / (ct_uat / ct_secondary_rating) * delta_factor_uat * tap_uat) if ct_uat > 0 else None
+    calc_mismatch = mismatch_ratio_pct([i_relay_hv_at_set_tap, i_relay_gen_at_set_tap, i_relay_uat_at_set_tap])
+    st.metric("Mismatch at currently-set taps", f"{calc_mismatch:.2f}%" if calc_mismatch is not None else "—")
+    suggestion = suggest_bias_settings(calc_mismatch or 0.0, num_windings=3)
+    st.markdown(
+        f"**Suggested starting point:** Bias ≈ **{suggestion['bias_pct']:.0f}%**, "
+        f"Min Operate ≈ **{suggestion['min_operate_pct']:.0f}%**, HOC ≈ **{suggestion['hoc_multiple']:.0f}x** tap current."
+    )
+    st.caption(suggestion["basis"])
 
 windings = [
     {"name": "HV (525kV)", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},

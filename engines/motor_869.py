@@ -2,13 +2,24 @@ import math
 
 
 # =====================================================================
-# SR469 MOTOR MANAGEMENT RELAY (Multilin, microprocessor-based)
-#    Per P101-17-1823.10-0002 Rev. 0, Section 5.1.3.
+# GE MULTILIN 869 MOTOR PROTECTION RELAY (microprocessor-based)
+#    Settings basis: P101-17-1823.10-0002 Rev. 0, Section 5.1.3, which was
+#    written against the plant's originally-specified SR469. The SR469 has
+#    since been superseded in service by the 869, but both are GE Multilin
+#    motor relays built on the same Thermal Capacity Used (TCU) protection
+#    architecture - the 869's own instruction manual (GEA-12784) describes
+#    the identical model: a single integrated stator/rotor heating register
+#    (TCU) that increments with overload current and unbalance, and decays
+#    on a running/stopped cooling time constant. The settings doc's current-
+#    based numbers (Overload Pickup, Curve, K-factor) therefore carry over
+#    directly - only the relay hardware changed, not the protection math.
 #
 #    51 (Overload, thermal model):
-#       Trip time formula per MPR Manual 1601-0057-D3, reproduced in the
-#       settings doc's Calculation/Discussion and verified against its own
-#       worked examples (4.8x FLA on Curve X4 -> 15.9s; 3.8x FLA -> 25.8s):
+#       Trip time formula per the settings doc's Calculation/Discussion,
+#       verified against its own worked examples (4.8x FLA on Curve X4 ->
+#       15.9s; 3.8x FLA -> 25.8s). This is the GE Multilin "Standard" thermal
+#       curve shared across the 469/269Plus/369/869 relay lineage, not a
+#       SR469-exclusive formula:
 #           T = (CM x 2.2116623) / (0.025303373x(M-1)^2 + 0.050547581x(M-1))
 #       where CM = Curve Multiplier (the "X4" setting) and M = measured
 #       current AS A MULTIPLE OF MOTOR FLA (not of the % pickup setting -
@@ -28,9 +39,16 @@ import math
 #
 #    K-factor (Unbalance Bias): a static thermal-model bias setting, not a
 #       live trip element - K = 230 / (locked rotor current, in multiples
-#       of FLA)^2, per the settings doc's reproduced MPR Manual formula.
+#       of FLA)^2 (the "conservative" GE Multilin formula; 175/LRA^2 is the
+#       "typical" alternative quoted in GE's own application guidance), per
+#       the settings doc's reproduced formula.
 #
-#    All other SR469 functions the settings doc covers (Mechanical Jam,
+#    Hot/Cold Safe Stall Ratio: HCR = LRT_hot / LRT_cold, the same
+#       methodology GE Multilin publishes for setting up the 869's thermal
+#       model - computed live in the view from the motor datasheet's own
+#       ambient (cold) and hot safe-stall times, not a hardcoded constant.
+#
+#    All other 869 functions the settings doc covers (Mechanical Jam,
 #    Acceleration Timer, Overload Alarm, Overtemperature 38/49, Overvoltage
 #    59, Jogging Block 66, Over/Underfrequency 81, Phase Differential 87,
 #    Underpower 37, Start Inhibit, Digital Inputs) are settings-only in
@@ -38,7 +56,7 @@ import math
 #    matching how the existing 50/50/51 page already scopes itself to the
 #    primary current-based elements rather than modeling every function.
 # =====================================================================
-class MotorMPRRelay:
+class Motor869Relay:
     OVERLOAD_CURVE = {"A": 2.2116623, "B": 0.025303373, "C": 0.050547581}
 
     def __init__(self, ct_ratio, ct_secondary_rating, motor_fla, locked_rotor_amps,
@@ -140,3 +158,8 @@ class MotorMPRRelay:
         else:
             status = "SAFE"
         return {"alarm": alarm, "trip": trip, "is_trip": trip, "status": status}
+
+
+def hot_cold_safe_stall_ratio(safe_stall_hot, safe_stall_cold):
+    """HCR = LRT_hot / LRT_cold, per GE Multilin's thermal-model setup methodology."""
+    return (safe_stall_hot / safe_stall_cold) if safe_stall_cold > 0 else None

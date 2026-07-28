@@ -10,25 +10,29 @@ import streamlit as st
 from common.pdf_report import generate_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
-from common.ui_helpers import slider_with_exact_input
+from common.ui_helpers import slider_with_exact_input, effect_note
+from common.settings_advisor import suggest_bias_settings
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
-from engines.motor_sr469 import MotorMPRRelay
+from engines.motor_869 import Motor869Relay, hot_cold_safe_stall_ratio
 
 st.title("Induced Draft (ID) Fan Motor Protection")
 st.caption(
     "10,001HP, 13.2kV — GE IFC66KD2A electromechanical 50/50/51 time-overcurrent relay, "
-    "GE HFC22B2A backup instantaneous relay, and SR469 microprocessor Motor Protection Relay."
+    "GE HFC22B2A backup instantaneous relay, and GE 869 microprocessor Motor Protection Relay."
 )
 
 st.info(
     "This page covers the 50/50/51 (IFC66KD2A) and backup 50 (HFC22B2A) discrete "
-    "overcurrent relays per the settings doc's Sections 5.1.1–5.1.2, plus the SR469 "
-    "microprocessor Motor Protection Relay (Section 5.1.3). The SR469's primary current-based "
-    "elements (Overload thermal model, Instantaneous, Ground Fault, Current Unbalance) are "
-    "live-simulated in the SR469 MPR tab; its other functions (Mechanical Jam, Acceleration "
-    "Timer, Overtemperature, Overvoltage, Jogging Block, Over/Underfrequency, Phase "
-    "Differential, Underpower, Start Inhibit, Digital Inputs) are shown there as a documented "
-    "settings reference, not live-simulated."
+    "overcurrent relays per the settings doc's Sections 5.1.1–5.1.2, plus the GE 869 "
+    "microprocessor Motor Protection Relay (Section 5.1.3). The settings doc was written "
+    "against the plant's originally-specified SR469, since superseded in service by the 869 — "
+    "both share the same GE Multilin Thermal Capacity Used architecture, so the doc's "
+    "current-based settings carry over directly. The 869's primary current-based elements "
+    "(Overload thermal model, Instantaneous, Ground Fault, Current Unbalance) are live-simulated "
+    "in the GE 869 MPR tab; its other functions (Mechanical Jam, Acceleration Timer, "
+    "Overtemperature, Overvoltage, Jogging Block, Over/Underfrequency, Phase Differential, "
+    "Underpower, Start Inhibit, Digital Inputs) are shown there as a documented settings "
+    "reference, not live-simulated."
 )
 
 st.warning(
@@ -50,7 +54,7 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 4.5,
         "pickup_50a": 47.0, "dropout_50b": 3.3, "target_seal_in": 0.2,
         "backup_ct_ratio": 3000, "backup_pickup_50": 10.0,
-        # SR469 MPR (Section 5.1.3)
+        # GE 869 MPR (Section 5.1.3 - written against the legacy SR469, same thermal model)
         "mpr_ground_ct_ratio": 50, "mpr_gf_pickup_frac": 0.1, "mpr_gf_delay_ms": 60.0,
         "mpr_overload_pickup_pct": 115.0, "mpr_curve_multiplier": 4.0,
         "mpr_inst_multiple_lr": 2.0, "mpr_inst_delay_ms": 60.0,
@@ -81,7 +85,8 @@ PRESETS = {
 MOTOR_CONFIG_FIELDS = (
     "motor_selected_preset", "motor_fla", "motor_lrc_100", "motor_lrc_80",
     "motor_accel_time_100", "motor_accel_time_80", "motor_safe_stall_100",
-    "motor_safe_stall_80", "motor_ct_ratio", "motor_ct_sec", "motor_tap_51",
+    "motor_safe_stall_80", "motor_safe_stall_100_cold", "motor_safe_stall_80_cold",
+    "motor_ct_ratio", "motor_ct_sec", "motor_tap_51",
     "motor_time_dial", "motor_pickup_50a", "motor_dropout_50b",
     "motor_target_seal_in", "motor_enable_backup", "motor_backup_ct_ratio",
     "motor_backup_pickup_50", "motor_source_document", "motor_revision",
@@ -160,6 +165,7 @@ def _load_preset_into_state():
         "motor_lrc_80": float(pd_["locked_rotor_amps_80pct"]),
         "motor_accel_time_100": pd_["accel_time_100"], "motor_accel_time_80": pd_["accel_time_80"],
         "motor_safe_stall_100": pd_["safe_stall_100_hot"], "motor_safe_stall_80": pd_["safe_stall_80_hot"],
+        "motor_safe_stall_100_cold": pd_["safe_stall_100_ambient"], "motor_safe_stall_80_cold": pd_["safe_stall_80_ambient"],
         "mpr_ground_ct_ratio": float(pd_["mpr_ground_ct_ratio"]), "mpr_gf_pickup_frac": pd_["mpr_gf_pickup_frac"],
         "mpr_gf_delay_ms": pd_["mpr_gf_delay_ms"],
         "mpr_overload_pickup_pct": pd_["mpr_overload_pickup_pct"], "mpr_curve_multiplier": pd_["mpr_curve_multiplier"],
@@ -200,6 +206,8 @@ tap_51 = st.sidebar.select_slider(
     "51 Tap (A sec.)", options=tap_51_options, key="motor_tap_51",
     help="IFC66KD2A range: 2.5-7.5A at these discrete taps."
 )
+effect_note("Sets the CURRENT axis — must clear motor FLA with margin, or normal load alone will "
+            "eventually trip the overload curve. Doesn't change the curve's shape or timing.")
 time_dial = slider_with_exact_input(
     st.sidebar, "51 Time Dial", 0.5, 10.0, p_data["time_dial"], 0.1,
     key="motor_time_dial",
@@ -207,6 +215,9 @@ time_dial = slider_with_exact_input(
                "Inverse' 5-constant polynomial (GEK-106618C constants), calibrated to the "
                "settings doc's reference point of ~16s at 500% pickup."
 )
+effect_note("Scales the TIME axis of the whole curve uniformly — raising it delays every trip point "
+            "(more starting margin) but also delays clearing a genuine stall, eating into the "
+            "motor's safe stall time.")
 
 st.sidebar.markdown("**50A / 50B (Instantaneous)**")
 pickup_50a = slider_with_exact_input(
@@ -215,12 +226,16 @@ pickup_50a = slider_with_exact_input(
     help_text="IFC66KD2A range: L-tap 6-30A, H-tap 30-150A. Should be set at ~300% of locked "
                "rotor current to allow motor starting inrush."
 )
+effect_note("Must clear the motor's own locked-rotor/starting inrush, or every normal start trips "
+            "instantly; too high delays clearing of a genuine terminal short-circuit.")
 dropout_50b = slider_with_exact_input(
     st.sidebar, "50B Dropout (A sec.)", 2.0, 8.0, p_data["dropout_50b"], 0.1,
     key="motor_dropout_50b",
     help_text="IFC66KD2A range: L-tap 2-4A, H-tap 4-8A. High-dropout overload ALARM element — "
                "estimated pickup = dropout / 0.8 (per GEK-49949, dropout occurs above 80% of pickup)."
 )
+effect_note("An early-warning alarm ahead of the 51 trip — set below the 51 pickup so operators get "
+            "notice before the motor actually trips on overload.")
 ensure_setting("motor_target_seal_in", p_data["target_seal_in"])
 target_seal_in = st.sidebar.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, step=0.1, key="motor_target_seal_in")
 
@@ -241,6 +256,8 @@ with st.sidebar.expander("Advanced Settings (Motor Data & CT Spec)", expanded=Fa
     ensure_setting("motor_accel_time_80", p_data["accel_time_80"])
     ensure_setting("motor_safe_stall_100", p_data["safe_stall_100_hot"])
     ensure_setting("motor_safe_stall_80", p_data["safe_stall_80_hot"])
+    ensure_setting("motor_safe_stall_100_cold", p_data["safe_stall_100_ambient"])
+    ensure_setting("motor_safe_stall_80_cold", p_data["safe_stall_80_ambient"])
     motor_fla = st.number_input("Full Load Current (A)", min_value=1.0, step=1.0, key="motor_fla")
     locked_rotor_amps = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, step=1.0, key="motor_lrc_100")
     locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, step=1.0, key="motor_lrc_80")
@@ -249,6 +266,9 @@ with st.sidebar.expander("Advanced Settings (Motor Data & CT Spec)", expanded=Fa
     safe_stall_100 = st.number_input("Safe Stall Time @ 100% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100",
         help="Using the 'after one start attempt' (hot) value — the more conservative of the two documented safe stall times.")
     safe_stall_80 = st.number_input("Safe Stall Time @ 80% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80")
+    safe_stall_100_cold = st.number_input("Safe Stall Time @ 100% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100_cold",
+        help="The 'from ambient' (cold) safe stall time — used only to compute the GE 869's Hot/Cold Safe Stall Ratio (HCR), not for the coordination checks above.")
+    safe_stall_80_cold = st.number_input("Safe Stall Time @ 80% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80_cold")
 
     st.markdown("**CT Spec**")
     ct_ratio = st.number_input("50/50/51 CT Ratio (Primary A, e.g. 600 in '600:5')", min_value=1.0, key="motor_ct_ratio")
@@ -265,20 +285,26 @@ backup_relay = BackupInstantaneousRelay(
     ct_ratio=backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=backup_pickup_50
 ) if enable_backup else None
 
-with st.sidebar.expander("Advanced Settings (SR469 MPR)", expanded=False):
+with st.sidebar.expander("Advanced Settings (GE 869 MPR)", expanded=False):
     st.markdown("**Overload (51) Thermal Model**")
     ensure_setting("mpr_overload_pickup_pct", p_data["mpr_overload_pickup_pct"])
     ensure_setting("mpr_curve_multiplier", p_data["mpr_curve_multiplier"])
     mpr_overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, step=1.0, key="mpr_overload_pickup_pct",
         help="Settings doc criterion: set to operate at 115% of motor FLA.")
+    effect_note("The thermal model's current floor — below this, TCU doesn't accumulate at all. "
+                "Too close to 100% and normal load variation alone slowly heats the model toward a trip.")
     mpr_curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, step=0.5, key="mpr_curve_multiplier",
-        help="MPR Manual 1601-0057-D3 standard curve, verified against the settings doc's Curve X4 worked examples.")
+        help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage, verified against the settings doc's Curve X4 worked examples.")
+    effect_note("Scales the WHOLE overload curve's trip time uniformly — same trade-off as the "
+                "51's Time Dial: more starting margin, but slower to clear a genuine stall.")
 
     st.markdown("**Instantaneous (50)**")
     ensure_setting("mpr_inst_multiple_lr", p_data["mpr_inst_multiple_lr"])
     ensure_setting("mpr_inst_delay_ms", p_data["mpr_inst_delay_ms"])
     mpr_inst_multiple_lr = st.number_input("Instantaneous Pickup (x Locked Rotor A)", min_value=1.0, max_value=5.0, step=0.1, key="mpr_inst_multiple_lr",
         help="Settings doc criterion: ~200% of locked rotor current.")
+    effect_note("Must clear the motor's own starting inrush, or every normal start trips instantly; "
+                "too high delays clearing a genuine terminal short-circuit.")
     mpr_inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, step=10.0, key="mpr_inst_delay_ms")
 
     st.markdown("**Ground Fault (50G/51G)**")
@@ -310,7 +336,35 @@ with st.sidebar.expander("Advanced Settings (SR469 MPR)", expanded=False):
     mpr_accel_timer_s = st.number_input("Acceleration Timer (s)", min_value=1.0, step=1.0, key="mpr_accel_timer_s")
     mpr_overload_alarm_delay_s = st.number_input("Overload Alarm Delay (s)", min_value=0.0, step=0.5, key="mpr_overload_alarm_delay_s")
 
-mpr_relay = MotorMPRRelay(
+with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
+    st.caption(
+        "Derives a starting point FROM the motor data above — the 51 Tap suggestion is a hard "
+        "formula (nearest available tap to FLA + margin); K-factor is GE Multilin's own two "
+        "published variants; Overload Pickup is a rule-of-thumb starting point."
+    )
+    i_sec_at_fla = motor_fla / ct_ratio * ct_secondary_rating if ct_ratio > 0 else 0.0
+    ideal_tap_51 = i_sec_at_fla * 1.15
+    nearest_tap_51 = min(tap_51_options, key=lambda t: abs(t - ideal_tap_51))
+    cc1, cc2 = st.columns(2)
+    cc1.metric("Ideal 51 Tap (FLA + 15%)", f"{ideal_tap_51:.2f} A sec.")
+    cc2.metric("Nearest available tap", f"{nearest_tap_51:.1f} A sec.")
+    lr_multiple = (locked_rotor_amps / motor_fla) if motor_fla > 0 else 0.0
+    k_conservative = (230.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
+    k_typical = (175.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
+    cc3, cc4 = st.columns(2)
+    cc3.metric("K-factor (conservative)", f"{k_conservative:.2f}", help="K = 230 / (LRC ÷ FLA)² — currently used by the GE 869 MPR tab.")
+    cc4.metric("K-factor (typical)", f"{k_typical:.2f}", help="K = 175 / (LRC ÷ FLA)² — GE Multilin's less-conservative published alternative.")
+    st.markdown(
+        "**Suggested starting point:** Overload Pickup ≈ **110-115% FLA** (GE Multilin guidance, "
+        "matched to the motor's service factor); Instantaneous ≈ **200% locked-rotor current** "
+        "(clears starting inrush, trips well below a genuine terminal fault)."
+    )
+    st.caption(
+        "Engineering review required — these are starting points, not a substitute for a "
+        "coordination study against the motor's actual thermal damage curve."
+    )
+
+mpr_relay = Motor869Relay(
     ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
     motor_fla=motor_fla, locked_rotor_amps=locked_rotor_amps,
     overload_pickup_pct=mpr_overload_pickup_pct, curve_multiplier=mpr_curve_multiplier,
@@ -328,14 +382,14 @@ tab_theory, tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Commissioning & Injection Tool",
     "TCC Curve",
     "Settings Summary & Approval",
-    "SR469 MPR",
+    "GE 869 MPR",
 ])
 
 with tab_theory:
     render_theory_tab(
         "motor",
         purpose_text=(
-            "The 50/50/51 (and SR469) relays protect the Induced Draft Fan motor winding from "
+            "The 50/50/51 (and GE 869) relays protect the Induced Draft Fan motor winding from "
             "thermal damage due to overload, locked rotor, or a short-circuit fault, while still "
             "allowing the motor to start normally. Induced Draft Fans are large, high-inertia "
             "loads — they take noticeably longer to reach full speed than a typical motor of "
@@ -771,16 +825,19 @@ with tab4:
     )
 
 # ---------------------------------------------------------------------------
-# TAB 5 — SR469 Microprocessor MPR
+# TAB 5 — GE 869 Microprocessor MPR
 # ---------------------------------------------------------------------------
 with tab5:
-    st.subheader("SR469 Motor Management Relay (Multilin)")
+    st.subheader("GE 869 Motor Management Relay (Multilin)")
     st.caption(
-        "Per the settings doc's Section 5.1.3. Live-simulates the primary current-based "
-        "elements (Overload thermal model, Instantaneous, Ground Fault, Current Unbalance); "
-        "the remaining functions are shown below as a documented settings reference."
+        "Per the settings doc's Section 5.1.3 (written against the plant's originally-specified "
+        "SR469, since superseded in service by the 869 - same Thermal Capacity Used protection "
+        "architecture, so the settings carry over directly). Live-simulates the primary "
+        "current-based elements (Overload thermal model, Instantaneous, Ground Fault, Current "
+        "Unbalance); the remaining functions are shown below as a documented settings reference."
     )
-    st.info(f"K-factor (Unbalance Bias, per MPR Manual formula K = 230 / (Locked Rotor ÷ FLA)²): **{mpr_relay.k_factor:.2f}**")
+    st.info(f"K-factor (Unbalance Bias, per GE Multilin formula K = 230 / (Locked Rotor ÷ FLA)², "
+            f"conservative variant): **{mpr_relay.k_factor:.2f}**")
 
     col_mpr_in, col_mpr_out = st.columns([1.1, 1.0])
     with col_mpr_in:
@@ -805,7 +862,7 @@ with tab5:
     with col_mpr_out:
         st.markdown("#### Real-time Protection Verdict")
         if mpr_any_trip:
-            st.error("SR469 TRIP INITIATED!")
+            st.error("GE 869 TRIP INITIATED!")
         else:
             st.success("SYSTEM HEALTHY")
         st.table([
@@ -827,19 +884,36 @@ with tab5:
             marker=dict(size=14, color="red", symbol="x")
         ))
     mpr_fig.update_layout(
-        title="SR469 Overload Trip Time vs. Multiple of FLA",
+        title="GE 869 Overload Trip Time vs. Multiple of FLA",
         xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
         yaxis_type="log", template="plotly_white", height=450,
     )
     st.plotly_chart(mpr_fig, use_container_width=True)
     st.caption(
-        "Formula per MPR Manual 1601-0057-D3: T = CM x 2.2116623 / (0.025303373x(M-1)² + 0.050547581x(M-1)), "
-        "M = current as a multiple of motor FLA - verified against the settings doc's own worked examples "
+        "GE Multilin 'Standard' thermal curve (shared across the 469/269Plus/369/869 lineage): "
+        "T = CM x 2.2116623 / (0.025303373x(M-1)² + 0.050547581x(M-1)), M = current as a multiple "
+        "of motor FLA - verified against the settings doc's own worked examples "
         "(4.8x FLA on Curve X4 = 15.9s; 3.8x FLA = 25.8s)."
     )
 
     st.markdown("---")
-    st.markdown("#### Other SR469 Functions — Settings Reference (not live-simulated)")
+    st.markdown("#### Hot/Cold Safe Stall Ratio (Thermal Model Setup)")
+    hcr_100 = hot_cold_safe_stall_ratio(safe_stall_100, safe_stall_100_cold)
+    hcr_80 = hot_cold_safe_stall_ratio(safe_stall_80, safe_stall_80_cold)
+    hcr_col1, hcr_col2 = st.columns(2)
+    hcr_col1.metric("HCR @ 100% V", f"{hcr_100:.2f}" if hcr_100 is not None else "—",
+                     help=f"= hot safe stall ({safe_stall_100:.1f}s) / cold safe stall ({safe_stall_100_cold:.1f}s)")
+    hcr_col2.metric("HCR @ 80% V", f"{hcr_80:.2f}" if hcr_80 is not None else "—",
+                     help=f"= hot safe stall ({safe_stall_80:.1f}s) / cold safe stall ({safe_stall_80_cold:.1f}s)")
+    st.caption(
+        "HCR = LRT_hot / LRT_cold, per GE Multilin's own thermal-model setup methodology — it tells the "
+        "869 how much less thermal margin a motor that's already running hot has left before a stall "
+        "becomes damaging, versus starting from cold. A ratio well below 1.0 means the relay must bias "
+        "its trip time noticeably faster on a hot restart."
+    )
+
+    st.markdown("---")
+    st.markdown("#### Other GE 869 Functions — Settings Reference (not live-simulated)")
     st.dataframe(pd.DataFrame([
         {"Function": "Overload Alarm", "Setting": f"{mpr_overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
         {"Function": "Mechanical Jam Trip", "Setting": f"{mpr_mech_jam_pct:.0f}% FLA, {mpr_mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},

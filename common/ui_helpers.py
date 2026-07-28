@@ -18,6 +18,12 @@ def render_placeholder(title, caption, note="Coming soon — this relay type is 
     st.info(note)
 
 
+def effect_note(text):
+    """A short, consistent 'what happens if I change this' note under a setting,
+    so the app teaches the setting's real-world consequence, not just its range."""
+    st.caption(f"🔧 **Effect:** {text}")
+
+
 def slider_with_exact_input(container, label, min_v, max_v, default, step, key, help_text=None):
     slider_key = f"{key}__slider"
     number_key = f"{key}__number"

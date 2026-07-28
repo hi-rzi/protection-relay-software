@@ -173,9 +173,9 @@ def _render_overcurrent_principle(include_thermal_replica):
         )
 
     if include_thermal_replica:
-        with st.expander("Thermal replica / memory (why the SR469 goes further than a re-timed curve)"):
+        with st.expander("Thermal replica / memory (why the GE 869 goes further than a re-timed curve)"):
             st.markdown(
-                "A microprocessor relay like the SR469 maintains a running **Thermal Capacity "
+                "A microprocessor relay like the GE 869 maintains a running **Thermal Capacity "
                 "Used** — a percentage-like memory of how hot the motor's internal model currently "
                 "is, which decays over time once current drops (with a slower decay when stopped, "
                 "since a stationary motor without airflow cools more slowly than one still "
