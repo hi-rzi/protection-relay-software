@@ -9,7 +9,7 @@ from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
-from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
+from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
 st.caption(
@@ -136,8 +136,32 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.", key="ov_convention")
     with col_pol:
+        def _on_polarity_change():
+            # Streamlit widgets stop re-reading their value= argument once
+            # created, so recomputing the healthy default inline on every
+            # rerun (below, for Phase A) only ever applies on first page
+            # load - switching this radio afterwards needs to explicitly
+            # overwrite session_state here, or the Generator angle goes
+            # stale and a healthy through-load starts reading as a phantom
+            # trip. UAT stays at 0A by default regardless, so only the
+            # Generator winding (vs. HV) needs solving here.
+            new_polarity = st.session_state["ov_ct_polarity"]
+            windings_tmp = [
+                {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
+                {"name": "Generator", "kv": kv_gen, "ct_ratio": ct_gen, "ct_secondary_rating": ct_secondary_rating, "tap": tap_gen, "ct_connection": ct_conn_gen},
+                {"name": "UAT", "kv": kv_uat, "ct_ratio": ct_uat, "ct_secondary_rating": ct_secondary_rating, "tap": tap_uat, "ct_connection": ct_conn_uat},
+            ]
+            relay_tmp = TransformerDifferentialRelay(
+                mva_rated=mva, windings=windings_tmp,
+                bias_pct=30, min_operate_pct=30, hoc_multiple=5,
+                convention="IEEE", ct_polarity=new_polarity,
+            )
+            hv_rated = relay_tmp.windings[0]["i_rated_pri"]
+            st.session_state["ov_gen_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
+
         ct_polarity = st.radio(
             "Polarity Reference", ["OPPOSITE", "SAME"], index=0, key="ov_ct_polarity",
+            on_change=_on_polarity_change,
             help="OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped "
                  "relative to it, as current flows into the zone from HV and out to the other two."
         )
@@ -207,7 +231,11 @@ with tab1:
             with st.expander(f"{phase} Settings", expanded=(phase == "Phase A")):
                 c1, c2, c3 = st.columns(3)
                 def_ang_hv = -120.0 * idx
-                def_ang_other = def_ang_hv + 180.0 if ct_polarity == "OPPOSITE" else def_ang_hv
+                # Same sign convention as the Phase A Generator solve below (harmless
+                # here since magnitude is 0 for Phase B/C and for UAT always, but was
+                # backwards - matches the Generator page's fixed bug: OPPOSITE needs
+                # matching angles to cancel, SAME needs 180 deg apart).
+                def_ang_other = def_ang_hv if ct_polarity == "OPPOSITE" else def_ang_hv + 180.0
                 def_val_uat = 0.0  # UAT typically carries house-load current, not full rating, by default
                 if phase == "Phase A":
                     def_val_hv = relay.windings[0]["i_rated_pri"]

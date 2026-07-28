@@ -146,3 +146,24 @@ def raw_input_for_internal_vector(relay, idx, target_internal_vec):
     i_pri = mag / denom if denom > 0 else 0.0
     angle_deg = ang - w["delta_angle_shift"]
     return i_pri, angle_deg
+
+
+def solve_healthy_target_angle(relay, target_idx, reference_idx, reference_amps, reference_angle):
+    """
+    Solve the angle that makes `target_idx` winding's contribution cancel the
+    `reference_idx` winding's (assuming every OTHER winding is at 0A), for
+    whichever ct_polarity the relay currently has. Magnitude is left to the
+    caller (typically the target winding's own rated current).
+
+    This is what keeps a Live Simulation default healthy when the user changes
+    Polarity Reference AFTER the page has already loaded: Streamlit widgets
+    stop re-reading their `value=` argument once created, so recomputing this
+    inline on every script rerun isn't enough - it must also be called from an
+    on_change callback that overwrites st.session_state directly (see each
+    transformer page's _on_polarity_change()).
+    """
+    vec_ref = winding_internal_vector(relay, reference_idx, reference_amps, reference_angle)
+    sign = -1 if relay.ct_polarity == "OPPOSITE" else 1
+    target_internal = -vec_ref * sign
+    _, angle_deg = raw_input_for_internal_vector(relay, target_idx, target_internal)
+    return angle_deg

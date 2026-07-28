@@ -9,7 +9,7 @@ from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import two_winding_transformer_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_3000_5
-from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
+from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Unit Auxiliary Transformer (UAT) Differential Protection")
 st.caption(
@@ -132,8 +132,29 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
     with col_pol:
+        def _on_polarity_change():
+            # Streamlit widgets stop re-reading their value= argument once
+            # created, so recomputing the healthy default inline on every
+            # rerun (below, for Phase A) only ever applies on first page
+            # load - switching this radio afterwards needs to explicitly
+            # overwrite session_state here, or the LV angle goes stale and
+            # a healthy through-load starts reading as a phantom trip.
+            new_polarity = st.session_state["aux_ct_polarity_widget"]
+            windings_tmp = [
+                {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
+                {"name": "LV", "kv": kv_lv, "ct_ratio": ct_lv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_lv, "ct_connection": ct_conn_lv},
+            ]
+            relay_tmp = TransformerDifferentialRelay(
+                mva_rated=mva, windings=windings_tmp,
+                bias_pct=30, min_operate_pct=30, hoc_multiple=5,
+                convention="IEEE", ct_polarity=new_polarity,
+            )
+            hv_rated = relay_tmp.windings[0]["i_rated_pri"]
+            st.session_state["aux_lv_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
+
         ct_polarity = st.radio(
             "Polarity Reference", ["OPPOSITE", "SAME"], index=0,
+            key="aux_ct_polarity_widget", on_change=_on_polarity_change,
             help="OPPOSITE is standard for a 2-winding transformer differential (currents flow "
                  "into the zone on one side, out on the other)."
         )
@@ -217,7 +238,11 @@ with tab1:
                 else:
                     def_val_hv = 0.0
                     def_val_lv = 0.0
-                    def_ang_lv = def_ang_hv + 180.0 if ct_polarity == "OPPOSITE" else def_ang_hv
+                    # Same sign convention as the Phase A solve above (harmless here
+                    # since magnitude is 0, but was backwards - matches the Generator
+                    # page's fixed bug: OPPOSITE needs matching angles to cancel, SAME
+                    # needs 180 deg apart).
+                    def_ang_lv = def_ang_hv if ct_polarity == "OPPOSITE" else def_ang_hv + 180.0
 
                 with c1:
                     i_hv = st.number_input(f"HV Primary Amps [A]", value=def_val_hv, key=f"aux_hv_i_{phase}")
