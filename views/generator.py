@@ -146,7 +146,9 @@ with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False)
             new_polarity = st.session_state["ct_polarity_widget"]
             for _idx, _phase in enumerate(["Phase A", "Phase B", "Phase C"]):
                 _def_ang_N = -120.0 * _idx
-                _def_ang_T = _def_ang_N + 180.0 if new_polarity == "OPPOSITE" else _def_ang_N
+                # vec_op = vec_T - vec_N for OPPOSITE (needs matching angles to cancel),
+                # vec_op = vec_T + vec_N for SAME (needs 180 deg apart to cancel).
+                _def_ang_T = _def_ang_N if new_polarity == "OPPOSITE" else _def_ang_N + 180.0
                 st.session_state[f"T_a_{_phase}"] = _def_ang_T
 
         ct_polarity = st.radio(
@@ -213,7 +215,10 @@ with tab1:
 
                 def_val = relay.i_rated_pri if phase == "Phase A" else 0.0
                 def_ang_N = -120.0 * idx
-                def_ang_T = def_ang_N + 180.0 if ct_polarity == "OPPOSITE" else def_ang_N
+                # vec_op = vec_T - vec_N for OPPOSITE (needs matching angles to cancel),
+                # vec_op = vec_T + vec_N for SAME (needs 180 deg apart to cancel) - see
+                # engines/generator.py's evaluate_protection().
+                def_ang_T = def_ang_N if ct_polarity == "OPPOSITE" else def_ang_N + 180.0
 
                 with c1:
                     i_N = st.number_input(f"{n_side_label} Primary Amps [A]", value=def_val, key=f"N_i_{phase}")
