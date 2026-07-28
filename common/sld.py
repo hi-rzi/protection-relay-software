@@ -86,6 +86,14 @@ def _leader(x1, y1, x2, y2):
     )
 
 
+def _h_arrow(x1, y, x2, color=BUS_COLOR, width=2.5):
+    """Horizontal line from x1 to x2 at height y, with an arrowhead at x2 (works either direction)."""
+    svg = f'<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{color}" stroke-width="{width}"/>'
+    d = 1 if x2 > x1 else -1
+    svg += f'<polygon points="{x2},{y} {x2-10*d},{y-6} {x2-10*d},{y+6}" fill="{color}"/>'
+    return svg
+
+
 def _zone_box(x1, y1, x2, y2, label):
     svg = (
         f'<rect x="{x1}" y="{y1}" width="{x2-x1}" height="{y2-y1}" fill="none" '
@@ -286,6 +294,94 @@ def motor_overcurrent_svg(ct_ratio, ct_secondary_rating, backup_ct_ratio=None, t
     svg += _label(
         W / 2, H - 18,
         "Discrete time-overcurrent protection — not a differential (no zone boundary)",
+        size=11, color=LEADER_COLOR,
+    )
+    svg += _footer()
+    return svg
+
+
+# ---------------------------------------------------------------------------
+# Operating Principle diagrams — generic/conceptual (same for every relay of a
+# given type), unlike the zone diagrams above which are equipment-specific.
+# These illustrate HOW the relay logic decides to trip, not WHERE the CTs
+# physically sit (that's the Protection Zone diagram).
+# ---------------------------------------------------------------------------
+def differential_principle_svg():
+    W, H = 720, 300
+    svg = _header(W, H)
+    y = 95
+
+    svg += _label(90, y - 42, "I₁ (into zone)", size=13, color=CT_COLOR)
+    svg += _ct(90, y, None)
+    svg += _h_arrow(106, y, 278, color=BUS_COLOR)
+
+    svg += _label(630, y - 42, "I₂ (out of zone)", size=13, color=CT_COLOR)
+    svg += _ct(630, y, None)
+    svg += _h_arrow(614, y, 442, color=BUS_COLOR)
+
+    box_x1, box_y1, box_x2, box_y2 = 280, y - 42, 440, y + 42
+    svg += (
+        f'<rect x="{box_x1}" y="{box_y1}" width="{box_x2-box_x1}" height="{box_y2-box_y1}" '
+        f'fill="#EFF6FF" stroke="{TEXT_COLOR}" stroke-width="2" rx="8"/>'
+    )
+    svg += _label((box_x1 + box_x2) / 2, y - 6, "Differential", size=13, weight="bold")
+    svg += _label((box_x1 + box_x2) / 2, y + 14, "Element", size=13, weight="bold")
+
+    mid_x = (box_x1 + box_x2) / 2
+    out_y = y + 95
+    svg += f'<line x1="{mid_x}" y1="{box_y2}" x2="{mid_x}" y2="{out_y - 30}" stroke="{BUS_COLOR}" stroke-width="2"/>'
+    svg += _label(mid_x, out_y, "I_op = |I₁ − I₂|", size=14, weight="bold", color=ZONE_COLOR)
+    svg += _label(mid_x, out_y + 20, "I_rest = avg or sum of |I₁|, |I₂|", size=12, color=LEADER_COLOR)
+
+    decision_y = out_y + 55
+    svg += (
+        f'<rect x="{mid_x-150}" y="{decision_y-22}" width="300" height="36" fill="#FEF2F2" '
+        f'stroke="{ZONE_COLOR}" stroke-width="1.5" rx="6"/>'
+    )
+    svg += _label(mid_x, decision_y + 2, "TRIP if I_op > Threshold(I_rest)", size=13, weight="bold", color=ZONE_COLOR)
+
+    svg += _label(
+        W / 2, H - 18,
+        "Healthy: I₁ ≈ I₂, so I_op stays near 0. Internal fault: I₁ ≠ I₂, so I_op grows large.",
+        size=11, color=LEADER_COLOR,
+    )
+    svg += _footer()
+    return svg
+
+
+def overcurrent_principle_svg():
+    W, H = 640, 340
+    svg = _header(W, H)
+
+    ox, oy = 90, 280
+    ax_top, ax_right = 40, 590
+
+    svg += _h_arrow(ox, oy, ax_right, color=BUS_COLOR)
+    svg += f'<line x1="{ox}" y1="{oy}" x2="{ox}" y2="{ax_top}" stroke="{BUS_COLOR}" stroke-width="2.5"/>'
+    svg += f'<polygon points="{ox},{ax_top} {ox-6},{ax_top+10} {ox+6},{ax_top+10}" fill="{BUS_COLOR}"/>'
+
+    svg += _label(ax_right - 10, oy + 24, "Current", size=13, anchor="end")
+    svg += _label(ox - 12, ax_top + 2, "Time", size=13, anchor="end")
+
+    svg += (
+        f'<path d="M {ox+25} {ax_top+15} C {ox+65} {oy-190}, {ox+150} {oy-35}, {ax_right-25} {oy-8}" '
+        f'fill="none" stroke="{CT_COLOR}" stroke-width="3"/>'
+    )
+    svg += _label((ox + ax_right) / 2, ax_top - 5, "51 Inverse-Time Trip Curve", size=13, color=CT_COLOR, weight="bold")
+
+    start_x, start_y = ox + 95, oy - 55
+    svg += f'<circle cx="{start_x}" cy="{start_y}" r="6" fill="#16A34A"/>'
+    svg += _label(start_x + 15, start_y - 10, "Normal start", size=12, color="#16A34A", anchor="start")
+    svg += _label(start_x + 15, start_y + 8, "(below curve, no trip)", size=11, color="#16A34A", anchor="start")
+
+    fault_x, fault_y = ox + 290, oy - 205
+    svg += f'<circle cx="{fault_x}" cy="{fault_y}" r="6" fill="{ZONE_COLOR}"/>'
+    svg += _label(fault_x + 15, fault_y - 4, "Locked rotor / fault", size=12, color=ZONE_COLOR, anchor="start")
+    svg += _label(fault_x + 15, fault_y + 14, "(above curve, trips)", size=11, color=ZONE_COLOR, anchor="start")
+
+    svg += _label(
+        W / 2, H - 18,
+        "Higher current → shorter trip time, so severe faults clear fast while normal starting current is tolerated.",
         size=11, color=LEADER_COLOR,
     )
     svg += _footer()

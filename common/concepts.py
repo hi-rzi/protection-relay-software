@@ -1,18 +1,39 @@
 """
-Shared "engineering concept" explanations for the Protection Concept tab on
-each equipment page. These describe WHY each protection scheme is built the
-way it is - the same underlying theory applies across several equipment
-pages (all differential relays share the same restraint/bias/HOC logic;
-both motor relays share the same time-overcurrent coordination logic), so
-the core write-up lives here once and each page adds its own equipment-
-specific notes on top.
+Shared "Theory" tab content for each equipment page: Purpose, Operating
+Principle (with a conceptual diagram), and Protection Zone (the real SLD).
+The underlying theory is the same across several equipment pages (all
+differential relays share the same restraint/bias/HOC logic; both motor
+relays share the same time-overcurrent coordination logic), so the core
+write-up lives here once and each page supplies its own equipment-specific
+Purpose text and Protection Zone diagram.
 """
 import streamlit as st
 
+from common.sld import differential_principle_svg, overcurrent_principle_svg, render_zone_diagram
 
-def render_differential_concept(variant):
-    """variant: 'generator', 'transformer', or 'transformer_3w'."""
-    st.markdown("### How Percentage (Biased) Differential Protection Works")
+
+def render_theory_tab(variant, purpose_text, sld_image_name, sld_fallback_svg, include_thermal_replica=False):
+    """
+    variant: 'generator', 'transformer', 'transformer_3w', or 'motor'.
+    purpose_text: markdown string - what this specific relay protects against and why.
+    sld_image_name / sld_fallback_svg: passed straight through to render_zone_diagram().
+    """
+    st.markdown("### 1. Purpose")
+    st.markdown(purpose_text)
+
+    st.markdown("### 2. Operating Principle")
+    if variant == "motor":
+        _render_overcurrent_principle(include_thermal_replica)
+    else:
+        _render_differential_principle(variant)
+
+    st.markdown("### 3. Protection Zone")
+    st.caption("Where the CTs sit and what falls inside this relay's protected zone.")
+    render_zone_diagram(sld_image_name, sld_fallback_svg)
+
+
+def _render_differential_principle(variant):
+    st.markdown(differential_principle_svg(), unsafe_allow_html=True)
 
     st.markdown(
         "**The zone concept & Kirchhoff's Current Law** — A differential relay watches every "
@@ -62,8 +83,19 @@ def render_differential_concept(variant):
             "needs to match how the CTs are actually wired in the field."
         )
 
+    if variant == "generator":
+        with st.expander("GE G60 vs. GE CFD22B4A: two different restraint philosophies"):
+            st.markdown(
+                "The two relay types this page models don't just use different numbers — they "
+                "compute restraint current differently. The modern **GE G60** uses the standard "
+                "IEEE/IEC average-or-sum restraint described above, with two adjustable slopes and "
+                "breakpoints. The legacy **CFD22A/B** is a product-restraint relay: it balances "
+                "using the *smaller* of the two terminal currents, a simpler, fixed characteristic "
+                "reflecting older electromechanical relay design (GEK-34124E) rather than a "
+                "configurable modern curve."
+            )
+
     if variant in ("transformer", "transformer_3w"):
-        st.markdown("### Transformer-Specific: CT Tap Matching & Vector Group Compensation")
         with st.expander("Why every winding needs its own CT matching tap"):
             st.markdown(
                 "A transformer's two sides operate at completely different voltages — and "
@@ -91,8 +123,7 @@ def render_differential_concept(variant):
             )
 
     if variant == "transformer_3w":
-        st.markdown("### Why an \"Overall\" Backup Zone Exists")
-        with st.expander("Overlapping zones of protection"):
+        with st.expander("Why an \"Overall\" backup zone exists, and three restraint inputs instead of two"):
             st.markdown(
                 "Protection zones are deliberately designed to *overlap*. The Generator's own "
                 "87G relay protects only the stator winding; GSUT's own 87GT relay protects only "
@@ -101,12 +132,17 @@ def render_differential_concept(variant):
                 "Overall (87O) relay creates a wider, encompassing zone spanning all of it, so a "
                 "fault anywhere in that gap is still cleared quickly by a dedicated (if less "
                 "sensitive) backup element, rather than depending entirely on remote/upstream "
-                "protection to eventually clear it."
+                "protection to eventually clear it.\n\n"
+                "With three CT inputs (HV, Generator, UAT) instead of two, the same Kirchhoff's "
+                "Law idea just has a third term: current into the zone from the Generator should "
+                "equal current leaving through GSUT's HV side plus current leaving to the "
+                "Auxiliary Transformer, combined. Restraint is likewise built from all three CT "
+                "magnitudes rather than just two."
             )
 
 
-def render_overcurrent_concept(include_thermal_replica=False):
-    st.markdown("### How Motor Time-Overcurrent Protection Works")
+def _render_overcurrent_principle(include_thermal_replica):
+    st.markdown(overcurrent_principle_svg(), unsafe_allow_html=True)
 
     with st.expander("Coordinating with the starting characteristic"):
         st.markdown(

@@ -6,8 +6,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_generator_pdf_report
-from common.concepts import render_differential_concept
-from common.sld import generator_zone_svg, render_zone_diagram
+from common.concepts import render_theory_tab
+from common.sld import generator_zone_svg
 from common.ui_helpers import slider_with_exact_input
 from engines.generator import AdvancedDifferentialRelay
 
@@ -165,30 +165,27 @@ relay = AdvancedDifferentialRelay(
     target_amps=target_amps
 )
 
-tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
-    "Protection Concept", "Protection Zone (SLD)", "Live Vector Simulation",
+tab_theory, tab1, tab2, tab3 = st.tabs([
+    "Theory", "Live Vector Simulation",
     "Commissioning & Injection Tool", "Test Point Verification & Curve"
 ])
 
-with tab_concept:
-    render_differential_concept("generator")
-    with st.expander("GE G60 vs. GE CFD22B4A: two different restraint philosophies"):
-        st.markdown(
-            "The two relay types this page models don't just use different numbers — they "
-            "compute restraint current differently. The modern **GE G60** uses the standard "
-            "IEEE/IEC average-or-sum restraint described above, with two adjustable slopes and "
-            "breakpoints. The legacy **CFD22A/B** is a product-restraint relay: it balances "
-            "using the *smaller* of the two terminal currents, a simpler, fixed characteristic "
-            "reflecting older electromechanical relay design (GEK-34124E) rather than a "
-            "configurable modern curve."
-        )
-
-with tab_sld:
-    st.subheader("Protection Zone — Single Line Diagram")
-    st.caption(
-        "Shows where the CTs sit and what falls inside the 87G differential zone."
+with tab_theory:
+    render_theory_tab(
+        "generator",
+        purpose_text=(
+            "The 87G relay exists to detect and instantly clear electrical faults occurring "
+            "inside the generator's own stator winding — between the neutral-end CT and the "
+            "terminal-end CT. This zone is uniquely dangerous because the generator continues to "
+            "feed a fault with its own excitation current even after the main breaker and grid-"
+            "side devices open; only tripping the field breaker and stopping the prime mover "
+            "actually removes the fault's energy source. A stator winding fault left uncleared "
+            "for even a fraction of a second can cause severe, expensive iron and copper damage, "
+            "so 87G is set to be as fast and as sensitive as possible within its own zone."
+        ),
+        sld_image_name="generator.png",
+        sld_fallback_svg=generator_zone_svg(relay, ct_polarity, tag="87G"),
     )
-    render_zone_diagram("generator.png", generator_zone_svg(relay, ct_polarity, tag="87G"))
 
 with tab1:
     col_inputs, col_results = st.columns([1.2, 1.0])
@@ -284,12 +281,38 @@ with tab1:
     y_plot = np.array(y_axis_line) * amps_base if use_amps else np.array(y_axis_line)
     unit_label = "A" if use_amps else "pu"
 
+    y_upper_pu = max(relay.i_unrestrained + 2.0, max(y_axis_line) + 1.0) if has_unrestrained_element else max(y_axis_line) + 1.0
+    y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
+    x_upper = max_x_val * amps_base if use_amps else max_x_val
+
     fig = go.Figure()
 
+    # Shaded Restraint Region (below the trip line, safe) and Operating Region
+    # (above it, trips) - the fill follows the CAL. line's actual shape exactly.
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=np.zeros_like(x_plot), mode='lines',
+        line=dict(width=0), showlegend=False, hoverinfo='skip'
+    ))
     fig.add_trace(go.Scatter(
         x=x_plot, y=y_plot, mode='lines', name='CAL.',
-        line=dict(color='#2563EB', width=3)
+        line=dict(color='#2563EB', width=3),
+        fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
     ))
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=np.full_like(x_plot, y_upper), mode='lines',
+        line=dict(width=0), fill='tonexty', fillcolor='rgba(220,38,38,0.08)',
+        showlegend=False, hoverinfo='skip'
+    ))
+    fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=13, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=13, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
 
     if has_unrestrained_element:
         hs_val = relay.i_unrestrained * amps_base if use_amps else relay.i_unrestrained
@@ -312,9 +335,6 @@ with tab1:
             hovertemplate=f"<b>{p}</b><br>I_rest: %{{x:.3f}} {unit_label}<br>I_op: %{{y:.3f}} {unit_label}<br>State: {e['status']}<extra></extra>"
         ))
 
-    y_upper_pu = max(relay.i_unrestrained + 2.0, max(y_axis_line) + 1.0) if has_unrestrained_element else max(y_axis_line) + 1.0
-    y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
-    x_upper = max_x_val * amps_base if use_amps else max_x_val
     fig.update_layout(
         title="Differential Slope Characteristic Curve",
         xaxis_title=f"Restraint Current I_rest ({unit_label})",
@@ -554,10 +574,33 @@ with tab3:
         curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
         curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
 
+        # Shaded Restraint/Operating regions - only meaningful for the theoretical
+        # curve (a straight line through test points isn't the real characteristic).
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=np.zeros_like(curve_x), mode='lines',
+            line=dict(width=0), showlegend=False, hoverinfo='skip'
+        ))
         sweep_fig.add_trace(go.Scatter(
             x=curve_x, y=curve_y, mode="lines", name="CAL.",
-            line=dict(color="#2E8B57", width=3)
+            line=dict(color="#2E8B57", width=3),
+            fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
         ))
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=np.full_like(curve_x, max(curve_y) * 1.15 + 0.1), mode='lines',
+            line=dict(width=0), fill='tonexty', fillcolor='rgba(220,38,38,0.08)',
+            showlegend=False, hoverinfo='skip'
+        ))
+
+    sweep_fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    sweep_fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
 
     tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
     tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}

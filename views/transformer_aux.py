@@ -6,8 +6,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.pdf_report import generate_transformer_pdf_report
-from common.concepts import render_differential_concept
-from common.sld import two_winding_transformer_zone_svg, render_zone_diagram
+from common.concepts import render_theory_tab
+from common.sld import two_winding_transformer_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_3000_5
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector
 
@@ -157,33 +157,27 @@ relay = TransformerDifferentialRelay(
 phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
-tab_concept, tab_sld, tab1, tab2, tab3 = st.tabs([
-    "Protection Concept", "Protection Zone (SLD)", "Live Vector Simulation",
+tab_theory, tab1, tab2, tab3 = st.tabs([
+    "Theory", "Live Vector Simulation",
     "Commissioning & Injection Tool", "Test Point Verification & Curve"
 ])
 
-with tab_concept:
-    render_differential_concept("transformer")
-    with st.expander("Why the Auxiliary Transformer specifically"):
-        st.markdown(
-            "The Unit Auxiliary Transformer feeds the plant's own medium-voltage house loads "
-            "(pumps, fans, and other auxiliaries) directly off the generator bus. Losing it "
-            "doesn't just risk equipment damage at the fault location — it can black out the "
-            "auxiliaries an operating unit depends on to keep running, so it gets the same "
-            "dedicated differential treatment as the main power-delivery transformers."
-        )
-
-with tab_sld:
-    st.subheader("Protection Zone — Single Line Diagram")
-    st.caption(
-        "Shows where the CTs sit and what falls inside the 87AT differential zone."
-    )
-    render_zone_diagram(
-        "transformer_aux.png",
-        two_winding_transformer_zone_svg(
+with tab_theory:
+    render_theory_tab(
+        "transformer",
+        purpose_text=(
+            "The 87AT relay protects the Unit Auxiliary Transformer, which feeds the plant's own "
+            "medium-voltage house loads (pumps, fans, and other auxiliaries) directly off the "
+            "generator bus. Losing it doesn't just risk equipment damage at the fault location — "
+            "it can black out the auxiliaries an operating unit depends on to keep running, so it "
+            "gets the same dedicated differential treatment as the main power-delivery "
+            "transformers."
+        ),
+        sld_image_name="transformer_aux.png",
+        sld_fallback_svg=two_winding_transformer_zone_svg(
             relay, ct_polarity, tag="87AT",
             hv_bus_label="23kV (from Generator/GSUT Bus)", lv_bus_label="13.8kV (to MV Switchgear Bus A/B/C)"
-        )
+        ),
     )
 
 # ---------------------------------------------------------------------------
@@ -284,8 +278,33 @@ with tab1:
     y_plot = np.array(y_axis_line) * amps_base if use_amps else np.array(y_axis_line)
     unit_label = "A" if use_amps else "pu"
 
+    y_upper_pu = max(relay.hoc_pu + 2.0, max(y_axis_line) + 1.0)
+    y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
+    x_upper = max_x_val * amps_base if use_amps else max_x_val
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x_plot, y=y_plot, mode='lines', name='CAL.', line=dict(color='#2563EB', width=3)))
+
+    # Shaded Restraint Region (below the trip line, safe) and Operating Region
+    # (above it, trips) - the fill follows the CAL. line's actual shape exactly.
+    fig.add_trace(go.Scatter(x=x_plot, y=np.zeros_like(x_plot), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=y_plot, mode='lines', name='CAL.', line=dict(color='#2563EB', width=3),
+        fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=np.full_like(x_plot, y_upper), mode='lines', line=dict(width=0),
+        fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
+    ))
+    fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=13, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=13, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
 
     hoc_val = relay.hoc_pu * amps_base if use_amps else relay.hoc_pu
     fig.add_trace(go.Scatter(
@@ -305,9 +324,6 @@ with tab1:
             hovertemplate=f"<b>{p}</b><br>I_rest: %{{x:.3f}} {unit_label}<br>I_op: %{{y:.3f}} {unit_label}<br>State: {e['status']}<extra></extra>"
         ))
 
-    y_upper_pu = max(relay.hoc_pu + 2.0, max(y_axis_line) + 1.0)
-    y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
-    x_upper = max_x_val * amps_base if use_amps else max_x_val
     fig.update_layout(
         title="Transformer Differential Bias Characteristic",
         xaxis_title=f"Restraint Current I_rest ({unit_label})",
@@ -489,7 +505,28 @@ with tab3:
         curve_y_pu = [relay.calculate_trip_threshold(x) for x in curve_x_pu]
         curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
         curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
-        sweep_fig.add_trace(go.Scatter(x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3)))
+        # Shaded Restraint/Operating regions - only meaningful for the theoretical
+        # curve (a straight line through test points isn't the real characteristic).
+        sweep_fig.add_trace(go.Scatter(x=curve_x, y=np.zeros_like(curve_x), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3),
+            fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
+        ))
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=np.full_like(curve_x, max(curve_y) * 1.15 + 0.1), mode='lines', line=dict(width=0),
+            fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
+        ))
+
+    sweep_fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    sweep_fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
 
     tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
     tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}
