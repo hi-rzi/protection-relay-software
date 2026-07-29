@@ -10,7 +10,7 @@ import streamlit as st
 from common.pdf_report import generate_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
-from common.ui_helpers import slider_with_exact_input, effect_note
+from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import suggest_bias_settings
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_869 import Motor869Relay, hot_cold_safe_stall_ratio
@@ -206,8 +206,6 @@ tap_51 = st.sidebar.select_slider(
     "51 Tap (A sec.)", options=tap_51_options, key="motor_tap_51",
     help="IFC66KD2A range: 2.5-7.5A at these discrete taps."
 )
-effect_note("Sets the CURRENT axis — must clear motor FLA with margin, or normal load alone will "
-            "eventually trip the overload curve. Doesn't change the curve's shape or timing.")
 time_dial = slider_with_exact_input(
     st.sidebar, "51 Time Dial", 0.5, 10.0, p_data["time_dial"], 0.1,
     key="motor_time_dial",
@@ -215,9 +213,6 @@ time_dial = slider_with_exact_input(
                "Inverse' 5-constant polynomial (GEK-106618C constants), calibrated to the "
                "settings doc's reference point of ~16s at 500% pickup."
 )
-effect_note("Scales the TIME axis of the whole curve uniformly — raising it delays every trip point "
-            "(more starting margin) but also delays clearing a genuine stall, eating into the "
-            "motor's safe stall time.")
 
 st.sidebar.markdown("**50A / 50B (Instantaneous)**")
 pickup_50a = slider_with_exact_input(
@@ -226,16 +221,12 @@ pickup_50a = slider_with_exact_input(
     help_text="IFC66KD2A range: L-tap 6-30A, H-tap 30-150A. Should be set at ~300% of locked "
                "rotor current to allow motor starting inrush."
 )
-effect_note("Must clear the motor's own locked-rotor/starting inrush, or every normal start trips "
-            "instantly; too high delays clearing of a genuine terminal short-circuit.")
 dropout_50b = slider_with_exact_input(
     st.sidebar, "50B Dropout (A sec.)", 2.0, 8.0, p_data["dropout_50b"], 0.1,
     key="motor_dropout_50b",
     help_text="IFC66KD2A range: L-tap 2-4A, H-tap 4-8A. High-dropout overload ALARM element — "
                "estimated pickup = dropout / 0.8 (per GEK-49949, dropout occurs above 80% of pickup)."
 )
-effect_note("An early-warning alarm ahead of the 51 trip — set below the 51 pickup so operators get "
-            "notice before the motor actually trips on overload.")
 ensure_setting("motor_target_seal_in", p_data["target_seal_in"])
 target_seal_in = st.sidebar.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, step=0.1, key="motor_target_seal_in")
 
@@ -291,20 +282,14 @@ with st.sidebar.expander("Advanced Settings (GE 869 MPR)", expanded=False):
     ensure_setting("mpr_curve_multiplier", p_data["mpr_curve_multiplier"])
     mpr_overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, step=1.0, key="mpr_overload_pickup_pct",
         help="Settings doc criterion: set to operate at 115% of motor FLA.")
-    effect_note("The thermal model's current floor — below this, TCU doesn't accumulate at all. "
-                "Too close to 100% and normal load variation alone slowly heats the model toward a trip.")
     mpr_curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, step=0.5, key="mpr_curve_multiplier",
         help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage, verified against the settings doc's Curve X4 worked examples.")
-    effect_note("Scales the WHOLE overload curve's trip time uniformly — same trade-off as the "
-                "51's Time Dial: more starting margin, but slower to clear a genuine stall.")
 
     st.markdown("**Instantaneous (50)**")
     ensure_setting("mpr_inst_multiple_lr", p_data["mpr_inst_multiple_lr"])
     ensure_setting("mpr_inst_delay_ms", p_data["mpr_inst_delay_ms"])
     mpr_inst_multiple_lr = st.number_input("Instantaneous Pickup (x Locked Rotor A)", min_value=1.0, max_value=5.0, step=0.1, key="mpr_inst_multiple_lr",
         help="Settings doc criterion: ~200% of locked rotor current.")
-    effect_note("Must clear the motor's own starting inrush, or every normal start trips instantly; "
-                "too high delays clearing a genuine terminal short-circuit.")
     mpr_inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, step=10.0, key="mpr_inst_delay_ms")
 
     st.markdown("**Ground Fault (50G/51G)**")

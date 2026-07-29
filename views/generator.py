@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
-from common.ui_helpers import slider_with_exact_input, effect_note
+from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
 from engines.generator import AdvancedDifferentialRelay
 
@@ -61,8 +61,6 @@ if current_mode == "GENERATOR_LEGACY":
                    "0.1 A, and the rear contact may need up to ~0.25 A to close — verify the actual "
                    "closing current during commissioning."
     )
-    effect_note("Too low and CT/relay tolerances alone can hold the target closed permanently; too "
-                "high and a genuine light internal fault may not seal in the trip contact.")
     slope_1 = slider_with_exact_input(
         st.sidebar, "Restraint Slope (%)", 5, 30, p_data["s1"], 1,
         key=f"{current_mode}__{selected_preset}__slope1",
@@ -72,8 +70,6 @@ if current_mode == "GENERATOR_LEGACY":
                    "design, not a field setting — the slider exists here only to explore 'what if' "
                    "sensitivity; leave at 10% to match the actual hardware."
     )
-    effect_note("Higher tolerates more CT mismatch/saturation on heavy through-load without "
-                "tripping, but also desensitizes the relay to a genuine light internal fault.")
     i_pickup = 0.0
     slope_2 = slope_1
     break_1, break_2 = 1e6, 1e6
@@ -84,16 +80,11 @@ else:
         key=f"{current_mode}__{selected_preset}__pickup",
         help_text="G60 manual range: 0.050 to 1.00 pu, step 0.01"
     )
-    effect_note("The trip floor at LIGHT load. Too low and CT ratio-error/burden noise alone can "
-                "trip a healthy machine; too high and a genuine light-load internal fault won't clear.")
     slope_1 = slider_with_exact_input(
         st.sidebar, "Slope 1 (%)", 1, 100, p_data["s1"], 1,
         key=f"{current_mode}__{selected_preset}__slope1",
         help_text="G60 manual range: 1 to 100%, step 1"
     )
-    effect_note("Sets sensitivity between Break 1 and Break 2 (normal load range). Higher tolerates "
-                "more CT mismatch on through-load without tripping, but blinds the relay more to a "
-                "genuine internal fault in that same current range.")
     break_1 = slider_with_exact_input(
         st.sidebar, "Break 1 (pu)", 1.00, 1.50, p_data["break_1"], 0.01,
         key=f"{current_mode}__{selected_preset}__break1",
@@ -104,9 +95,6 @@ else:
         key=f"{current_mode}__{selected_preset}__slope2",
         help_text="G60 manual range: 1 to 100%, step 1"
     )
-    effect_note("Applies above Break 2, where CT saturation on a heavy external fault is most likely — "
-                "set steep enough (higher than Slope 1) that a severe through-fault can't ride the "
-                "restraint line into a nuisance trip.")
     break_2 = slider_with_exact_input(
         st.sidebar, "Break 2 (pu)", 1.50, 30.00, p_data["break_2"], 0.01,
         key=f"{current_mode}__{selected_preset}__break2",
@@ -124,9 +112,6 @@ else:
             st.sidebar, "Unrestrained High-Set Pickup (pu)", 3.0, 30.0, 8.0, 0.5,
             key=f"{current_mode}__{selected_preset}__unrestrained"
         )
-        effect_note("Bypasses the slope entirely for a severe internal fault. Must stay above the "
-                    "worst-case CT saturation/asymmetrical-offset current on energization/close-in "
-                    "external faults, or it will trip on events that aren't internal faults at all.")
 
 with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False):
     st.markdown("**Generator & CT Spec**")
@@ -152,9 +137,6 @@ with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False)
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
-        effect_note("IEC's sum roughly doubles the restraint value versus IEEE's average for this "
-                    "2-CT relay — the same Pickup/Slope% is effectively less sensitive under IEC. "
-                    "Don't compare bias% settings across the two conventions directly.")
     with col_pol:
         def _on_polarity_change():
             # Keep each phase's Terminal Side angle box in sync with the newly selected
@@ -175,9 +157,6 @@ with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False)
             key="ct_polarity_widget", on_change=_on_polarity_change,
             help="OPPOSITE: standard facing inwards. SAME: facing identical directions."
         )
-        effect_note("Picking the wrong one makes a healthy through-load look like an internal fault "
-                    "(the two CT currents add instead of cancel) — always verify with a low-current "
-                    "injection test before commissioning, don't rely on this setting alone.")
 
 with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
     st.caption(

@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import two_winding_transformer_zone_svg
-from common.ui_helpers import slider_with_exact_input, effect_note, MR_CT_TAPS_2000_5
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
@@ -57,23 +57,17 @@ bias_pct = slider_with_exact_input(
     help_text="Must exceed the sum of tap-changer error, CT error, relay operating error "
                "(10% of bias) and mismatch — see Calculation/Discussion in the settings doc."
 )
-effect_note("Higher tolerates more CT/tap mismatch on heavy through-load without tripping, but also "
-            "desensitizes the relay to a genuine internal fault in that same current range.")
 min_operate_pct = slider_with_exact_input(
     st.sidebar, "Minimum Operate (%)", 5, 60, p_data["min_operate"], 1,
     key=f"{selected_preset}__min_operate",
     help_text="Minimum differential pickup at zero restraint current."
 )
-effect_note("The trip floor at LIGHT load. Set too low and CT/tap rounding mismatch alone can trip a "
-            "healthy transformer; set too high and a genuine light-load internal fault won't clear.")
 hoc_multiple = slider_with_exact_input(
     st.sidebar, "HOC (x tap current)", 2.0, 20.0, float(p_data["hoc"]), 0.5,
     key=f"{selected_preset}__hoc",
     help_text="Unrestrained instantaneous element. Set high enough not to operate on "
                "transformer inrush current (see Calculation/Discussion)."
 )
-effect_note("Bypasses the slope entirely for a severe internal fault. Must clear the worst-case "
-            "magnetizing inrush on energization, or every transformer close-in will trip it.")
 
 with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
     st.markdown("**Transformer & CT Spec**")
@@ -125,16 +119,11 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
         key=f"{selected_preset}__tap_lv",
         help_text="CAC1-10-M3 setting range: 0.4-2.18."
     )
-    effect_note("Mismatched HV/LV taps at rated load create a permanent 'phantom' operate current — "
-                "shows up as I_op even with zero fault. Recompute both taps whenever the CT ratio or "
-                "the transformer's own rated current changes (see the Settings Calculator below).")
 
     st.markdown("**Wiring & Convention**")
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
-        effect_note("IEC's sum roughly doubles the restraint value versus IEEE's average for a "
-                    "2-winding relay — the same Bias% is effectively less sensitive under IEC.")
     with col_pol:
         def _on_polarity_change():
             # Streamlit widgets stop re-reading their value= argument once
@@ -162,9 +151,6 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
             help="OPPOSITE is standard for a 2-winding transformer differential (currents flow "
                  "into the zone on one side, out on the other)."
         )
-        effect_note("Picking the wrong one makes healthy through-load look like a fault (both "
-                    "windings add instead of cancel) — verify with a low-current injection test "
-                    "before commissioning, don't rely on this setting alone.")
 
 with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
     st.caption(

@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
-from common.ui_helpers import slider_with_exact_input, effect_note, MR_CT_TAPS_2000_5
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
@@ -58,16 +58,11 @@ bias_pct = slider_with_exact_input(
     key=f"{selected_preset}__bias",
     help_text="CAC2-10-M3 available settings: 20%, 30%, or 40%."
 )
-effect_note("Higher tolerates more CT/tap mismatch across all three windings on heavy through-load "
-            "without tripping, but also desensitizes the relay to a genuine internal fault.")
 min_operate_pct = slider_with_exact_input(
     st.sidebar, "Minimum Operate (%)", 20, 40, p_data["min_operate"], 10,
     key=f"{selected_preset}__min_operate",
     help_text="CAC2-10-M3 available settings: IT x 20%, 30%, or 40% (IT = tap value current)."
 )
-effect_note("The trip floor at LIGHT load. With three CT/tap pairs stacking error instead of two, "
-            "set too low and normal load alone can trip; set too high and a genuine light-load "
-            "internal fault won't clear.")
 hoc_options = [5, 6, 8, 10, 12]
 hoc_multiple = st.sidebar.select_slider(
     "HOC (x tap value current)", options=hoc_options,
@@ -76,8 +71,6 @@ hoc_multiple = st.sidebar.select_slider(
     help="CAC2-10-M3 available settings: 5, 6, 8, 10, or 12 times tap value current. Not "
          "harmonically restrained — operates on differential current only, so LV-side faults won't trip it."
 )
-effect_note("Bypasses the slope entirely for a severe internal fault. As a 3-winding backup zone, "
-            "must clear the worst-case combined inrush from GSUT + Generator + UAT energization.")
 
 with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
     st.markdown("**Winding 1 — HV (525kV side, Multi-Ratio Delta CT)**" if not is_custom else "**Winding 1 — HV**")
@@ -138,16 +131,11 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
         key=f"{selected_preset}__tap_uat",
         help_text="CAC2-10-M3 setting range: 0.4-2.18 in steps of 0.02."
     )
-    effect_note("Mismatched taps across HV/Generator/UAT at rated load create a permanent 'phantom' "
-                "operate current — shows up as I_op even with zero fault. Recompute all three "
-                "whenever a CT ratio changes (see the Settings Calculator below).")
 
     st.markdown("**Wiring & Convention**")
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.", key="ov_convention")
-        effect_note("IEC's sum roughly triples the restraint value versus IEEE's average for this "
-                    "3-winding relay — the same Bias% is effectively far less sensitive under IEC.")
     with col_pol:
         def _on_polarity_change():
             # Streamlit widgets stop re-reading their value= argument once
@@ -178,9 +166,6 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
             help="OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped "
                  "relative to it, as current flows into the zone from HV and out to the other two."
         )
-        effect_note("Picking the wrong one makes healthy through-load look like a fault (windings "
-                    "add instead of cancel) — verify with a low-current injection test before "
-                    "commissioning, don't rely on this setting alone.")
 
 with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
     st.caption(
