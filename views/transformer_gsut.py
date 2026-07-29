@@ -299,7 +299,8 @@ with tab1:
             })
         st.table(table_rows)
 
-        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases)
+        winding_currents = {p: [inputs[p]["i_hv"], inputs[p]["i_lv"]] for p in phases}
+        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, winding_currents=winding_currents)
         st.download_button(
             label="Export Certified Protection Audit Report",
             data=pdf_bytes,

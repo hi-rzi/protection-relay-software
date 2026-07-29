@@ -334,7 +334,8 @@ with tab1:
                 mags = evals[p]["winding_mags_pu"]
                 st.caption(f"**{p}**: " + " | ".join(f"{n}: {m:.3f} pu" for n, m in zip(winding_names, mags)))
 
-        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3")
+        winding_currents = {p: [inputs[p]["i_hv"], inputs[p]["i_gen"], inputs[p]["i_uat"]] for p in phases}
+        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
         st.download_button(
             label="Export Certified Protection Audit Report",
             data=pdf_bytes,

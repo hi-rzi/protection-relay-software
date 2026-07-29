@@ -47,7 +47,14 @@ def build_pdf_report(report_title, meta_text, sections, results_header=None, res
 
     if results_header and results_rows is not None:
         story.append(Paragraph(f"<b>{len(sections) + 1}. Evaluation Results</b>", styles['Heading2']))
-        results_data = [results_header] + results_rows
+        # Header cells are wrapped in a Paragraph (not left as plain strings) so
+        # long column labels (e.g. a 3-winding relay's per-winding Amps columns)
+        # word-wrap within their column instead of overlapping neighboring cells.
+        header_style = ParagraphStyle('ResultsHeader', parent=styles['Normal'], fontSize=8,
+                                       leading=10, textColor=colors.white, fontName='Helvetica-Bold',
+                                       alignment=1)
+        wrapped_header = [Paragraph(str(cell), header_style) for cell in results_header]
+        results_data = [wrapped_header] + results_rows
         t_results = Table(results_data, colWidths=list(results_col_widths))
         t_results.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
@@ -55,6 +62,7 @@ def build_pdf_report(report_title, meta_text, sections, results_header=None, res
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         ]))
         story.append(t_results)
 
@@ -63,9 +71,13 @@ def build_pdf_report(report_title, meta_text, sections, results_header=None, res
     return buffer
 
 
-def generate_generator_pdf_report(unit_name, relay_obj, evals, phases):
+def generate_generator_pdf_report(unit_name, relay_obj, evals, phases, inputs=None):
     """Generator (87G) report — output is identical to the original monolithic
-    generate_pdf_report(), now built on top of the shared build_pdf_report()."""
+    generate_pdf_report(), now built on top of the shared build_pdf_report().
+
+    inputs: optional {phase: {"i_N": ..., "i_T": ...}} — when supplied, the
+    Neutral/Terminal primary Amps actually entered for each phase are added
+    to the results table, not just the derived pu values."""
     report_title = f"Generator Differential Protection (87G) Evaluation Report - {relay_obj.mode} Mode"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -100,23 +112,40 @@ def generate_generator_pdf_report(unit_name, relay_obj, evals, phases):
             ["Unrestrained High-Set", f"{relay_obj.i_unrestrained:.2f} pu" if has_unrestrained else "Not enabled / unconfirmed"]
         ]
 
-    results_header = ["Phase", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
-    results_rows = []
-    for p in phases:
-        e = evals[p]
-        results_rows.append([p, f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status']])
+    if inputs:
+        results_header = ["Phase", "Neutral Pri (A)", "Terminal Pri (A)", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
+        results_rows = []
+        for p in phases:
+            e = evals[p]
+            i = inputs[p]
+            results_rows.append([
+                p, f"{i['i_N']:.1f}", f"{i['i_T']:.1f}",
+                f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status'],
+            ])
+        results_col_widths = (55, 75, 75, 65, 65, 75, 90)
+    else:
+        results_header = ["Phase", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
+        results_rows = []
+        for p in phases:
+            e = evals[p]
+            results_rows.append([p, f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status']])
+        results_col_widths = (90, 90, 90, 100, 150)
 
     return build_pdf_report(
         report_title, meta_text,
         sections=[("Generator Parameters", generator_rows), ("Relay Parameters", relay_rows)],
-        results_header=results_header, results_rows=results_rows,
+        results_header=results_header, results_rows=results_rows, results_col_widths=results_col_widths,
     )
 
 
-def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_type_label="CAC1-10-M3"):
+def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_type_label="CAC1-10-M3", winding_currents=None):
     """Transformer differential (87T) report — built on the same shared
     build_pdf_report() used for the Generator report. Works for any winding
-    count (2-winding EXCT/GSUT, 3-winding Overall)."""
+    count (2-winding EXCT/GSUT, 3-winding Overall).
+
+    winding_currents: optional {phase: [primary_amps, ...]}, aligned in order
+    with relay_obj.windings — when supplied, each winding's primary Amps
+    actually entered for that phase are added to the results table."""
     report_title = f"Transformer Differential Protection (87T) Evaluation Report - {unit_name}"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -136,16 +165,28 @@ def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_t
         ["CT Polarity Reference", relay_obj.ct_polarity],
     ]
 
-    results_header = ["Phase", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
-    results_rows = []
-    for p in phases:
-        e = evals[p]
-        results_rows.append([p, f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status']])
+    if winding_currents:
+        winding_names = [w["name"] for w in relay_obj.windings]
+        results_header = ["Phase"] + [f"{name} Pri (A)" for name in winding_names] + ["I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
+        results_rows = []
+        for p in phases:
+            e = evals[p]
+            amp_cells = [f"{amps:.1f}" for amps in winding_currents[p]]
+            results_rows.append([p] + amp_cells + [f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status']])
+        amp_col_width = 70
+        results_col_widths = [45] + [amp_col_width] * len(winding_names) + [60, 60, 70, 85]
+    else:
+        results_header = ["Phase", "I_op [pu]", "I_rest [pu]", "Threshold [pu]", "Status"]
+        results_rows = []
+        for p in phases:
+            e = evals[p]
+            results_rows.append([p, f"{e['i_op_pu']:.3f}", f"{e['i_rest_pu']:.3f}", f"{e['i_threshold_pu']:.3f}", e['status']])
+        results_col_widths = (90, 90, 90, 100, 150)
 
     return build_pdf_report(
         report_title, meta_text,
         sections=[("Transformer Parameters", transformer_rows), ("Relay Parameters", relay_rows)],
-        results_header=results_header, results_rows=results_rows,
+        results_header=results_header, results_rows=results_rows, results_col_widths=results_col_widths,
     )
 
 

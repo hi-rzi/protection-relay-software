@@ -280,7 +280,7 @@ with tab1:
             })
         st.table(table_rows)
 
-        pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases)
+        pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases, inputs=inputs)
         st.download_button(
             label="Export Certified Protection Audit Report",
             data=pdf_bytes,
