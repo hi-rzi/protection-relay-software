@@ -17,6 +17,9 @@ Every equipment page ships with built-in presets (currently POMI's own relay set
 limited to them — each page also lets you add a **custom profile** with your own ratings, CT
 specs, and protection settings, so the app works for equipment outside POMI too.
 
+Working across several equipment for the same plant? The **Project** page bundles the settings
+you've configured across all of them into one named, saveable file — see the sidebar.
+
 Pick an equipment category from the sidebar to get started.
 """
 )

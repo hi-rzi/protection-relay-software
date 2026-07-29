@@ -3,7 +3,10 @@ import streamlit as st
 st.set_page_config(page_title="Electrical Equipment Protection Suite", layout="wide")
 
 pg = st.navigation({
-    "": [st.Page("views/home.py", title="Home", default=True)],
+    "": [
+        st.Page("views/home.py", title="Home", default=True),
+        st.Page("views/project.py", title="Project"),
+    ],
     "Generator": [st.Page("views/generator.py", title="Generator (87G)")],
     "Transformer": [
         st.Page("views/transformer_exct.py", title="Excitation Transformer"),

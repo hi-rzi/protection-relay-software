@@ -10,6 +10,7 @@ from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
+from common.project_state import with_restored_preset, record_equipment_settings
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
@@ -43,13 +44,14 @@ PRESETS = {
     },
 }
 
+PRESETS_WITH_PROJECT = with_restored_preset(PRESETS, "overall")
 st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
-    "Load Standard Profile", list(PRESETS.keys()),
+    "Load Standard Profile", list(PRESETS_WITH_PROJECT.keys()),
     help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
          "CT specs, and protection settings — this app isn't limited to POMI equipment."
 )
-p_data = PRESETS[selected_preset]
+p_data = PRESETS_WITH_PROJECT[selected_preset]
 is_custom = selected_preset == "Custom Profile"
 
 st.sidebar.header("Protection Characteristic")
@@ -203,6 +205,13 @@ windings = [
     {"name": "Generator (23kV)", "kv": kv_gen, "ct_ratio": ct_gen, "ct_secondary_rating": ct_secondary_rating, "tap": tap_gen, "ct_connection": ct_conn_gen},
     {"name": "UAT (23kV)", "kv": kv_uat, "ct_ratio": ct_uat, "ct_secondary_rating": ct_secondary_rating, "tap": tap_uat, "ct_connection": ct_conn_uat},
 ]
+record_equipment_settings("overall", {
+    "mva": mva, "kv_hv": kv_hv, "kv_gen": kv_gen, "kv_uat": kv_uat,
+    "ct_hv": ct_hv, "ct_gen": ct_gen, "ct_uat": ct_uat, "ct_sec": ct_secondary_rating,
+    "ct_conn_hv": ct_conn_hv, "ct_conn_gen": ct_conn_gen, "ct_conn_uat": ct_conn_uat,
+    "tap_hv": tap_hv, "tap_gen": tap_gen, "tap_uat": tap_uat,
+    "bias": bias_pct, "min_operate": min_operate_pct, "hoc": hoc_multiple,
+})
 st.sidebar.caption(
     "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
     "shift (see engines/transformer.py) — the standard compensation for a Wye/Delta "

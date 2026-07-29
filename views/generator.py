@@ -10,6 +10,7 @@ from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
 from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
+from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from engines.generator import AdvancedDifferentialRelay
 
 st.title("Enterprise Generator Differential Protection (87G) Suite")
@@ -40,6 +41,13 @@ PRESETS = {
 }
 
 current_mode_presets = PRESETS[current_mode]
+_restored_generator = get_restorable_preset("generator")
+if _restored_generator is not None and _restored_generator.get("mode") == current_mode:
+    # Only offer the restored preset for the mode it was actually saved under -
+    # GENERATOR and GENERATOR_LEGACY presets have different shapes (pickup/slopes/
+    # breaks vs. target_amps), so injecting it under the wrong mode would break
+    # the p_data["..."] lookups every other preset here already relies on.
+    current_mode_presets = with_restored_preset(current_mode_presets, "generator")
 st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(current_mode_presets.keys()),
@@ -181,6 +189,13 @@ with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=Fal
         f"Bias/Slope 1 ≈ **{suggestion['bias_pct']:.0f}%**, unrestrained HOC ≈ **{suggestion['hoc_multiple']:.0f}x** tap current."
     )
     st.caption(suggestion["basis"])
+
+_generator_project_settings = {"mva": mva, "kv": kv, "ct_n": ct_ratio_N, "ct_t": ct_ratio_T, "mode": current_mode}
+if current_mode == "GENERATOR_LEGACY":
+    _generator_project_settings.update({"target_amps": target_amps, "s1": slope_1})
+else:
+    _generator_project_settings.update({"pickup": i_pickup, "s1": slope_1, "break_1": break_1, "s2": slope_2, "break_2": break_2})
+record_equipment_settings("generator", _generator_project_settings)
 
 relay = AdvancedDifferentialRelay(
     mode=current_mode, mva_rated=mva, kv_rated=kv,

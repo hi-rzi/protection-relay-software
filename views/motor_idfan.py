@@ -12,6 +12,7 @@ from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
 from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import suggest_bias_settings
+from common.project_state import with_restored_preset, record_equipment_settings
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_869 import Motor869Relay, hot_cold_safe_stall_ratio
 
@@ -156,7 +157,7 @@ def _load_preset_into_state():
     """Force every field to the newly-selected preset's values, bypassing
     ensure_setting()'s "only if unset" guard - otherwise switching presets
     silently does nothing once the fields already hold a value."""
-    pd_ = PRESETS[st.session_state["motor_selected_preset"]]
+    pd_ = PRESETS_WITH_PROJECT[st.session_state["motor_selected_preset"]]
     plain_fields = {
         "motor_ct_ratio": float(pd_["ct_ratio"]), "motor_ct_sec": pd_["ct_sec"],
         "motor_tap_51": pd_["tap_51"], "motor_target_seal_in": pd_["target_seal_in"],
@@ -184,15 +185,16 @@ def _load_preset_into_state():
         st.session_state[f"{key}__number"] = value
 
 
+PRESETS_WITH_PROJECT = with_restored_preset(PRESETS, "motor")
 st.sidebar.header("Equipment Presets")
-ensure_setting("motor_selected_preset", next(iter(PRESETS)))
+ensure_setting("motor_selected_preset", next(iter(PRESETS_WITH_PROJECT)))
 selected_preset = st.sidebar.selectbox(
-    "Load Standard Profile", list(PRESETS.keys()), key="motor_selected_preset",
+    "Load Standard Profile", list(PRESETS_WITH_PROJECT.keys()), key="motor_selected_preset",
     on_change=_load_preset_into_state,
     help="Pick a built-in POMI relay, or Custom Profile to enter your own equipment's ratings, "
          "CT specs, and protection settings — this app isn't limited to POMI equipment."
 )
-p_data = PRESETS[selected_preset]
+p_data = PRESETS_WITH_PROJECT[selected_preset]
 
 st.sidebar.header("Protection Characteristic")
 
@@ -348,6 +350,24 @@ with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=Fal
         "Engineering review required — these are starting points, not a substitute for a "
         "coordination study against the motor's actual thermal damage curve."
     )
+
+record_equipment_settings("motor", {
+    "motor_fla": motor_fla, "locked_rotor_amps": locked_rotor_amps, "locked_rotor_amps_80pct": locked_rotor_amps_80,
+    "accel_time_100": accel_time_100, "accel_time_80": accel_time_80,
+    "safe_stall_100_ambient": safe_stall_100_cold, "safe_stall_80_ambient": safe_stall_80_cold,
+    "safe_stall_100_hot": safe_stall_100, "safe_stall_80_hot": safe_stall_80,
+    "ct_ratio": ct_ratio, "ct_sec": ct_secondary_rating,
+    "tap_51": tap_51, "time_dial": time_dial,
+    "pickup_50a": pickup_50a, "dropout_50b": dropout_50b, "target_seal_in": target_seal_in,
+    "backup_ct_ratio": backup_ct_ratio, "backup_pickup_50": backup_pickup_50,
+    "mpr_ground_ct_ratio": mpr_ground_ct_ratio, "mpr_gf_pickup_frac": mpr_gf_pickup_frac, "mpr_gf_delay_ms": mpr_gf_delay_ms,
+    "mpr_overload_pickup_pct": mpr_overload_pickup_pct, "mpr_curve_multiplier": mpr_curve_multiplier,
+    "mpr_inst_multiple_lr": mpr_inst_multiple_lr, "mpr_inst_delay_ms": mpr_inst_delay_ms,
+    "mpr_unbal_alarm_pct": mpr_unbal_alarm_pct, "mpr_unbal_alarm_delay_s": mpr_unbal_alarm_delay_s,
+    "mpr_unbal_trip_pct": mpr_unbal_trip_pct, "mpr_unbal_trip_delay_s": mpr_unbal_trip_delay_s,
+    "mpr_mech_jam_pct": mpr_mech_jam_pct, "mpr_mech_jam_delay_s": mpr_mech_jam_delay_s,
+    "mpr_accel_timer_s": mpr_accel_timer_s, "mpr_overload_alarm_delay_s": mpr_overload_alarm_delay_s,
+})
 
 mpr_relay = Motor869Relay(
     ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
