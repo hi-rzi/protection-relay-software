@@ -24,20 +24,6 @@ st.caption(
     "GE HFC22B2A backup instantaneous relay, and GE 869 microprocessor Motor Protection Relay."
 )
 
-st.info(
-    "This page covers the 50/50/51 (IFC66KD2A) and backup 50 (HFC22B2A) discrete "
-    "overcurrent relays per the settings doc's Sections 5.1.1–5.1.2, plus the GE 869 "
-    "microprocessor Motor Protection Relay (Section 5.1.3). The settings doc was written "
-    "against the plant's originally-specified SR469, since superseded in service by the 869 — "
-    "both share the same GE Multilin Thermal Capacity Used architecture, so the doc's "
-    "current-based settings carry over directly. The 869's primary current-based elements "
-    "(Overload thermal model, Instantaneous, Ground Fault, Current Unbalance) are live-simulated "
-    "in the GE 869 MPR tab; its other functions (Mechanical Jam, Acceleration Timer, "
-    "Overtemperature, Overvoltage, Jogging Block, Over/Underfrequency, Phase Differential, "
-    "Underpower, Start Inhibit, Digital Inputs) are shown there as a documented settings "
-    "reference, not live-simulated."
-)
-
 st.warning(
     "**Engineering review required.** This tool supports settings checks and commissioning "
     "calculations; it does not approve relay settings. Verify every result against the approved "
