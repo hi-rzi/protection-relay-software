@@ -65,6 +65,11 @@ commissioning_notes = st.text_area(
 )
 
 st.markdown("### Equipment Status")
+st.caption(
+    "Health is a rule-of-thumb signal only (reusing each page's own Settings Calculator "
+    "math) - it is not a coordination study or an approval. Revisit an equipment page for "
+    "the full picture behind any ⚠️ Review flag."
+)
 st.dataframe(pd.DataFrame(project_summary()), use_container_width=True, hide_index=True)
 
 st.markdown("### Save Project")

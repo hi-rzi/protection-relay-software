@@ -11,6 +11,8 @@ from common.sld import two_winding_transformer_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_600_5
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
+from common.historian import render_historian_overlay
+from common.relay_settings_sheet import render_settings_sheet
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Excitation Transformer (EXCT) Differential Protection")
@@ -197,6 +199,7 @@ record_equipment_settings("exct", {
     "ct_conn_hv": ct_conn_hv, "ct_conn_lv": ct_conn_lv,
     "tap_hv": tap_hv, "tap_lv": tap_lv,
     "bias": bias_pct, "min_operate": min_operate_pct, "hoc": hoc_multiple,
+    "calc_mismatch_pct": calc_mismatch,
 })
 st.sidebar.caption(
     "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
@@ -323,6 +326,18 @@ with tab1:
             file_name=f"EXCT_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
+
+        render_settings_sheet(st, "CAC1-10-M3", [
+            ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
+            ("LV CT Ratio", f"{ct_lv:.0f}:{ct_secondary_rating:.0f}"),
+            ("T1 (HV Tap)", f"{tap_hv:.3f}"),
+            ("T2 (LV Tap)", f"{tap_lv:.3f}"),
+            ("Bias, τ (%)", f"{bias_pct:.0f}"),
+            ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
+            ("HOC (x tap current)", f"{hoc_multiple:.2f}"),
+            ("Restraint Standard", convention),
+            ("CT Polarity Reference", ct_polarity),
+        ], key_prefix="EXCT")
 
     st.subheader("Differential Bias Characteristic Curve")
 
@@ -611,3 +626,9 @@ with tab3:
     )
     png_filename = f"87ET_Differential_Bias_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
     st.plotly_chart(sweep_fig, use_container_width=True, config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}})
+
+    st.markdown("---")
+    render_historian_overlay(st, "exct", reference_lines=[
+        ("HV Rated (A)", relay.windings[0]["i_rated_pri"]),
+        ("LV Rated (A)", relay.windings[1]["i_rated_pri"]),
+    ])

@@ -11,6 +11,8 @@ from common.sld import generator_zone_svg
 from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
+from common.historian import render_historian_overlay
+from common.relay_settings_sheet import render_settings_sheet
 from engines.generator import AdvancedDifferentialRelay
 
 st.title("Enterprise Generator Differential Protection (87G) Suite")
@@ -190,7 +192,7 @@ with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=Fal
     )
     st.caption(suggestion["basis"])
 
-_generator_project_settings = {"mva": mva, "kv": kv, "ct_n": ct_ratio_N, "ct_t": ct_ratio_T, "mode": current_mode}
+_generator_project_settings = {"mva": mva, "kv": kv, "ct_n": ct_ratio_N, "ct_t": ct_ratio_T, "mode": current_mode, "calc_mismatch_pct": calc_mismatch}
 if current_mode == "GENERATOR_LEGACY":
     _generator_project_settings.update({"target_amps": target_amps, "s1": slope_1})
 else:
@@ -302,6 +304,30 @@ with tab1:
             file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
+
+        if current_mode == "GENERATOR_LEGACY":
+            _sheet_rows = [
+                ("Relay Type", "GE CFD22B4A (GEK-34124)"),
+                ("Target/Seal-in Pickup (A sec.)", f"{target_amps:.2f}" if target_amps is not None else "N/A"),
+                ("Restraint Slope (%)", f"{slope_1:.0f}"),
+            ]
+        else:
+            _sheet_rows = [
+                ("Relay Type", "GE G60 (Numerical)"),
+                ("Pickup (pu)", f"{i_pickup:.3f}"),
+                ("Slope 1 (%)", f"{slope_1:.0f}"),
+                ("Break 1 (pu)", f"{break_1:.2f}"),
+                ("Slope 2 (%)", f"{slope_2:.0f}"),
+                ("Break 2 (pu)", f"{break_2:.2f}"),
+                ("Unrestrained High-Set (pu)", f"{i_unrestrained_value:.2f}" if i_unrestrained_value is not None else "Not enabled"),
+            ]
+        _sheet_rows += [
+            ("Neutral CT Ratio", f"{ct_ratio_N:.0f}:{ct_secondary_rating:.0f}"),
+            ("Terminal CT Ratio", f"{ct_ratio_T:.0f}:{ct_secondary_rating:.0f}"),
+            ("Restraint Standard", convention),
+            ("CT Polarity Reference", ct_polarity),
+        ]
+        render_settings_sheet(st, "GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows, key_prefix="Generator")
 
 
     st.subheader("Differential Slope Characteristic Curve")
@@ -681,3 +707,8 @@ with tab3:
         "click the camera icon — it downloads a PNG directly from your browser, no extra "
         "software needed."
     )
+
+    st.markdown("---")
+    render_historian_overlay(st, "generator", reference_lines=[
+        ("Generator Rated (A)", relay.i_rated_pri),
+    ])

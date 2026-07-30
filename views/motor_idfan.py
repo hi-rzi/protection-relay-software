@@ -13,6 +13,8 @@ from common.sld import motor_overcurrent_svg
 from common.ui_helpers import slider_with_exact_input
 from common.settings_advisor import suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
+from common.historian import render_historian_overlay
+from common.relay_settings_sheet import render_settings_sheet
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_869 import Motor869Relay, hot_cold_safe_stall_ratio
 
@@ -558,6 +560,29 @@ with tab1:
             mime="application/pdf"
         )
 
+        _motor_sheet_rows = [
+            ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+            ("51 Tap (A sec.)", f"{tap_51:.2f}"),
+            ("51 Time Dial", f"{time_dial:.2f}"),
+            ("50A Pickup (A sec.)", f"{pickup_50a:.2f}"),
+            ("50B Dropout (A sec.)", f"{dropout_50b:.2f}"),
+            ("Target & Seal-in (A)", f"{target_seal_in:.2f}"),
+        ]
+        if enable_backup:
+            _motor_sheet_rows += [
+                ("Backup 50 CT Ratio", f"{backup_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("Backup 50 Pickup (A sec.)", f"{backup_pickup_50:.2f}"),
+            ]
+        _motor_sheet_rows += [
+            ("GE 869 Overload Pickup (% FLA)", f"{mpr_overload_pickup_pct:.0f}"),
+            ("GE 869 Curve Multiplier (CM)", f"{mpr_curve_multiplier:.1f}"),
+            ("GE 869 Instantaneous Pickup (x LR)", f"{mpr_inst_multiple_lr:.1f}"),
+            ("GE 869 Ground CT Ratio", f"{mpr_ground_ct_ratio:.0f}:5"),
+            ("GE 869 GF Pickup (x Ground CT)", f"{mpr_gf_pickup_frac:.2f}"),
+            ("GE 869 Unbalance Alarm/Trip (%)", f"{mpr_unbal_alarm_pct:.0f} / {mpr_unbal_trip_pct:.0f}"),
+        ]
+        render_settings_sheet(st, "IFC66KD2A / GE 869", _motor_sheet_rows, key_prefix="IDFan")
+
 # ---------------------------------------------------------------------------
 # TAB 2 — Commissioning & Injection Tool
 # ---------------------------------------------------------------------------
@@ -694,6 +719,13 @@ with tab3:
         "markers () for correct coordination — i.e. the relay must not trip during a normal "
         "start, but must trip before the motor's insulation is thermally damaged on a stall."
     )
+
+    st.markdown("---")
+    render_historian_overlay(st, "motor", reference_lines=[
+        ("Motor FLA (A)", motor_fla),
+        ("51 Pickup (A primary)", relay.tap_51 * relay.effective_ratio),
+        ("Locked Rotor Current (A)", locked_rotor_amps),
+    ])
 
 
 # ---------------------------------------------------------------------------

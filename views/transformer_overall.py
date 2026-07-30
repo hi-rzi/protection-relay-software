@@ -11,6 +11,8 @@ from common.sld import overall_zone_svg
 from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
+from common.historian import render_historian_overlay
+from common.relay_settings_sheet import render_settings_sheet
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
@@ -211,6 +213,7 @@ record_equipment_settings("overall", {
     "ct_conn_hv": ct_conn_hv, "ct_conn_gen": ct_conn_gen, "ct_conn_uat": ct_conn_uat,
     "tap_hv": tap_hv, "tap_gen": tap_gen, "tap_uat": tap_uat,
     "bias": bias_pct, "min_operate": min_operate_pct, "hoc": hoc_multiple,
+    "calc_mismatch_pct": calc_mismatch,
 })
 st.sidebar.caption(
     "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
@@ -351,6 +354,20 @@ with tab1:
             file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf"
         )
+
+        render_settings_sheet(st, "CAC2-10-M3", [
+            ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
+            ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
+            ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
+            ("T1 (HV Tap)", f"{tap_hv:.3f}"),
+            ("T2 (Generator Tap)", f"{tap_gen:.3f}"),
+            ("T3 (UAT Tap)", f"{tap_uat:.3f}"),
+            ("Bias, τ (%)", f"{bias_pct:.0f}"),
+            ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
+            ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
+            ("Restraint Standard", convention),
+            ("CT Polarity Reference", ct_polarity),
+        ], key_prefix="Overall")
 
     st.subheader("Differential Bias Characteristic Curve")
 
@@ -654,3 +671,10 @@ with tab3:
     )
     png_filename = f"87OA_Differential_Bias_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
     st.plotly_chart(sweep_fig, use_container_width=True, config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}})
+
+    st.markdown("---")
+    render_historian_overlay(st, "overall", reference_lines=[
+        ("HV Rated (A)", relay.windings[0]["i_rated_pri"]),
+        ("Generator Rated (A)", relay.windings[1]["i_rated_pri"]),
+        ("UAT Rated (A)", relay.windings[2]["i_rated_pri"]),
+    ])
