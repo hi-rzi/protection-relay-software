@@ -8,6 +8,7 @@ not a reproduction of any site as-built drawing — just enough to show WHERE
 the CTs sit and WHAT is inside the protected zone for a given relay.
 """
 
+import math
 import os
 
 import streamlit as st
@@ -350,6 +351,15 @@ def differential_principle_svg():
 
 
 def overcurrent_principle_svg():
+    """
+    Conceptual (illustrative only) inverse-time trip curve: shaded 'no trip'
+    region below the curve, shaded 'trip' region above it. The curve shape
+    itself uses the standard IEEE Moderately Inverse constants (IEEE
+    C37.112: A=0.0515, p=0.02, B=0.1140) purely to draw a realistic inverse-
+    time shape for this generic diagram - it is NOT the actual relay curve
+    used elsewhere in this app (each equipment's real TCC Curve tab computes
+    its own manufacturer-specific formula from its own real settings).
+    """
     W, H = 640, 340
     svg = _header(W, H)
 
@@ -363,26 +373,51 @@ def overcurrent_principle_svg():
     svg += _label(ax_right - 10, oy + 24, "Current", size=13, anchor="end")
     svg += _label(ox - 12, ax_top + 2, "Time", size=13, anchor="end")
 
-    svg += (
-        f'<path d="M {ox+25} {ax_top+15} C {ox+65} {oy-190}, {ox+150} {oy-35}, {ax_right-25} {oy-8}" '
-        f'fill="none" stroke="{CT_COLOR}" stroke-width="3"/>'
+    # IEEE Moderately Inverse shape (illustrative curve only, see docstring above)
+    A, p, B = 0.0515, 0.02, 0.1140
+    m_start, m_end, max_time = 1.01, 10.0, 16.0
+    plot_left, plot_right = ox + 15, ax_right - 15
+    n_points = 120
+    pts = []
+    for i in range(n_points + 1):
+        m = m_start + (m_end - m_start) * i / n_points
+        t = min(A / (m ** p - 1) + B, max_time)
+        x = plot_left + (plot_right - plot_left) * (m - m_start) / (m_end - m_start)
+        y = oy - (oy - ax_top) * (t / max_time)
+        pts.append((round(x, 1), round(y, 1)))
+
+    pts_str = " ".join(f"{x},{y}" for x, y in pts)
+    below_region = f"{pts_str} {plot_right},{oy} {plot_left},{oy}"
+    above_region = f"{pts_str} {plot_right},{ax_top} {plot_left},{ax_top}"
+    curve_path = "M " + " L ".join(f"{x} {y}" for x, y in pts)
+
+    # Shade regions BEFORE the curve line so the curve stays visually on top.
+    svg += f'<polygon points="{below_region}" fill="#D9F2D9" opacity="0.7"/>'
+    svg += f'<polygon points="{above_region}" fill="#FADBD8" opacity="0.7"/>'
+    svg += f'<path d="{curve_path}" fill="none" stroke="{CT_COLOR}" stroke-width="3"/>'
+
+    svg += _label((ox + ax_right) / 2, ax_top - 12, "51 Inverse-Time Trip Curve", size=13, color=CT_COLOR, weight="bold")
+    svg += _label(
+        plot_left + (plot_right - plot_left) * 0.35, oy - 30,
+        "NORMAL START", size=13, color="#006600", weight="bold"
     )
-    svg += _label((ox + ax_right) / 2, ax_top - 5, "51 Inverse-Time Trip Curve", size=13, color=CT_COLOR, weight="bold")
-
-    start_x, start_y = ox + 95, oy - 55
-    svg += f'<circle cx="{start_x}" cy="{start_y}" r="6" fill="#16A34A"/>'
-    svg += _label(start_x + 15, start_y - 10, "Normal start", size=12, color="#16A34A", anchor="start")
-    svg += _label(start_x + 15, start_y + 8, "(below curve, no trip)", size=11, color="#16A34A", anchor="start")
-
-    fault_x, fault_y = ox + 290, oy - 205
-    svg += f'<circle cx="{fault_x}" cy="{fault_y}" r="6" fill="{ZONE_COLOR}"/>'
-    svg += _label(fault_x + 15, fault_y - 4, "Locked rotor / fault", size=12, color=ZONE_COLOR, anchor="start")
-    svg += _label(fault_x + 15, fault_y + 14, "(above curve, trips)", size=11, color=ZONE_COLOR, anchor="start")
+    svg += _label(
+        plot_left + (plot_right - plot_left) * 0.35, oy - 12,
+        "(No Trip Region)", size=11, color="#006600"
+    )
+    svg += _label(
+        plot_left + (plot_right - plot_left) * 0.65, ax_top + 60,
+        "LOCKED ROTOR / FAULT", size=13, color="#B30000", weight="bold"
+    )
+    svg += _label(
+        plot_left + (plot_right - plot_left) * 0.65, ax_top + 78,
+        "(Trip Region)", size=11, color="#B30000"
+    )
 
     svg += _label(
         W / 2, H - 18,
         "Higher current → shorter trip time, so severe faults clear fast while normal starting current is tolerated.",
-        size=11, color=LEADER_COLOR,
+        size=11, color=LEADER_COLOR, weight="normal"
     )
     svg += _footer()
     return svg
