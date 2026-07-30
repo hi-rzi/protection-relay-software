@@ -112,6 +112,14 @@ FAN_TYPES = {
                 "of_hz": 51.5, "uf_hz": 48.5,
                 "underpower_kw": 80.0, "underpower_delay_s": 10.0,
                 "starts_per_hour": 2, "time_between_starts_min": 45,
+                # Starting/stall data (from FDFAN MOTOR PROTECTION.pdf, Section 5.6.3) -
+                # not available for the Primary Air Fan (no equivalent settings doc found
+                # yet), which is why this block is FD-only: LRC = 6.3x FLA @ 100% V / 4.8x
+                # FLA @ 80% V; only the HOT safe stall time is documented for these motors
+                # (hot/cold ratio = 1.0 per the doc's own statement).
+                "locked_rotor_amps_100": 965.0, "locked_rotor_amps_80": 739.0,
+                "accel_time_100": 3.2, "accel_time_80": 5.3,
+                "safe_stall_100": 20.0, "safe_stall_80": 34.0,
             },
             "Custom Profile": {
                 "motor_fla": 100, "ct_ratio": 100, "ct_sec": 5.0,
@@ -128,6 +136,9 @@ FAN_TYPES = {
                 "of_hz": 51.5, "uf_hz": 48.5,
                 "underpower_kw": 100.0, "underpower_delay_s": 10.0,
                 "starts_per_hour": 2, "time_between_starts_min": 45,
+                "locked_rotor_amps_100": 600.0, "locked_rotor_amps_80": 460.0,
+                "accel_time_100": 3.0, "accel_time_80": 5.0,
+                "safe_stall_100": 15.0, "safe_stall_80": 25.0,
             },
         },
     },
@@ -170,6 +181,22 @@ def render_fan_motor_page(fan_type):
     ct_secondary_rating = st.sidebar.selectbox("CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0, key=f"{project_key}__ct_sec")
     st.sidebar.caption(f"Effective ratio → **{ct_ratio:.0f}:{ct_secondary_rating:.0f}** (= {ct_ratio/ct_secondary_rating:.1f}:1)")
     ground_ct_ratio = st.sidebar.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["ground_ct_ratio"]), key=f"{project_key}__gct_ratio")
+
+    # Starting/Stall data only exists for the FD Fan (FDFAN MOTOR PROTECTION.pdf) - no
+    # equivalent settings document has been found for the Primary Air Fan, so these
+    # stay None there and the TCC Curve tab's safe-stall overlay is skipped for it.
+    locked_rotor_amps_100 = locked_rotor_amps_80 = None
+    accel_time_100 = accel_time_80 = None
+    safe_stall_100 = safe_stall_80 = None
+    if project_key == "fd_fan":
+        with st.sidebar.expander("Motor Starting & Safe Stall Data", expanded=False):
+            locked_rotor_amps_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_100"]), step=1.0, key=f"{project_key}__lrc_100")
+            locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_80"]), step=1.0, key=f"{project_key}__lrc_80")
+            accel_time_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=p_data["accel_time_100"], step=0.1, key=f"{project_key}__accel_100")
+            accel_time_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=p_data["accel_time_80"], step=0.1, key=f"{project_key}__accel_80")
+            safe_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=p_data["safe_stall_100"], step=0.1, key=f"{project_key}__stall_100",
+                help="Only the hot safe stall time is documented for this motor (hot/cold ratio = 1.0 per the settings doc).")
+            safe_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=p_data["safe_stall_80"], step=0.1, key=f"{project_key}__stall_80")
 
     with st.sidebar.expander("Advanced Settings (GE 869 MPR)", expanded=False):
         st.markdown("**Overload (Thermal Model)**")
@@ -215,6 +242,9 @@ def render_fan_motor_page(fan_type):
         "of_hz": p_data["of_hz"], "uf_hz": p_data["uf_hz"],
         "underpower_kw": p_data["underpower_kw"], "underpower_delay_s": p_data["underpower_delay_s"],
         "starts_per_hour": p_data["starts_per_hour"], "time_between_starts_min": p_data["time_between_starts_min"],
+        "locked_rotor_amps_100": locked_rotor_amps_100, "locked_rotor_amps_80": locked_rotor_amps_80,
+        "accel_time_100": accel_time_100, "accel_time_80": accel_time_80,
+        "safe_stall_100": safe_stall_100, "safe_stall_80": safe_stall_80,
     })
 
     relay = Motor869Relay(
@@ -374,7 +404,10 @@ def render_fan_motor_page(fan_type):
     # -----------------------------------------------------------------------
     with tab3:
         st.markdown("#### Overload (51) Time-Current Characteristic")
+        has_stall_data = locked_rotor_amps_100 is not None
         max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
+        if has_stall_data:
+            max_mult = max(max_mult, (locked_rotor_amps_100 / motor_fla) + 1.0)
         mult_line = np.linspace(1.01, max_mult, 300)
         t_line = [relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
         fig = go.Figure()
@@ -384,6 +417,34 @@ def render_fan_motor_page(fan_type):
                 x=[eval_result["multiple_of_fla"]], y=[eval_result["t51"]], mode="markers", name="Operating Point",
                 marker=dict(size=14, color="red", symbol="x")
             ))
+
+        t_at_lrc_100 = t_at_lrc_80 = None
+        if has_stall_data:
+            lrc_100_x = locked_rotor_amps_100 / motor_fla
+            lrc_80_x = locked_rotor_amps_80 / motor_fla
+            t_at_lrc_100 = relay.calculate_overload_trip_time(locked_rotor_amps_100)
+            t_at_lrc_80 = relay.calculate_overload_trip_time(locked_rotor_amps_80)
+            fig.add_trace(go.Scatter(
+                x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
+                text=["Start @ 100%V"], textposition="top center",
+                marker=dict(size=13, color="green", symbol="triangle-up")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
+                text=["Start @ 80%V"], textposition="top center",
+                marker=dict(size=13, color="darkgreen", symbol="triangle-up")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
+                text=["Safe Stall @ 100%V"], textposition="bottom center",
+                marker=dict(size=13, color="black", symbol="x")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
+                text=["Safe Stall @ 80%V"], textposition="bottom center",
+                marker=dict(size=13, color="gray", symbol="x")
+            ))
+
         fig.update_layout(
             title="GE 869 Overload Trip Time vs. Multiple of FLA",
             xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
@@ -394,6 +455,32 @@ def render_fan_motor_page(fan_type):
             "GE Multilin 'Standard' thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)² + "
             "0.050547581x(M-1)), M = current as a multiple of motor FLA."
         )
+
+        if has_stall_data:
+            st.markdown("---")
+            st.markdown("**Starting/Stall Margin Check**")
+            st.caption(
+                "The overload curve should pass BELOW both Safe Stall markers (X) and ABOVE both "
+                "Start markers (▲) — i.e. the relay must not trip during a normal start, but must "
+                "trip before the motor's insulation is thermally damaged on a stall."
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
+                st.write(f"**100% V:** trips in {t_at_lrc_100:.1f}s at LRC" if t_at_lrc_100 else "**100% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
+                st.success("Margin OK") if ok_100 else st.error("Check margin")
+            with c2:
+                ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
+                st.write(f"**80% V:** trips in {t_at_lrc_80:.1f}s at LRC" if t_at_lrc_80 else "**80% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
+                st.success("Margin OK") if ok_80 else st.error("Check margin")
+        else:
+            st.caption(
+                "No Locked Rotor Current / Safe Stall Time data is on record for this equipment, "
+                "so the starting/stall margin overlay shown on the Induced Draft Fan's TCC Curve "
+                "isn't available here yet."
+            )
 
         st.markdown("---")
         render_historian_overlay(st, project_key, reference_lines=[
