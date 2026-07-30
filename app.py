@@ -15,7 +15,7 @@ pg = st.navigation({
         st.Page("views/transformer_aux.py", title="Auxiliary Transformer"),
     ],
     "Motor": [
-        st.Page("views/motor_idfan.py", title="ID Fan"),
+        st.Page("views/motor_idfan.py", title="Induced Draft Fan"),
         st.Page("views/motor_pa_fan.py", title="Primary Air Fan"),
         st.Page("views/motor_fd_fan.py", title="Forced Draft Fan"),
     ],

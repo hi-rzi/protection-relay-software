@@ -28,7 +28,7 @@ EQUIPMENT_LABELS = {
     "gsut": "Generator Step-Up Transformer",
     "overall": "Overall GSUT-GEN",
     "aux": "Auxiliary Transformer",
-    "motor": "ID Fan Motor",
+    "motor": "Induced Draft Fan",
     "pa_fan": "Primary Air Fan",
     "fd_fan": "Forced Draft Fan",
 }
