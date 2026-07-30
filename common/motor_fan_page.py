@@ -229,10 +229,11 @@ def render_fan_motor_page(fan_type):
         accel_timer_s=accel_timer_s, overload_alarm_delay_s=overload_alarm_delay_s,
     )
 
-    tab_theory, tab1, tab2, tab3 = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
         "Theory",
         "Live Simulation",
         "Commissioning & Injection Tool",
+        "TCC Curve",
         "Settings Summary & Approval",
     ])
 
@@ -312,50 +313,6 @@ def render_fan_motor_page(fan_type):
                 ("Mechanical Jam Pickup (% FLA)", f"{mech_jam_pct:.0f}"),
             ], key_prefix=project_key.upper())
 
-        st.markdown("---")
-        st.markdown("#### Overload (51) Time-Current Characteristic")
-        max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
-        mult_line = np.linspace(1.01, max_mult, 300)
-        t_line = [relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=mult_line, y=t_line, mode="lines", name=f"Curve X{curve_multiplier:g}", line=dict(color="#2563EB", width=3)))
-        if eval_result["t51"] is not None:
-            fig.add_trace(go.Scatter(
-                x=[eval_result["multiple_of_fla"]], y=[eval_result["t51"]], mode="markers", name="Operating Point",
-                marker=dict(size=14, color="red", symbol="x")
-            ))
-        fig.update_layout(
-            title="GE 869 Overload Trip Time vs. Multiple of FLA",
-            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
-            yaxis_type="log", template="plotly_white", height=450,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "GE Multilin 'Standard' thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)² + "
-            "0.050547581x(M-1)), M = current as a multiple of motor FLA."
-        )
-
-        st.markdown("---")
-        render_historian_overlay(st, project_key, reference_lines=[
-            ("Motor FLA (A)", motor_fla),
-            ("Instantaneous Pickup (A primary)", relay.inst_pickup_amps),
-        ])
-
-        st.markdown("---")
-        st.markdown("#### Other GE 869 Functions — Settings Reference (not live-simulated)")
-        st.dataframe(pd.DataFrame([
-            {"Function": "Overload Alarm", "Setting": f"{overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
-            {"Function": "Mechanical Jam Trip", "Setting": f"{mech_jam_pct:.0f}% FLA, {mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
-            {"Function": "Acceleration Timer", "Setting": f"{accel_timer_s:.0f}s", "Note": "Trips if current stays above Overload Pickup past this time after start"},
-            {"Function": "Phase Differential (87)", "Setting": f"{phase_diff_pickup_frac:.2f}x CT, {phase_diff_delay_ms:.0f}ms delay", "Note": "Separate zero-sequence differential CTs"},
-            {"Function": "Stator RTD Alarm/Trip", "Setting": f"{p_data['rtd_stator_c']}°C", "Note": "No bearing RTDs fitted on this motor"},
-            {"Function": "Overvoltage (59)", "Setting": f"{p_data['ov_pickup_pu']:.2f} x rated, {p_data['ov_delay_s']:.0f}s delay", "Note": "Alarm only"},
-            {"Function": "Over/Underfrequency (81)", "Setting": f"{p_data['of_hz']:.1f}Hz / {p_data['uf_hz']:.1f}Hz", "Note": "Alarm only"},
-            {"Function": "Underpower (37)", "Setting": f"{p_data['underpower_kw']:.0f}kW, {p_data['underpower_delay_s']:.0f}s delay", "Note": "Detects lost/broken shaft coupling"},
-            {"Function": "Jogging Block (66)", "Setting": f"{p_data['starts_per_hour']:.0f} starts/hour, {p_data['time_between_starts_min']:.0f} min between starts", "Note": ""},
-            {"Function": "Phase Reversal", "Setting": "Enabled", "Note": ""},
-        ]), use_container_width=True, hide_index=True)
-
     # -----------------------------------------------------------------------
     # TAB 2 — Commissioning & Injection Tool
     # -----------------------------------------------------------------------
@@ -413,9 +370,56 @@ def render_fan_motor_page(fan_type):
             )
 
     # -----------------------------------------------------------------------
-    # TAB 3 — Settings Summary & Approval
+    # TAB 3 — TCC Curve
     # -----------------------------------------------------------------------
     with tab3:
+        st.markdown("#### Overload (51) Time-Current Characteristic")
+        max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
+        mult_line = np.linspace(1.01, max_mult, 300)
+        t_line = [relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=mult_line, y=t_line, mode="lines", name=f"Curve X{curve_multiplier:g}", line=dict(color="#2563EB", width=3)))
+        if eval_result["t51"] is not None:
+            fig.add_trace(go.Scatter(
+                x=[eval_result["multiple_of_fla"]], y=[eval_result["t51"]], mode="markers", name="Operating Point",
+                marker=dict(size=14, color="red", symbol="x")
+            ))
+        fig.update_layout(
+            title="GE 869 Overload Trip Time vs. Multiple of FLA",
+            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+            yaxis_type="log", template="plotly_white", height=450,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "GE Multilin 'Standard' thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)² + "
+            "0.050547581x(M-1)), M = current as a multiple of motor FLA."
+        )
+
+        st.markdown("---")
+        render_historian_overlay(st, project_key, reference_lines=[
+            ("Motor FLA (A)", motor_fla),
+            ("Instantaneous Pickup (A primary)", relay.inst_pickup_amps),
+        ])
+
+        st.markdown("---")
+        st.markdown("#### Other GE 869 Functions — Settings Reference (not live-simulated)")
+        st.dataframe(pd.DataFrame([
+            {"Function": "Overload Alarm", "Setting": f"{overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
+            {"Function": "Mechanical Jam Trip", "Setting": f"{mech_jam_pct:.0f}% FLA, {mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
+            {"Function": "Acceleration Timer", "Setting": f"{accel_timer_s:.0f}s", "Note": "Trips if current stays above Overload Pickup past this time after start"},
+            {"Function": "Phase Differential (87)", "Setting": f"{phase_diff_pickup_frac:.2f}x CT, {phase_diff_delay_ms:.0f}ms delay", "Note": "Separate zero-sequence differential CTs"},
+            {"Function": "Stator RTD Alarm/Trip", "Setting": f"{p_data['rtd_stator_c']}°C", "Note": "No bearing RTDs fitted on this motor"},
+            {"Function": "Overvoltage (59)", "Setting": f"{p_data['ov_pickup_pu']:.2f} x rated, {p_data['ov_delay_s']:.0f}s delay", "Note": "Alarm only"},
+            {"Function": "Over/Underfrequency (81)", "Setting": f"{p_data['of_hz']:.1f}Hz / {p_data['uf_hz']:.1f}Hz", "Note": "Alarm only"},
+            {"Function": "Underpower (37)", "Setting": f"{p_data['underpower_kw']:.0f}kW, {p_data['underpower_delay_s']:.0f}s delay", "Note": "Detects lost/broken shaft coupling"},
+            {"Function": "Jogging Block (66)", "Setting": f"{p_data['starts_per_hour']:.0f} starts/hour, {p_data['time_between_starts_min']:.0f} min between starts", "Note": ""},
+            {"Function": "Phase Reversal", "Setting": "Enabled", "Note": ""},
+        ]), use_container_width=True, hide_index=True)
+
+    # -----------------------------------------------------------------------
+    # TAB 4 — Settings Summary & Approval
+    # -----------------------------------------------------------------------
+    with tab4:
         st.subheader("Settings Summary & Approval Record")
         st.caption(
             "Record the settings basis and review status before exporting a controlled report. "

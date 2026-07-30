@@ -16,7 +16,6 @@ from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
-from engines.motor_869 import Motor869Relay, hot_cold_safe_stall_ratio
 
 st.title("Induced Draft (ID) Fan Motor Protection")
 st.caption(
@@ -43,14 +42,6 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 4.5,
         "pickup_50a": 47.0, "dropout_50b": 3.3, "target_seal_in": 0.2,
         "backup_ct_ratio": 3000, "backup_pickup_50": 10.0,
-        # GE 869 MPR (Section 5.1.3 - written against the legacy SR469, same thermal model)
-        "mpr_ground_ct_ratio": 50, "mpr_gf_pickup_frac": 0.1, "mpr_gf_delay_ms": 60.0,
-        "mpr_overload_pickup_pct": 115.0, "mpr_curve_multiplier": 4.0,
-        "mpr_inst_multiple_lr": 2.0, "mpr_inst_delay_ms": 60.0,
-        "mpr_unbal_alarm_pct": 15.0, "mpr_unbal_alarm_delay_s": 30.0,
-        "mpr_unbal_trip_pct": 15.0, "mpr_unbal_trip_delay_s": 60.0,
-        "mpr_mech_jam_pct": 150.0, "mpr_mech_jam_delay_s": 1.0,
-        "mpr_accel_timer_s": 25.0, "mpr_overload_alarm_delay_s": 1.0,
     },
     "Custom Profile": {
         "motor_fla": 100, "locked_rotor_amps": 600, "locked_rotor_amps_80pct": 480,
@@ -61,13 +52,6 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 5.0,
         "pickup_50a": 50.0, "dropout_50b": 3.0, "target_seal_in": 0.2,
         "backup_ct_ratio": 200, "backup_pickup_50": 10.0,
-        "mpr_ground_ct_ratio": 50, "mpr_gf_pickup_frac": 0.1, "mpr_gf_delay_ms": 60.0,
-        "mpr_overload_pickup_pct": 115.0, "mpr_curve_multiplier": 4.0,
-        "mpr_inst_multiple_lr": 2.0, "mpr_inst_delay_ms": 60.0,
-        "mpr_unbal_alarm_pct": 15.0, "mpr_unbal_alarm_delay_s": 30.0,
-        "mpr_unbal_trip_pct": 15.0, "mpr_unbal_trip_delay_s": 60.0,
-        "mpr_mech_jam_pct": 150.0, "mpr_mech_jam_delay_s": 1.0,
-        "mpr_accel_timer_s": 25.0, "mpr_overload_alarm_delay_s": 1.0,
     },
 }
 
@@ -80,13 +64,6 @@ MOTOR_CONFIG_FIELDS = (
     "motor_target_seal_in", "motor_enable_backup", "motor_backup_ct_ratio",
     "motor_backup_pickup_50", "motor_source_document", "motor_revision",
     "motor_prepared_by", "motor_reviewed_by", "motor_approval_status", "motor_review_note",
-    "mpr_ground_ct_ratio", "mpr_gf_pickup_frac", "mpr_gf_delay_ms",
-    "mpr_overload_pickup_pct", "mpr_curve_multiplier",
-    "mpr_inst_multiple_lr", "mpr_inst_delay_ms",
-    "mpr_unbal_alarm_pct", "mpr_unbal_alarm_delay_s",
-    "mpr_unbal_trip_pct", "mpr_unbal_trip_delay_s",
-    "mpr_mech_jam_pct", "mpr_mech_jam_delay_s",
-    "mpr_accel_timer_s", "mpr_overload_alarm_delay_s",
 )
 
 
@@ -155,14 +132,6 @@ def _load_preset_into_state():
         "motor_accel_time_100": pd_["accel_time_100"], "motor_accel_time_80": pd_["accel_time_80"],
         "motor_safe_stall_100": pd_["safe_stall_100_hot"], "motor_safe_stall_80": pd_["safe_stall_80_hot"],
         "motor_safe_stall_100_cold": pd_["safe_stall_100_ambient"], "motor_safe_stall_80_cold": pd_["safe_stall_80_ambient"],
-        "mpr_ground_ct_ratio": float(pd_["mpr_ground_ct_ratio"]), "mpr_gf_pickup_frac": pd_["mpr_gf_pickup_frac"],
-        "mpr_gf_delay_ms": pd_["mpr_gf_delay_ms"],
-        "mpr_overload_pickup_pct": pd_["mpr_overload_pickup_pct"], "mpr_curve_multiplier": pd_["mpr_curve_multiplier"],
-        "mpr_inst_multiple_lr": pd_["mpr_inst_multiple_lr"], "mpr_inst_delay_ms": pd_["mpr_inst_delay_ms"],
-        "mpr_unbal_alarm_pct": pd_["mpr_unbal_alarm_pct"], "mpr_unbal_alarm_delay_s": pd_["mpr_unbal_alarm_delay_s"],
-        "mpr_unbal_trip_pct": pd_["mpr_unbal_trip_pct"], "mpr_unbal_trip_delay_s": pd_["mpr_unbal_trip_delay_s"],
-        "mpr_mech_jam_pct": pd_["mpr_mech_jam_pct"], "mpr_mech_jam_delay_s": pd_["mpr_mech_jam_delay_s"],
-        "mpr_accel_timer_s": pd_["mpr_accel_timer_s"], "mpr_overload_alarm_delay_s": pd_["mpr_overload_alarm_delay_s"],
     }
     for k, v in plain_fields.items():
         st.session_state[k] = v
@@ -266,51 +235,6 @@ backup_relay = BackupInstantaneousRelay(
     ct_ratio=backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=backup_pickup_50
 ) if enable_backup else None
 
-with st.sidebar.expander("Advanced Settings (GE 869 MPR)", expanded=False):
-    st.markdown("**Overload (51) Thermal Model**")
-    ensure_setting("mpr_overload_pickup_pct", p_data["mpr_overload_pickup_pct"])
-    ensure_setting("mpr_curve_multiplier", p_data["mpr_curve_multiplier"])
-    mpr_overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, step=1.0, key="mpr_overload_pickup_pct",
-        help="Settings doc criterion: set to operate at 115% of motor FLA.")
-    mpr_curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, step=0.5, key="mpr_curve_multiplier",
-        help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage, verified against the settings doc's Curve X4 worked examples.")
-
-    st.markdown("**Instantaneous (50)**")
-    ensure_setting("mpr_inst_multiple_lr", p_data["mpr_inst_multiple_lr"])
-    ensure_setting("mpr_inst_delay_ms", p_data["mpr_inst_delay_ms"])
-    mpr_inst_multiple_lr = st.number_input("Instantaneous Pickup (x Locked Rotor A)", min_value=1.0, max_value=5.0, step=0.1, key="mpr_inst_multiple_lr",
-        help="Settings doc criterion: ~200% of locked rotor current.")
-    mpr_inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, step=10.0, key="mpr_inst_delay_ms")
-
-    st.markdown("**Ground Fault (50G/51G)**")
-    ensure_setting("mpr_ground_ct_ratio", float(p_data["mpr_ground_ct_ratio"]))
-    ensure_setting("mpr_gf_pickup_frac", p_data["mpr_gf_pickup_frac"])
-    ensure_setting("mpr_gf_delay_ms", p_data["mpr_gf_delay_ms"])
-    mpr_ground_ct_ratio = st.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, key="mpr_ground_ct_ratio")
-    mpr_gf_pickup_frac = st.number_input("GF Pickup (x Ground CT Primary A)", min_value=0.1, max_value=1.0, step=0.05, key="mpr_gf_pickup_frac",
-        help="Settings doc: pickup is set on the ground CT's own primary rating, not the CT ratio - 0.1x600/5 ground CT = 5A primary here.")
-    mpr_gf_delay_ms = st.number_input("GF Delay (ms)", min_value=0.0, step=10.0, key="mpr_gf_delay_ms")
-
-    st.markdown("**Current Unbalance (46)**")
-    ensure_setting("mpr_unbal_alarm_pct", p_data["mpr_unbal_alarm_pct"])
-    ensure_setting("mpr_unbal_alarm_delay_s", p_data["mpr_unbal_alarm_delay_s"])
-    ensure_setting("mpr_unbal_trip_pct", p_data["mpr_unbal_trip_pct"])
-    ensure_setting("mpr_unbal_trip_delay_s", p_data["mpr_unbal_trip_delay_s"])
-    mpr_unbal_alarm_pct = st.number_input("Unbalance Alarm Pickup (%)", min_value=1.0, max_value=50.0, step=1.0, key="mpr_unbal_alarm_pct")
-    mpr_unbal_alarm_delay_s = st.number_input("Unbalance Alarm Delay (s)", min_value=0.0, step=1.0, key="mpr_unbal_alarm_delay_s")
-    mpr_unbal_trip_pct = st.number_input("Unbalance Trip Pickup (%)", min_value=1.0, max_value=50.0, step=1.0, key="mpr_unbal_trip_pct")
-    mpr_unbal_trip_delay_s = st.number_input("Unbalance Trip Delay (s)", min_value=0.0, step=1.0, key="mpr_unbal_trip_delay_s")
-
-    st.markdown("**Other Settings (reference only)**")
-    ensure_setting("mpr_mech_jam_pct", p_data["mpr_mech_jam_pct"])
-    ensure_setting("mpr_mech_jam_delay_s", p_data["mpr_mech_jam_delay_s"])
-    ensure_setting("mpr_accel_timer_s", p_data["mpr_accel_timer_s"])
-    ensure_setting("mpr_overload_alarm_delay_s", p_data["mpr_overload_alarm_delay_s"])
-    mpr_mech_jam_pct = st.number_input("Mechanical Jam Pickup (% FLA)", min_value=100.0, step=5.0, key="mpr_mech_jam_pct")
-    mpr_mech_jam_delay_s = st.number_input("Mechanical Jam Delay (s)", min_value=0.0, step=0.5, key="mpr_mech_jam_delay_s")
-    mpr_accel_timer_s = st.number_input("Acceleration Timer (s)", min_value=1.0, step=1.0, key="mpr_accel_timer_s")
-    mpr_overload_alarm_delay_s = st.number_input("Overload Alarm Delay (s)", min_value=0.0, step=0.5, key="mpr_overload_alarm_delay_s")
-
 with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
     st.caption(
         "Derives a starting point FROM the motor data above — the 51 Tap suggestion is a hard "
@@ -327,7 +251,7 @@ with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=Fal
     k_conservative = (230.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
     k_typical = (175.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
     cc3, cc4 = st.columns(2)
-    cc3.metric("K-factor (conservative)", f"{k_conservative:.2f}", help="K = 230 / (LRC ÷ FLA)² — currently used by the GE 869 MPR tab.")
+    cc3.metric("K-factor (conservative)", f"{k_conservative:.2f}", help="K = 230 / (LRC ÷ FLA)² — the GE 869's own unbalance-bias formula for the thermal model.")
     cc4.metric("K-factor (typical)", f"{k_typical:.2f}", help="K = 175 / (LRC ÷ FLA)² — GE Multilin's less-conservative published alternative.")
     st.markdown(
         "**Suggested starting point:** Overload Pickup ≈ **110-115% FLA** (GE Multilin guidance, "
@@ -348,34 +272,14 @@ record_equipment_settings("motor", {
     "tap_51": tap_51, "time_dial": time_dial,
     "pickup_50a": pickup_50a, "dropout_50b": dropout_50b, "target_seal_in": target_seal_in,
     "backup_ct_ratio": backup_ct_ratio, "backup_pickup_50": backup_pickup_50,
-    "mpr_ground_ct_ratio": mpr_ground_ct_ratio, "mpr_gf_pickup_frac": mpr_gf_pickup_frac, "mpr_gf_delay_ms": mpr_gf_delay_ms,
-    "mpr_overload_pickup_pct": mpr_overload_pickup_pct, "mpr_curve_multiplier": mpr_curve_multiplier,
-    "mpr_inst_multiple_lr": mpr_inst_multiple_lr, "mpr_inst_delay_ms": mpr_inst_delay_ms,
-    "mpr_unbal_alarm_pct": mpr_unbal_alarm_pct, "mpr_unbal_alarm_delay_s": mpr_unbal_alarm_delay_s,
-    "mpr_unbal_trip_pct": mpr_unbal_trip_pct, "mpr_unbal_trip_delay_s": mpr_unbal_trip_delay_s,
-    "mpr_mech_jam_pct": mpr_mech_jam_pct, "mpr_mech_jam_delay_s": mpr_mech_jam_delay_s,
-    "mpr_accel_timer_s": mpr_accel_timer_s, "mpr_overload_alarm_delay_s": mpr_overload_alarm_delay_s,
 })
 
-mpr_relay = Motor869Relay(
-    ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
-    motor_fla=motor_fla, locked_rotor_amps=locked_rotor_amps,
-    overload_pickup_pct=mpr_overload_pickup_pct, curve_multiplier=mpr_curve_multiplier,
-    inst_pickup_multiple_of_lr=mpr_inst_multiple_lr, inst_delay_ms=mpr_inst_delay_ms,
-    ground_ct_ratio=mpr_ground_ct_ratio, gf_pickup_frac_of_ct=mpr_gf_pickup_frac, gf_delay_ms=mpr_gf_delay_ms,
-    unbal_alarm_pct=mpr_unbal_alarm_pct, unbal_alarm_delay_s=mpr_unbal_alarm_delay_s,
-    unbal_trip_pct=mpr_unbal_trip_pct, unbal_trip_delay_s=mpr_unbal_trip_delay_s,
-    mech_jam_pct=mpr_mech_jam_pct, mech_jam_delay_s=mpr_mech_jam_delay_s,
-    accel_timer_s=mpr_accel_timer_s, overload_alarm_delay_s=mpr_overload_alarm_delay_s,
-)
-
-tab_theory, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
     "Theory",
     "Live Simulation",
     "Commissioning & Injection Tool",
     "TCC Curve",
     "Settings Summary & Approval",
-    "GE 869 MPR",
 ])
 
 with tab_theory:
@@ -559,15 +463,7 @@ with tab1:
                 ("Backup 50 CT Ratio", f"{backup_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Backup 50 Pickup (A sec.)", f"{backup_pickup_50:.2f}"),
             ]
-        _motor_sheet_rows += [
-            ("GE 869 Overload Pickup (% FLA)", f"{mpr_overload_pickup_pct:.0f}"),
-            ("GE 869 Curve Multiplier (CM)", f"{mpr_curve_multiplier:.1f}"),
-            ("GE 869 Instantaneous Pickup (x LR)", f"{mpr_inst_multiple_lr:.1f}"),
-            ("GE 869 Ground CT Ratio", f"{mpr_ground_ct_ratio:.0f}:5"),
-            ("GE 869 GF Pickup (x Ground CT)", f"{mpr_gf_pickup_frac:.2f}"),
-            ("GE 869 Unbalance Alarm/Trip (%)", f"{mpr_unbal_alarm_pct:.0f} / {mpr_unbal_trip_pct:.0f}"),
-        ]
-        render_settings_sheet(st, "IFC66KD2A / GE 869", _motor_sheet_rows, key_prefix="IDFan")
+        render_settings_sheet(st, "IFC66KD2A", _motor_sheet_rows, key_prefix="IDFan")
 
 # ---------------------------------------------------------------------------
 # TAB 2 — Commissioning & Injection Tool
@@ -847,107 +743,3 @@ with tab4:
         help="Download the active settings and document-control fields for later reload in this app.",
     )
 
-# ---------------------------------------------------------------------------
-# TAB 5 — GE 869 Microprocessor MPR
-# ---------------------------------------------------------------------------
-with tab5:
-    st.subheader("GE 869 Motor Management Relay (Multilin)")
-    st.caption(
-        "Per the settings doc's Section 5.1.3 (written against the plant's originally-specified "
-        "SR469, since superseded in service by the 869 - same Thermal Capacity Used protection "
-        "architecture, so the settings carry over directly). Live-simulates the primary "
-        "current-based elements (Overload thermal model, Instantaneous, Ground Fault, Current "
-        "Unbalance); the remaining functions are shown below as a documented settings reference."
-    )
-    st.info(f"K-factor (Unbalance Bias, per GE Multilin formula K = 230 / (Locked Rotor ÷ FLA)², "
-            f"conservative variant): **{mpr_relay.k_factor:.2f}**")
-
-    col_mpr_in, col_mpr_out = st.columns([1.1, 1.0])
-    with col_mpr_in:
-        st.markdown("#### Operating Current Input")
-        mpr_test_current = st.number_input(
-            "Phase Current (Primary A)", min_value=0.0, value=float(motor_fla), step=10.0, key="mpr_test_current",
-            help="Enter the actual primary motor current — converted through the CT ratio automatically."
-        )
-        mpr_ground_current = st.number_input(
-            "Ground Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key="mpr_ground_current",
-            help="Zero-sequence current at the ground CT's primary."
-        )
-        mpr_unbalance_input = st.number_input(
-            "Current Unbalance (%, I2/I1)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="mpr_unbalance_input"
-        )
-
-    mpr_eval = mpr_relay.evaluate_protection(mpr_test_current)
-    mpr_gf_eval = mpr_relay.evaluate_ground_fault(mpr_ground_current)
-    mpr_unbal_eval = mpr_relay.evaluate_unbalance(mpr_unbalance_input)
-    mpr_any_trip = mpr_eval["is_trip"] or mpr_gf_eval["is_trip"] or mpr_unbal_eval["is_trip"]
-
-    with col_mpr_out:
-        st.markdown("#### Real-time Protection Verdict")
-        if mpr_any_trip:
-            st.error("GE 869 TRIP INITIATED!")
-        else:
-            st.success("SYSTEM HEALTHY")
-        st.table([
-            {"Function": "Overload (51) / Instantaneous (50)", "Multiple": f"{mpr_eval['multiple_of_fla']:.2f}x FLA", "Status": mpr_eval["status"]},
-            {"Function": "Ground Fault (50G/51G)", "Multiple": f"{mpr_ground_current:.1f} A", "Status": mpr_gf_eval["status"]},
-            {"Function": "Current Unbalance (46)", "Multiple": f"{mpr_unbalance_input:.1f} %", "Status": mpr_unbal_eval["status"]},
-        ])
-
-    st.markdown("---")
-    st.markdown("#### Overload (51) Time-Current Characteristic")
-    max_mult = max(6.0, mpr_eval["multiple_of_fla"] + 1.0)
-    mult_line = np.linspace(1.01, max_mult, 300)
-    t_line = [mpr_relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
-    mpr_fig = go.Figure()
-    mpr_fig.add_trace(go.Scatter(x=mult_line, y=t_line, mode="lines", name=f"Curve X{mpr_curve_multiplier:g}", line=dict(color="#2563EB", width=3)))
-    if mpr_eval["t51"] is not None:
-        mpr_fig.add_trace(go.Scatter(
-            x=[mpr_eval["multiple_of_fla"]], y=[mpr_eval["t51"]], mode="markers", name="Operating Point",
-            marker=dict(size=14, color="red", symbol="x")
-        ))
-    mpr_fig.update_layout(
-        title="GE 869 Overload Trip Time vs. Multiple of FLA",
-        xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
-        yaxis_type="log", template="plotly_white", height=450,
-    )
-    st.plotly_chart(mpr_fig, use_container_width=True)
-    st.caption(
-        "GE Multilin 'Standard' thermal curve (shared across the 469/269Plus/369/869 lineage): "
-        "T = CM x 2.2116623 / (0.025303373x(M-1)² + 0.050547581x(M-1)), M = current as a multiple "
-        "of motor FLA - verified against the settings doc's own worked examples "
-        "(4.8x FLA on Curve X4 = 15.9s; 3.8x FLA = 25.8s)."
-    )
-
-    st.markdown("---")
-    st.markdown("#### Hot/Cold Safe Stall Ratio (Thermal Model Setup)")
-    hcr_100 = hot_cold_safe_stall_ratio(safe_stall_100, safe_stall_100_cold)
-    hcr_80 = hot_cold_safe_stall_ratio(safe_stall_80, safe_stall_80_cold)
-    hcr_col1, hcr_col2 = st.columns(2)
-    hcr_col1.metric("HCR @ 100% V", f"{hcr_100:.2f}" if hcr_100 is not None else "—",
-                     help=f"= hot safe stall ({safe_stall_100:.1f}s) / cold safe stall ({safe_stall_100_cold:.1f}s)")
-    hcr_col2.metric("HCR @ 80% V", f"{hcr_80:.2f}" if hcr_80 is not None else "—",
-                     help=f"= hot safe stall ({safe_stall_80:.1f}s) / cold safe stall ({safe_stall_80_cold:.1f}s)")
-    st.caption(
-        "HCR = LRT_hot / LRT_cold, per GE Multilin's own thermal-model setup methodology — it tells the "
-        "869 how much less thermal margin a motor that's already running hot has left before a stall "
-        "becomes damaging, versus starting from cold. A ratio well below 1.0 means the relay must bias "
-        "its trip time noticeably faster on a hot restart."
-    )
-
-    st.markdown("---")
-    st.markdown("#### Other GE 869 Functions — Settings Reference (not live-simulated)")
-    st.dataframe(pd.DataFrame([
-        {"Function": "Overload Alarm", "Setting": f"{mpr_overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
-        {"Function": "Mechanical Jam Trip", "Setting": f"{mpr_mech_jam_pct:.0f}% FLA, {mpr_mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
-        {"Function": "Acceleration Timer", "Setting": f"{mpr_accel_timer_s:.0f}s", "Note": "Trips if current stays above Overload Pickup past this time after start"},
-        {"Function": "Overtemperature (38/49)", "Setting": "Alarm 135°C (stator), 90°C (bearing)", "Note": "Via RTDs/thermocouples to DCS, not read back by MPR"},
-        {"Function": "RTD Bias", "Setting": "Min 40°C / Center 120°C / Max 155°C", "Note": "Biases the thermal model using stator RTD input"},
-        {"Function": "Overvoltage (59)", "Setting": "106% rated, 60s delay", "Note": "Alarm only"},
-        {"Function": "Jogging Block (66)", "Setting": "2 starts/hour, 20 min between starts", "Note": ""},
-        {"Function": "Over/Underfrequency (81)", "Setting": "51.5Hz / 48.5Hz, 10s delay", "Note": "Alarm only"},
-        {"Function": "Phase Differential (87)", "Setting": "0.1x CT (10A primary, 100:5 CT), 60ms delay", "Note": "Separate zero-sequence differential CTs"},
-        {"Function": "Underpower (37)", "Setting": "300kW, ~20s Block-From-Start Timer", "Note": "Detects lost/broken shaft coupling"},
-        {"Function": "Start Inhibit", "Setting": "Enabled (Block = OFF)", "Note": "Blocks a start the thermal model predicts will trip"},
-        {"Function": "Digital Input 2", "Setting": "Vibration Switch Trip, 0.1s delay", "Note": ""},
-    ]), use_container_width=True, hide_index=True)
