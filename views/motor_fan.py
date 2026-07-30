@@ -104,8 +104,14 @@ FAN_TYPES = {
                 "overload_pickup_pct": 115.0, "curve_multiplier": 6.0,
                 "inst_pickup_multiple_of_ct": 9.7, "inst_delay_ms": 60.0,
                 "mech_jam_pct": 150.0, "mech_jam_delay_s": 1.0,
-                "unbal_trip_pct": 39.0, "unbal_trip_delay_s": 60.0,
-                "unbal_alarm_pct": 15.0, "unbal_alarm_delay_s": 10.0,
+                # Confirmed by supervisor: 15% trip (not Data.xlsx's 39%), since the maximum
+                # expected current unbalance for this motor/system is 31% (per
+                # FDFAN MOTOR PROTECTION.pdf's own I_UB derivation) - 15% gives margin below
+                # that. Alarm delay aligned to the same document's stated 30s (was 10s per
+                # Data.xlsx) since the supervisor's confirmation endorses that document's
+                # derivation for this setting.
+                "unbal_trip_pct": 15.0, "unbal_trip_delay_s": 60.0,
+                "unbal_alarm_pct": 15.0, "unbal_alarm_delay_s": 30.0,
                 "gf_pickup_frac": 0.1, "gf_delay_ms": 60.0,
                 "phase_diff_pickup_frac": 0.1, "phase_diff_delay_ms": 60.0,
                 "accel_timer_s": 18.0, "overload_alarm_delay_s": 1.0,
