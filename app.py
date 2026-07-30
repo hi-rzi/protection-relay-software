@@ -14,6 +14,9 @@ pg = st.navigation({
         st.Page("views/transformer_overall.py", title="Overall GSUT-GEN"),
         st.Page("views/transformer_aux.py", title="Auxiliary Transformer"),
     ],
-    "Motor": [st.Page("views/motor_idfan.py", title="ID Fan")],
+    "Motor": [
+        st.Page("views/motor_idfan.py", title="ID Fan"),
+        st.Page("views/motor_fan.py", title="Draft Fans (PA / FD)"),
+    ],
 })
 pg.run()

@@ -59,9 +59,9 @@ import math
 class Motor869Relay:
     OVERLOAD_CURVE = {"A": 2.2116623, "B": 0.025303373, "C": 0.050547581}
 
-    def __init__(self, ct_ratio, ct_secondary_rating, motor_fla, locked_rotor_amps,
+    def __init__(self, ct_ratio, ct_secondary_rating, motor_fla, locked_rotor_amps=None,
                  overload_pickup_pct=115.0, curve_multiplier=4.0,
-                 inst_pickup_multiple_of_lr=2.0, inst_delay_ms=60.0,
+                 inst_pickup_multiple_of_lr=2.0, inst_pickup_multiple_of_ct=None, inst_delay_ms=60.0,
                  ground_ct_ratio=50.0, ground_ct_secondary_rating=5.0,
                  gf_pickup_frac_of_ct=0.1, gf_delay_ms=60.0,
                  unbal_alarm_pct=15.0, unbal_alarm_delay_s=30.0,
@@ -75,7 +75,15 @@ class Motor869Relay:
         self.locked_rotor_amps = locked_rotor_amps
         self.overload_pickup_pct = overload_pickup_pct
         self.curve_multiplier = curve_multiplier
-        self.inst_pickup_amps = inst_pickup_multiple_of_lr * locked_rotor_amps  # primary A
+        if inst_pickup_multiple_of_ct is not None:
+            # Some settings docs (e.g. the PA/FD Fan MPR data) express Instantaneous
+            # pickup as a multiple of the phase CT's SECONDARY rating rather than of
+            # locked-rotor current - confirmed convention: pickup_primary = multiplier
+            # x CT primary rating (e.g. 9.7 x CT on a 300/5 CT = 9.7 x 300 = 2910A),
+            # since multiplier x secondary(5A) x effective_ratio(=ct_ratio/5) = multiplier x ct_ratio.
+            self.inst_pickup_amps = inst_pickup_multiple_of_ct * ct_ratio
+        else:
+            self.inst_pickup_amps = inst_pickup_multiple_of_lr * locked_rotor_amps  # primary A
         self.inst_delay_ms = inst_delay_ms
 
         self.ground_ct_ratio = ground_ct_ratio
@@ -94,8 +102,13 @@ class Motor869Relay:
         self.accel_timer_s = accel_timer_s
         self.overload_alarm_delay_s = overload_alarm_delay_s
 
-        lr_multiple_of_fla = (locked_rotor_amps / motor_fla) if motor_fla > 0 else 0.0
-        self.k_factor = (230.0 / (lr_multiple_of_fla ** 2)) if lr_multiple_of_fla > 0 else 0.0
+        if locked_rotor_amps is not None and motor_fla > 0:
+            lr_multiple_of_fla = locked_rotor_amps / motor_fla
+            self.k_factor = (230.0 / (lr_multiple_of_fla ** 2)) if lr_multiple_of_fla > 0 else 0.0
+        else:
+            # No Locked Rotor Current on record for this motor (e.g. the PA/FD Fan
+            # data doesn't include it) - K-factor can't be derived, not zero.
+            self.k_factor = None
 
     def relay_current(self, i_primary):
         return i_primary / self.effective_ratio if self.effective_ratio > 0 else 0.0

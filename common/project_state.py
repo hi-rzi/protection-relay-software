@@ -29,6 +29,8 @@ EQUIPMENT_LABELS = {
     "overall": "Overall GSUT-GEN",
     "aux": "Auxiliary Transformer",
     "motor": "ID Fan Motor",
+    "pa_fan": "Primary Air Fan",
+    "fd_fan": "Forced Draft Fan",
 }
 
 RESTORED_PRESET_LABEL = "📁 Restored from Project"
@@ -91,6 +93,16 @@ def equipment_health(equipment_key, data):
             return "OK", f"51 pickup {pickup_primary:.0f} A clears FLA {fla:.0f} A"
         return "REVIEW", f"51 pickup {pickup_primary:.0f} A is at or below FLA {fla:.0f} A"
 
+    if equipment_key in ("pa_fan", "fd_fan"):
+        ct_ratio = data.get("ct_ratio")
+        inst_mult, fla = data.get("inst_pickup_multiple_of_ct"), data.get("motor_fla")
+        if None in (ct_ratio, inst_mult, fla):
+            return "N/A", "Insufficient data recorded yet"
+        pickup_primary = inst_mult * ct_ratio
+        if pickup_primary > fla:
+            return "OK", f"Instantaneous pickup {pickup_primary:.0f} A clears FLA {fla:.0f} A"
+        return "REVIEW", f"Instantaneous pickup {pickup_primary:.0f} A is at or below FLA {fla:.0f} A"
+
     mismatch = data.get("calc_mismatch_pct")
     bias, min_operate = data.get("bias"), data.get("min_operate")
     if mismatch is None or bias is None or min_operate is None:
@@ -114,7 +126,7 @@ def project_summary():
             continue
         mva = data.get("mva")
         summary = f"{mva:g} MVA" if isinstance(mva, (int, float)) else "Configured"
-        if key == "motor" and "motor_fla" in data:
+        if key in ("motor", "pa_fan", "fd_fan") and "motor_fla" in data:
             summary = f"FLA {data['motor_fla']:g} A"
         health, detail = equipment_health(key, data)
         health_label = {"OK": "✅ OK", "REVIEW": "⚠️ Review", "N/A": "—"}[health]

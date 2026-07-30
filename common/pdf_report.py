@@ -267,3 +267,64 @@ def generate_motor_pdf_report(unit_name, relay_obj, eval_result, test_current_am
         results_header=results_header, results_rows=results_rows,
         results_col_widths=(90, 90, 80, 90, 150),
     )
+
+
+def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, unbal_eval,
+                                   test_current_amps, ground_current_amps, unbalance_pct,
+                                   approval=None):
+    """GE 869 MPR-only motor report (Primary Air Fan / FD Fan) - unlike the ID Fan's
+    IFC66KD2A + GE 869 report, these motors have no discrete 50/50/51 electromechanical
+    relay or Locked Rotor Current/Safe Stall Time data, so there is no starting-margin
+    coordination section here - only what the GE 869 MPR settings data actually covers."""
+    report_title = f"Fan Motor Protection (GE 869 MPR) Evaluation Report - {unit_name}"
+    meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
+
+    motor_rows = [
+        ["Parameter", "Value"],
+        ["CT Ratio", f"{relay_obj.ct_ratio:.0f}:{relay_obj.ct_secondary_rating:.0f}"],
+        ["Motor Full Load Current", f"{relay_obj.motor_fla:.0f} A"],
+        ["Ground CT Ratio", f"{relay_obj.ground_ct_ratio:.0f}:{relay_obj.ground_ct_secondary_rating:.0f}"],
+    ]
+
+    relay_rows = [
+        ["Parameter", "Value"],
+        ["Relay Type", "GE Multilin 869 MPR"],
+        ["Overload Pickup", f"{relay_obj.overload_pickup_pct:.0f}% FLA"],
+        ["Curve Multiplier (CM)", f"{relay_obj.curve_multiplier:.1f}"],
+        ["Instantaneous Pickup", f"{relay_obj.inst_pickup_amps:.0f} A primary"],
+        ["Instantaneous Delay", f"{relay_obj.inst_delay_ms:.0f} ms"],
+        ["Ground Fault Pickup", f"{relay_obj.gf_pickup_amps:.2f} A (ground CT primary)"],
+        ["Ground Fault Delay", f"{relay_obj.gf_delay_ms:.0f} ms"],
+        ["Unbalance Alarm / Trip", f"{relay_obj.unbal_alarm_pct:.0f}% / {relay_obj.unbal_trip_pct:.0f}%"],
+        ["Mechanical Jam Pickup", f"{relay_obj.mech_jam_pct:.0f}% FLA, {relay_obj.mech_jam_delay_s:.1f}s delay"],
+    ]
+
+    results_header = ["Input", "Value", "Relay Sec. (A)", "Multiple/Level", "Status"]
+    t51_str = f"{eval_result['t51']:.2f}s" if eval_result["t51"] is not None else "No Trip"
+    results_rows = [
+        ["Phase Current (A primary)", f"{test_current_amps:.1f}", f"{eval_result['i_relay_sec']:.3f}",
+         f"{eval_result['multiple_of_fla']:.2f}x FLA / {t51_str}", eval_result["status"]],
+        ["Ground Current (A primary)", f"{ground_current_amps:.1f}", "—", "—", gf_eval["status"]],
+        ["Current Unbalance (%)", f"{unbalance_pct:.1f}", "—", "—", unbal_eval["status"]],
+    ]
+
+    sections = [("Motor Data", motor_rows), ("Relay Parameters (GE 869 MPR)", relay_rows)]
+
+    if approval:
+        approval_rows = [
+            ["Parameter", "Value"],
+            ["Source Document", approval.get("source_document", "Not recorded")],
+            ["Revision", approval.get("revision", "Not recorded")],
+            ["Prepared By", approval.get("prepared_by", "Not recorded")],
+            ["Reviewed By", approval.get("reviewed_by", "Not recorded")],
+            ["Approval Status", approval.get("approval_status", "Not recorded")],
+            ["Review Note", approval.get("review_note", "None")],
+        ]
+        sections.append(("Document Control and Approval", approval_rows))
+
+    return build_pdf_report(
+        report_title, meta_text,
+        sections=sections,
+        results_header=results_header, results_rows=results_rows,
+        results_col_widths=(120, 70, 90, 130, 130),
+    )

@@ -50,5 +50,6 @@ with col3:
     st.markdown("#### Motor")
     st.write(
         "Motor protection covering:\n"
-        "- Induced Draft (ID) Fan — 50/50/51 time-overcurrent, GE 869 microprocessor MPR"
+        "- Induced Draft (ID) Fan — 50/50/51 time-overcurrent, GE 869 microprocessor MPR\n"
+        "- Primary Air (PA) Fan and Forced Draft (FD) Fan — GE 869 microprocessor MPR"
     )

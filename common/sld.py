@@ -261,13 +261,14 @@ def overall_zone_svg(relay, ct_polarity, tag="87OA/87OB"):
 # ID Fan motor — 50/50/51 time-overcurrent (not a differential zone: a single
 # CT feeding a discrete overcurrent relay ahead of the motor breaker)
 # ---------------------------------------------------------------------------
-def motor_overcurrent_svg(ct_ratio, ct_secondary_rating, backup_ct_ratio=None, tag="50/50/51", backup_tag="50 (Backup)"):
+def motor_overcurrent_svg(ct_ratio, ct_secondary_rating, backup_ct_ratio=None, tag="50/50/51", backup_tag="50 (Backup)",
+                           bus_label="13.8kV Switchgear Bus", motor_label="ID FAN MOTOR"):
     W, H = 640, 300
     y = 140
     svg = _header(W, H)
 
     svg += _bus(40, y, 460, y)
-    svg += _label(60, y - 20, "13.8kV Switchgear Bus", size=12, color=LEADER_COLOR)
+    svg += _label(60, y - 20, bus_label, size=12, color=LEADER_COLOR)
 
     ct_x = 200
     svg += _ct(ct_x, y, [f"CT {ct_ratio:.0f}:{ct_secondary_rating:.0f}"], "above")
@@ -278,7 +279,7 @@ def motor_overcurrent_svg(ct_ratio, ct_secondary_rating, backup_ct_ratio=None, t
     svg += _label(brk_x, y - 26, "52", size=12, weight="bold")
 
     svg += _bus(brk_x + 12, y, 460, y)
-    svg += _motor_symbol(540, y, "ID FAN MOTOR")
+    svg += _motor_symbol(540, y, motor_label)
 
     rx, ry = ct_x, y - 110
     svg += _leader(ct_x, y - 15, rx, ry + 26)
