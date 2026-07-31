@@ -6,8 +6,10 @@ share the same "Standard"/TCU thermal-curve architecture, which is why the
 Motor869Relay engine is reused here, but the settings sheet and labels
 below say SR469 to match the real installed hardware). Both fans' source
 docs also describe a separate discrete 50/50/51 electromechanical relay
-(IFC66KD2A) plus a backup instantaneous relay, mirroring the ID Fan's own
-retrofit relay stack - not modeled here yet (flagged, not fabricated).
+(IFC66KD2A) plus a backup instantaneous relay (HFC22B2A), mirroring the ID
+Fan's own retrofit relay stack. Confirmed present on the Primary Air Fan
+(PAFAN MOTOR PROTECTION.pdf Section 5.3.1/5.3.2) and modeled here, gated to
+project_key == "pa_fan" only - not yet confirmed/added for the FD Fan.
 This one module is called by two thin, separate view pages
 (views/motor_pa_fan.py and views/motor_fd_fan.py) instead of duplicating
 ~500 lines twice. Each page gets its own nav entry, title, and settings,
@@ -28,6 +30,7 @@ from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from engines.motor_869 import Motor869Relay
+from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 
 # ---------------------------------------------------------------------------
 # Presets — base values from Data.xlsx "Motor Data" sheet (Unit 7 & 8, 6.9kV
@@ -82,6 +85,17 @@ FAN_TYPES = {
                 "locked_rotor_amps_100": 1009.0, "locked_rotor_amps_80": 776.0,
                 "accel_time_100": 13.2, "accel_time_80": 23.8,
                 "safe_stall_100": 14.2, "safe_stall_80": 23.8,
+                # IFC66KD2A discrete 50/50/51 electromechanical relay (PAFAN MOTOR PROTECTION.pdf
+                # Section 5.3.1) - a SEPARATE relay from the SR469 MPR above, on the same 300/5 CT.
+                # Time dial verified against the doc's own worked points: TD4 gives ~13.3s at 500%
+                # (doc: "13 seconds at 500%"), ~16.8s at 3.7x tap (doc: "about 16 seconds" at 100%V
+                # LRC), ~18.4s at 3.3x tap (doc: "about 18 seconds" at 90%V LRC) - all via the IAC
+                # Long Time Inverse curve already used for the ID Fan's own IFC66KD2A.
+                "ifc_tap_51": 4.5, "ifc_time_dial": 4.0,
+                "ifc_pickup_50a": 50.0, "ifc_dropout_50b": 2.9, "ifc_target_seal_in": 0.2,
+                # Backup instantaneous relay (GEK-49826C HFC22B2A), Section 5.3.2 - separate,
+                # higher-ratio 2000/5 CT so it won't saturate under high fault current.
+                "ifc_backup_ct_ratio": 2000, "ifc_backup_pickup_50": 7.5,
             },
             "Custom Profile": {
                 "motor_fla": 100, "ct_ratio": 100, "ct_sec": 5.0,
@@ -101,6 +115,9 @@ FAN_TYPES = {
                 "locked_rotor_amps_100": 600.0, "locked_rotor_amps_80": 460.0,
                 "accel_time_100": 3.0, "accel_time_80": 5.0,
                 "safe_stall_100": 15.0, "safe_stall_80": 25.0,
+                "ifc_tap_51": 4.0, "ifc_time_dial": 5.0,
+                "ifc_pickup_50a": 50.0, "ifc_dropout_50b": 3.0, "ifc_target_seal_in": 0.2,
+                "ifc_backup_ct_ratio": 200, "ifc_backup_pickup_50": 10.0,
             },
         },
     },
@@ -240,6 +257,37 @@ def render_fan_motor_page(fan_type):
         phase_diff_pickup_frac = st.number_input("Phase Differential Pickup (x CT)", min_value=0.05, max_value=1.0, value=p_data["phase_diff_pickup_frac"], step=0.05, key=f"{project_key}__pdiff_frac")
         phase_diff_delay_ms = st.number_input("Phase Differential Delay (ms)", min_value=0.0, value=p_data["phase_diff_delay_ms"], step=10.0, key=f"{project_key}__pdiff_delay")
 
+    # IFC66KD2A discrete 50/50/51 electromechanical relay + HFC22B2A backup instantaneous relay -
+    # confirmed present on the Primary Air Fan (PAFAN MOTOR PROTECTION.pdf Section 5.3.1/5.3.2),
+    # in ADDITION to the SR469 MPR above. Not yet confirmed/added for the FD Fan.
+    ifc_tap_51 = ifc_time_dial = ifc_pickup_50a = ifc_dropout_50b = ifc_target_seal_in = None
+    ifc_backup_enabled = False
+    ifc_backup_ct_ratio = ifc_backup_pickup_50 = None
+    if project_key == "pa_fan":
+        with st.sidebar.expander("Advanced Settings (IFC66KD2A 50/50/51)", expanded=False):
+            st.caption(
+                "Separate discrete electromechanical relay documented alongside the SR469 MPR "
+                "above - same relay model as the Induced Draft Fan's own 50/50/51, on this "
+                "motor's 300:5 phase CT."
+            )
+            st.markdown("**51 (Long Time Inverse)**")
+            ifc_tap_51 = st.number_input("51 Tap (A sec.)", min_value=2.5, max_value=7.5, value=p_data["ifc_tap_51"], step=0.1, key=f"{project_key}__ifc_tap51",
+                help="IFC66KD2A range: 2.5-7.5A at discrete taps (2.5, 2.8, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.5).")
+            ifc_time_dial = st.number_input("51 Time Dial", min_value=0.5, max_value=10.0, value=p_data["ifc_time_dial"], step=0.1, key=f"{project_key}__ifc_td",
+                help="IAC 'Long Time Inverse' curve (GEK-106618C constants) - same formula used for the ID Fan's IFC66KD2A.")
+
+            st.markdown("**50A / 50B (Instantaneous)**")
+            ifc_pickup_50a = st.number_input("50A Pickup (A sec.)", min_value=6.0, max_value=150.0, value=p_data["ifc_pickup_50a"], step=1.0, key=f"{project_key}__ifc_50a",
+                help="Set at ~200-300% of locked rotor current to allow starting inrush.")
+            ifc_dropout_50b = st.number_input("50B Dropout (A sec.)", min_value=2.0, max_value=8.0, value=p_data["ifc_dropout_50b"], step=0.1, key=f"{project_key}__ifc_50b",
+                help="High-dropout overload ALARM element - estimated pickup = dropout / 0.8.")
+            ifc_target_seal_in = st.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, value=p_data["ifc_target_seal_in"], step=0.1, key=f"{project_key}__ifc_target")
+
+            st.markdown("**Backup Instantaneous (50, HFC22B2A)**")
+            ifc_backup_enabled = st.checkbox("Enable HFC22B2A backup relay", value=True, key=f"{project_key}__ifc_backup_en")
+            ifc_backup_ct_ratio = st.number_input("Backup CT Ratio (Primary A, e.g. 2000 in '2000:5')", min_value=1.0, value=float(p_data["ifc_backup_ct_ratio"]), key=f"{project_key}__ifc_backup_ct", disabled=not ifc_backup_enabled)
+            ifc_backup_pickup_50 = st.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, value=p_data["ifc_backup_pickup_50"], step=0.5, key=f"{project_key}__ifc_backup_pickup", disabled=not ifc_backup_enabled)
+
     record_equipment_settings(project_key, {
         "motor_fla": motor_fla, "ct_ratio": ct_ratio, "ct_sec": ct_secondary_rating,
         "ground_ct_ratio": ground_ct_ratio, "ground_ct_sec": ct_secondary_rating,
@@ -258,7 +306,24 @@ def render_fan_motor_page(fan_type):
         "locked_rotor_amps_100": locked_rotor_amps_100, "locked_rotor_amps_80": locked_rotor_amps_80,
         "accel_time_100": accel_time_100, "accel_time_80": accel_time_80,
         "safe_stall_100": safe_stall_100, "safe_stall_80": safe_stall_80,
+        "ifc_tap_51": ifc_tap_51, "ifc_time_dial": ifc_time_dial,
+        "ifc_pickup_50a": ifc_pickup_50a, "ifc_dropout_50b": ifc_dropout_50b,
+        "ifc_target_seal_in": ifc_target_seal_in,
+        "ifc_backup_ct_ratio": ifc_backup_ct_ratio, "ifc_backup_pickup_50": ifc_backup_pickup_50,
     })
+
+    ifc_relay = ifc_backup_relay = None
+    if project_key == "pa_fan":
+        ifc_relay = MotorTimeOvercurrentRelay(
+            ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
+            tap_51=ifc_tap_51, time_dial=ifc_time_dial,
+            pickup_50a=ifc_pickup_50a, dropout_50b=ifc_dropout_50b, target_seal_in=ifc_target_seal_in,
+            motor_fla=motor_fla, locked_rotor_amps=locked_rotor_amps_100,
+        )
+        if ifc_backup_enabled:
+            ifc_backup_relay = BackupInstantaneousRelay(
+                ct_ratio=ifc_backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=ifc_backup_pickup_50
+            )
 
     relay = Motor869Relay(
         ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating, motor_fla=motor_fla,
@@ -272,13 +337,18 @@ def render_fan_motor_page(fan_type):
         accel_timer_s=accel_timer_s, overload_alarm_delay_s=overload_alarm_delay_s,
     )
 
-    tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
+    tab_names = [
         "Theory",
         "Live Simulation",
         "Commissioning & Injection Tool",
         "TCC Curve",
         "Settings Summary & Approval",
-    ])
+    ]
+    if project_key == "pa_fan":
+        tab_names.append("IFC66KD2A 50/50/51")
+    all_tabs = st.tabs(tab_names)
+    tab_theory, tab1, tab2, tab3, tab4 = all_tabs[:5]
+    tab_ifc = all_tabs[5] if project_key == "pa_fan" else None
 
     with tab_theory:
         render_theory_tab(
@@ -629,3 +699,135 @@ def render_fan_motor_page(fan_type):
             key=f"{project_key}__settings_json_dl",
             help="Download the active settings for later reload in this app.",
         )
+
+    # -----------------------------------------------------------------------
+    # TAB — IFC66KD2A 50/50/51 (Primary Air Fan only)
+    # -----------------------------------------------------------------------
+    if tab_ifc is not None:
+        with tab_ifc:
+            st.subheader("Electromechanical 50/50/51 Relay (IFC66KD2A)")
+            st.caption(
+                "This motor's own settings document specifies a separate, discrete GE IFC66KD2A "
+                "50/50/51 electromechanical relay and a GE HFC22B2A backup instantaneous relay, "
+                "in addition to the SR469 MPR modeled on the other tabs — the same relay stack "
+                "architecture as the Induced Draft Fan."
+            )
+
+            ifc_eval = ifc_relay.evaluate_protection(test_current)
+            ifc_backup_eval = ifc_backup_relay.evaluate_protection(test_current) if ifc_backup_relay else None
+
+            st.info(f"Test current (from the Live Simulation tab): **{test_current:.1f} A primary**")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Relay Secondary", f"{ifc_eval['i_relay_sec']:.3f} A")
+            m2.metric("Multiple of 51 Pickup", f"{ifc_eval['multiple_of_pickup_51']:.2f}x")
+            m3.metric("51 Trip Time", f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "No Trip")
+
+            if ifc_eval["is_trip"]:
+                st.error(ifc_eval["status"])
+            elif ifc_eval["alarm_50b"]:
+                st.warning(ifc_eval["status"])
+            else:
+                st.success("SYSTEM HEALTHY (Below Pickup)")
+
+            elem_rows = [
+                {"Element": "51 (Long Time Inverse)", "State": "TRIP" if ifc_eval["trip_51"] else "Below Pickup",
+                 "Detail": f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "—"},
+                {"Element": "50A (Instantaneous)", "State": "TRIP" if ifc_eval["trip_50a"] else "Below Pickup",
+                 "Detail": f"Pickup {ifc_relay.pickup_50a:.1f}A sec."},
+                {"Element": "50B (Overload Alarm)", "State": "ALARM" if ifc_eval["alarm_50b"] else "Normal",
+                 "Detail": f"Est. pickup {ifc_relay.pickup_50b:.2f}A sec. / dropout {ifc_relay.dropout_50b:.2f}A sec."},
+            ]
+            if ifc_backup_eval is not None:
+                elem_rows.append({
+                    "Element": "50 (Backup, HFC22B2A)",
+                    "State": "TRIP" if ifc_backup_eval["is_trip"] else "Below Pickup",
+                    "Detail": f"Pickup {ifc_backup_relay.pickup_amps:.1f}A sec. (higher-ratio CT, won't saturate)",
+                })
+            st.table(elem_rows)
+
+            st.markdown("---")
+            st.markdown("**Starting/Stall Margin Check (51 element)**")
+            t_ifc_lrc_100 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_100)) if locked_rotor_amps_100 else None
+            t_ifc_lrc_80 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_80)) if locked_rotor_amps_80 else None
+            c1, c2 = st.columns(2)
+            with c1:
+                ok_100 = t_ifc_lrc_100 is not None and accel_time_100 < t_ifc_lrc_100 < safe_stall_100
+                st.write(f"**100% V:** 51 trips in {t_ifc_lrc_100:.1f}s at LRC" if t_ifc_lrc_100 else "**100% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
+                st.success("Margin OK") if ok_100 else st.error("Check margin")
+            with c2:
+                ok_80 = t_ifc_lrc_80 is not None and accel_time_80 < t_ifc_lrc_80 < safe_stall_80
+                st.write(f"**80% V:** 51 trips in {t_ifc_lrc_80:.1f}s at LRC" if t_ifc_lrc_80 else "**80% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
+                st.success("Margin OK") if ok_80 else st.error("Check margin")
+            st.caption(
+                "Per the settings document's own discussion: at the default Time Dial (4.0), the "
+                "100% voltage trip time (~16.8s) exceeds the 14.2s safe stall time - accepted in "
+                "the doc because the SR469 MPR's own cooldown timers already prevent back-to-back "
+                "hot starts, so the IFC66 is unlikely to see a start from a fully hot motor."
+            )
+
+            st.markdown("---")
+            st.subheader("Time-Current Characteristic (TCC) Curve")
+            m_range_ifc = np.linspace(1.01, 20.0, 400)
+            t_range_ifc = [ifc_relay.calculate_51_trip_time(m * ifc_relay.tap_51) for m in m_range_ifc]
+            fig_ifc = go.Figure()
+            fig_ifc.add_trace(go.Scatter(x=m_range_ifc, y=t_range_ifc, mode="lines", name="51 (Long Time Inverse)", line=dict(color="#2563EB", width=3)))
+
+            x_50a = ifc_relay.pickup_50a / ifc_relay.tap_51
+            fig_ifc.add_vline(x=x_50a, line=dict(color="#DC2626", width=2, dash="dash"), annotation_text="50A Pickup")
+            x_50b = ifc_relay.pickup_50b / ifc_relay.tap_51
+            fig_ifc.add_vline(x=x_50b, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50B Alarm")
+            if ifc_backup_relay is not None:
+                x_backup = (ifc_backup_relay.pickup_amps * ifc_backup_relay.effective_ratio) / ifc_relay.tap_51 / ifc_relay.effective_ratio
+                fig_ifc.add_vline(x=x_backup, line=dict(color="#7C3AED", width=2, dash="dashdot"), annotation_text="Backup 50")
+
+            if locked_rotor_amps_100 is not None:
+                lrc_100_x = ifc_relay.relay_current(locked_rotor_amps_100) / ifc_relay.tap_51
+                lrc_80_x = ifc_relay.relay_current(locked_rotor_amps_80) / ifc_relay.tap_51
+                fig_ifc.add_trace(go.Scatter(
+                    x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
+                    text=["Start @ 100%V"], textposition="top center", marker=dict(size=13, color="green", symbol="triangle-up")
+                ))
+                fig_ifc.add_trace(go.Scatter(
+                    x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
+                    text=["Start @ 80%V"], textposition="top center", marker=dict(size=13, color="darkgreen", symbol="triangle-up")
+                ))
+                fig_ifc.add_trace(go.Scatter(
+                    x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
+                    text=["Safe Stall @ 100%V"], textposition="bottom center", marker=dict(size=13, color="black", symbol="x")
+                ))
+                fig_ifc.add_trace(go.Scatter(
+                    x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
+                    text=["Safe Stall @ 80%V"], textposition="bottom center", marker=dict(size=13, color="gray", symbol="x")
+                ))
+
+            fig_ifc.update_layout(
+                title="IFC66KD2A 50/50/51 TCC",
+                xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
+                xaxis_type="log", yaxis_type="log", template="plotly_white", height=500,
+            )
+            st.plotly_chart(fig_ifc, use_container_width=True)
+            st.caption(
+                "GE IAC 'Long Time Inverse' curve (5-constant polynomial, GEK-106618C constants) — "
+                "same formula used for the Induced Draft Fan's own IFC66KD2A. Time dial verified "
+                "against this motor's own settings doc: TD4 gives ~13.3s at 500% (doc: 13s), "
+                "~16.8s at 3.7x tap / 100%V LRC (doc: ~16s), ~18.4s at 3.3x tap / 90%V LRC (doc: ~18s)."
+            )
+
+            st.markdown("---")
+            st.markdown("#### Settings Reference")
+            _ifc_sheet_rows = [
+                ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("51 Tap (A sec.)", f"{ifc_relay.tap_51:.2f}"),
+                ("51 Time Dial", f"{ifc_relay.time_dial:.2f}"),
+                ("50A Pickup (A sec.)", f"{ifc_relay.pickup_50a:.2f}"),
+                ("50B Dropout (A sec.)", f"{ifc_relay.dropout_50b:.2f}"),
+                ("Target & Seal-in (A)", f"{ifc_relay.target_seal_in:.2f}"),
+            ]
+            if ifc_backup_relay is not None:
+                _ifc_sheet_rows += [
+                    ("Backup 50 CT Ratio", f"{ifc_backup_relay.ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                    ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
+                ]
+            render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
