@@ -59,77 +59,24 @@ selected_preset = st.sidebar.selectbox(
 p_data = current_mode_presets[selected_preset]
 is_custom = selected_preset == "Custom Profile"
 
-st.sidebar.header("Protection Characteristic")
-target_amps = None
-i_unrestrained_value = None
+# ---------------------------------------------------------------------------
+# CURRENT SETTINGS — every applied setting, editable in place, with a live
+# comment on whether an adjustment improves or weakens protection. Comments
+# reuse the exact same functions as the old sidebar "Settings Calculator" (no
+# new engineering judgment invented) - just surfaced inline per-field.
+# ---------------------------------------------------------------------------
+st.markdown("## Current Settings")
+st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
-if current_mode == "GENERATOR_LEGACY":
-    target_amps = slider_with_exact_input(
-        st.sidebar, "Target / Seal-in Pickup (Secondary Amps)", 0.1, 1.0, p_data["target_amps"], 0.05,
-        key=f"{current_mode}__{selected_preset}__target_amps",
-        help_text="Factory default is 0.2 A. Per GEK-34124E, it is NOT recommended to set below "
-                   "0.1 A, and the rear contact may need up to ~0.25 A to close — verify the actual "
-                   "closing current during commissioning."
-    )
-    slope_1 = slider_with_exact_input(
-        st.sidebar, "Restraint Slope (%)", 5, 30, p_data["s1"], 1,
-        key=f"{current_mode}__{selected_preset}__slope1",
-        help_text="Confirmed by GEK-34124E's Principles of Operation: this relay balances when "
-                   "the differential current is 10% of the SMALLER of the two terminal currents, "
-                   "up to approximately rated current. This is fixed by the relay's internal "
-                   "design, not a field setting — the slider exists here only to explore 'what if' "
-                   "sensitivity; leave at 10% to match the actual hardware."
-    )
-    i_pickup = 0.0
-    slope_2 = slope_1
-    break_1, break_2 = 1e6, 1e6
-
-else:
-    i_pickup = slider_with_exact_input(
-        st.sidebar, "Pickup (pu)", 0.05, 1.00, p_data["pickup"], 0.01,
-        key=f"{current_mode}__{selected_preset}__pickup",
-        help_text="G60 manual range: 0.050 to 1.00 pu, step 0.01"
-    )
-    slope_1 = slider_with_exact_input(
-        st.sidebar, "Slope 1 (%)", 1, 100, p_data["s1"], 1,
-        key=f"{current_mode}__{selected_preset}__slope1",
-        help_text="G60 manual range: 1 to 100%, step 1"
-    )
-    break_1 = slider_with_exact_input(
-        st.sidebar, "Break 1 (pu)", 1.00, 1.50, p_data["break_1"], 0.01,
-        key=f"{current_mode}__{selected_preset}__break1",
-        help_text="G60 manual range: 1.00 to 1.50 pu, step 0.01. Restraint stays flat at Pickup below this point."
-    )
-    slope_2 = slider_with_exact_input(
-        st.sidebar, "Slope 2 (%)", 1, 100, p_data["s2"], 1,
-        key=f"{current_mode}__{selected_preset}__slope2",
-        help_text="G60 manual range: 1 to 100%, step 1"
-    )
-    break_2 = slider_with_exact_input(
-        st.sidebar, "Break 2 (pu)", 1.50, 30.00, p_data["break_2"], 0.01,
-        key=f"{current_mode}__{selected_preset}__break2",
-        help_text="G60 manual range: 1.50 to 30.00 pu, step 0.01. Slope 2 applies above this point."
-    )
-
-    enable_unrestrained = st.sidebar.checkbox(
-        "Enable Unrestrained High-Set Element",
-        value=False,
-        help="Only enable this if your G60 manual confirms a separate unrestrained/high-set "
-             "differential element with its own pickup setting. Left unconfirmed by default."
-    )
-    if enable_unrestrained:
-        i_unrestrained_value = slider_with_exact_input(
-            st.sidebar, "Unrestrained High-Set Pickup (pu)", 3.0, 30.0, 8.0, 0.5,
-            key=f"{current_mode}__{selected_preset}__unrestrained"
-        )
-
-with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False):
-    st.markdown("**Generator & CT Spec**")
-    mva = st.number_input("Generator Rating (MVA)", value=p_data["mva"], step=10.0, key=f"{current_mode}__{selected_preset}__mva")
-    kv = st.number_input("Rated Voltage (kV)", value=p_data["kv"], step=1.0, key=f"{current_mode}__{selected_preset}__kv")
-    ct_ratio_N = st.number_input("Neutral Side CT Rating (Primary A, e.g. 20000 in '20000:5')", value=float(p_data["ct_n"]), key=f"{current_mode}__{selected_preset}__ct_n")
-    ct_ratio_T = st.number_input("Terminal Side CT Rating (Primary A)", value=float(p_data["ct_t"]), key=f"{current_mode}__{selected_preset}__ct_t")
-
+with st.container(border=True):
+    st.markdown("**Ratings and CT**")
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
+        mva = st.number_input("Generator Rating (MVA)", value=p_data["mva"], step=10.0, key=f"{current_mode}__{selected_preset}__mva")
+        kv = st.number_input("Rated Voltage (kV)", value=p_data["kv"], step=1.0, key=f"{current_mode}__{selected_preset}__kv")
+    with r1c2:
+        ct_ratio_N = st.number_input("Neutral Side CT Rating (Primary A, e.g. 20000 in '20000:5')", value=float(p_data["ct_n"]), key=f"{current_mode}__{selected_preset}__ct_n")
+        ct_ratio_T = st.number_input("Terminal Side CT Rating (Primary A)", value=float(p_data["ct_t"]), key=f"{current_mode}__{selected_preset}__ct_t")
     ct_secondary_rating = st.selectbox(
         "CT Secondary Rating (A)", [1.0, 5.0], index=1, key=f"{current_mode}__{selected_preset}__ct_sec",
         help="The rated secondary current stamped on the CT nameplate (e.g. the '5' in '2000:5'). "
@@ -142,8 +89,117 @@ with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False)
         f"Terminal: **{ct_ratio_T:.0f} : {ct_secondary_rating:.0f}** "
         f"(= {ct_ratio_T/ct_secondary_rating:.1f}:1)"
     )
+    i_rated_sec_N_calc = (mva * 1000.0 / (1.7320508 * kv)) / (ct_ratio_N / ct_secondary_rating) if kv > 0 and ct_ratio_N > 0 else 0.0
+    i_rated_sec_T_calc = (mva * 1000.0 / (1.7320508 * kv)) / (ct_ratio_T / ct_secondary_rating) if kv > 0 and ct_ratio_T > 0 else 0.0
+    calc_mismatch = mismatch_ratio_pct([i_rated_sec_N_calc, i_rated_sec_T_calc])
+    st.metric("CT mismatch between sides", f"{calc_mismatch:.2f}%" if calc_mismatch is not None else "—")
+    if calc_mismatch is not None:
+        if calc_mismatch < 0.5:
+            st.success("Neutral and Terminal CT ratios match — as expected (this relay has no CT-matching tap to absorb a mismatch, unlike the transformer relays).")
+        else:
+            st.warning(f"{calc_mismatch:.2f}% mismatch — this relay has no CT-matching tap, so the Neutral and Terminal CT ratios should normally be identical. Recheck the ratios above unless this is intentional.")
 
+suggestion = suggest_bias_settings(calc_mismatch or 0.0, num_windings=2)
+
+with st.container(border=True):
+    st.markdown("**Protection Characteristic**")
+    target_amps = None
+    i_unrestrained_value = None
+
+    if current_mode == "GENERATOR_LEGACY":
+        p1c1, p1c2 = st.columns(2)
+        with p1c1:
+            target_amps = slider_with_exact_input(
+                st, "Target / Seal-in Pickup (Secondary Amps)", 0.1, 1.0, p_data["target_amps"], 0.05,
+                key=f"{current_mode}__{selected_preset}__target_amps",
+                help_text="Factory default is 0.2 A. Per GEK-34124E, it is NOT recommended to set below "
+                           "0.1 A, and the rear contact may need up to ~0.25 A to close — verify the actual "
+                           "closing current during commissioning."
+            )
+            if target_amps < 0.1:
+                st.warning("Below GEK-34124E's recommended 0.1A floor — the manual advises against this.")
+            elif target_amps < 0.25:
+                st.info("Within range, but the rear contact may need up to ~0.25A to close — verify the actual closing current during commissioning.")
+            else:
+                st.success("Clears GEK-34124E's recommended floor and the ~0.25A closing-current guidance.")
+        with p1c2:
+            slope_1 = slider_with_exact_input(
+                st, "Restraint Slope (%)", 5, 30, p_data["s1"], 1,
+                key=f"{current_mode}__{selected_preset}__slope1",
+                help_text="Confirmed by GEK-34124E's Principles of Operation: this relay balances when "
+                           "the differential current is 10% of the SMALLER of the two terminal currents, "
+                           "up to approximately rated current. This is fixed by the relay's internal "
+                           "design, not a field setting — the slider exists here only to explore 'what if' "
+                           "sensitivity; leave at 10% to match the actual hardware."
+            )
+            st.caption("Fixed by the relay's internal design, not a tunable field setting — no improve/worsen comment applies here.")
+        i_pickup = 0.0
+        slope_2 = slope_1
+        break_1, break_2 = 1e6, 1e6
+
+    else:
+        p1c1, p1c2 = st.columns(2)
+        with p1c1:
+            i_pickup = slider_with_exact_input(
+                st, "Pickup (pu)", 0.05, 1.00, p_data["pickup"], 0.01,
+                key=f"{current_mode}__{selected_preset}__pickup",
+                help_text="G60 manual range: 0.050 to 1.00 pu, step 0.01"
+            )
+            # Unlike the transformer relays, generator differential pickup is conventionally set
+            # LOW (5-10% typical) since a healthy generator zone has no equivalent to a
+            # transformer's inherent tap/turns-ratio mismatch to guard against - the 20%-floor
+            # heuristic used elsewhere doesn't apply here, so this is informational, not a
+            # pass/fail check, unless the CT ratios above are actually mismatched.
+            if calc_mismatch is not None and calc_mismatch >= 0.5 and i_pickup * 100 < suggestion["min_operate_pct"]:
+                st.warning(f"CT ratios above are mismatched ({calc_mismatch:.2f}%) and Pickup is below the {suggestion['min_operate_pct']:.0f}% floor that would compensate for it — raises the risk of a nuisance trip.")
+            else:
+                st.info("Lower = more sensitive to small internal faults, but more exposed to CT/relay noise at light load. Generator differential pickup is conventionally set low (5-10% typical) since there's no CT mismatch to guard against when the ratios above match.")
+            slope_1 = slider_with_exact_input(
+                st, "Slope 1 (%)", 1, 100, p_data["s1"], 1,
+                key=f"{current_mode}__{selected_preset}__slope1",
+                help_text="G60 manual range: 1 to 100%, step 1"
+            )
+            if calc_mismatch is not None and calc_mismatch >= 0.5 and slope_1 < suggestion["bias_pct"]:
+                st.warning(f"CT ratios above are mismatched ({calc_mismatch:.2f}%) and Slope 1 is below the {suggestion['bias_pct']:.0f}% floor that would compensate for it — raises the risk of a nuisance trip.")
+            else:
+                st.info("Higher = more secure against nuisance trips, but less sensitive to small internal faults.")
+        with p1c2:
+            break_1 = slider_with_exact_input(
+                st, "Break 1 (pu)", 1.00, 1.50, p_data["break_1"], 0.01,
+                key=f"{current_mode}__{selected_preset}__break1",
+                help_text="G60 manual range: 1.00 to 1.50 pu, step 0.01. Restraint stays flat at Pickup below this point."
+            )
+            slope_2 = slider_with_exact_input(
+                st, "Slope 2 (%)", 1, 100, p_data["s2"], 1,
+                key=f"{current_mode}__{selected_preset}__slope2",
+                help_text="G60 manual range: 1 to 100%, step 1"
+            )
+            break_2 = slider_with_exact_input(
+                st, "Break 2 (pu)", 1.50, 30.00, p_data["break_2"], 0.01,
+                key=f"{current_mode}__{selected_preset}__break2",
+                help_text="G60 manual range: 1.50 to 30.00 pu, step 0.01. Slope 2 applies above this point."
+            )
+            st.caption("Break points/Slope 2 shape the curve above rated current — a through-fault/inrush coordination study is needed to tune these, not a rule-of-thumb check.")
+
+        enable_unrestrained = st.checkbox(
+            "Enable Unrestrained High-Set Element",
+            value=False,
+            help="Only enable this if your G60 manual confirms a separate unrestrained/high-set "
+                 "differential element with its own pickup setting. Left unconfirmed by default."
+        )
+        if enable_unrestrained:
+            i_unrestrained_value = slider_with_exact_input(
+                st, "Unrestrained High-Set Pickup (pu)", 3.0, 30.0, 8.0, 0.5,
+                key=f"{current_mode}__{selected_preset}__unrestrained"
+            )
+            # This element's presence isn't confirmed against the real G60 settings (see the
+            # checkbox help text above), so there's no documented value to check against -
+            # informational only, not a pass/fail claim.
+            st.caption("Higher = more secure against inrush/CT saturation misoperation, but needs a larger internal fault to trip instantaneously. Confirm this element and its setting against the actual G60 configuration before relying on it.")
+
+with st.container(border=True):
     st.markdown("**Wiring & Convention**")
+    st.caption("Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen comment applies here.")
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
@@ -168,29 +224,21 @@ with st.sidebar.expander("Advanced Settings (CT Spec & Wiring)", expanded=False)
             help="OPPOSITE: standard facing inwards. SAME: facing identical directions."
         )
 
-with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
-    st.caption(
-        "Derives a starting point FROM the ratings above, the same direction the settings docs' own "
-        "worked examples work in — CT-matching is exact math; Bias/Pickup/HOC are rule-of-thumb "
-        "starting points that still need engineering review."
-    )
-    i_rated_sec_N_calc = (mva * 1000.0 / (1.7320508 * kv)) / (ct_ratio_N / ct_secondary_rating) if kv > 0 and ct_ratio_N > 0 else 0.0
-    i_rated_sec_T_calc = (mva * 1000.0 / (1.7320508 * kv)) / (ct_ratio_T / ct_secondary_rating) if kv > 0 and ct_ratio_T > 0 else 0.0
-    calc_mismatch = mismatch_ratio_pct([i_rated_sec_N_calc, i_rated_sec_T_calc])
-    cc1, cc2 = st.columns(2)
-    cc1.metric("Neutral CT secondary A @ rated", f"{i_rated_sec_N_calc:.3f} A")
-    cc2.metric("Terminal CT secondary A @ rated", f"{i_rated_sec_T_calc:.3f} A")
-    st.metric("CT mismatch between sides", f"{calc_mismatch:.2f}%" if calc_mismatch is not None else "—",
-              help="Unlike the tap-matching transformer relays, this relay has no CT-matching tap — "
-                   "the two sides' CT ratios should be chosen equal in the first place. A nonzero "
-                   "mismatch here just means the Neutral and Terminal CT ratios you entered aren't "
-                   "identical; recheck them if this isn't intentional.")
-    suggestion = suggest_bias_settings(calc_mismatch or 0.0, num_windings=2)
-    st.markdown(
-        f"**Suggested starting point:** Pickup/Min Operate ≈ **{suggestion['min_operate_pct']:.0f}%**, "
-        f"Bias/Slope 1 ≈ **{suggestion['bias_pct']:.0f}%**, unrestrained HOC ≈ **{suggestion['hoc_multiple']:.0f}x** tap current."
-    )
-    st.caption(suggestion["basis"])
+if current_mode == "GENERATOR_LEGACY":
+    all_clear = calc_mismatch is not None and calc_mismatch < 0.5 and target_amps >= 0.1
+else:
+    # Pickup/Slope 1 only count against "all clear" if the CT ratios are actually mismatched -
+    # a low pickup is normal/desired for a generator differential with matched CTs, see the
+    # comment next to those fields above.
+    all_clear = calc_mismatch is not None and calc_mismatch < 0.5
+    if calc_mismatch is not None and calc_mismatch >= 0.5:
+        all_clear = all_clear and i_pickup * 100 >= suggestion["min_operate_pct"] and slope_1 >= suggestion["bias_pct"]
+if calc_mismatch is None:
+    st.info("Overall status: enter the CT ratios above to compute a status.")
+elif all_clear:
+    st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
+else:
+    st.warning("Overall status: one or more settings above need review before this is applied.")
 
 _generator_project_settings = {"mva": mva, "kv": kv, "ct_n": ct_ratio_N, "ct_t": ct_ratio_T, "mode": current_mode, "calc_mismatch_pct": calc_mismatch}
 if current_mode == "GENERATOR_LEGACY":
