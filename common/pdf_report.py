@@ -272,11 +272,11 @@ def generate_motor_pdf_report(unit_name, relay_obj, eval_result, test_current_am
 def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, unbal_eval,
                                    test_current_amps, ground_current_amps, unbalance_pct,
                                    approval=None):
-    """GE 869 MPR-only motor report (Primary Air Fan / FD Fan) - unlike the ID Fan's
-    IFC66KD2A + GE 869 report, these motors have no discrete 50/50/51 electromechanical
-    relay or Locked Rotor Current/Safe Stall Time data, so there is no starting-margin
-    coordination section here - only what the GE 869 MPR settings data actually covers."""
-    report_title = f"Fan Motor Protection (GE 869 MPR) Evaluation Report - {unit_name}"
+    """SR469 MPR motor report (Primary Air Fan / FD Fan) - covers only what this app
+    models for these motors (the SR469 static MPR); a separate discrete 50/50/51
+    electromechanical relay documented in these motors' settings docs is not covered
+    here."""
+    report_title = f"Fan Motor Protection (SR469 MPR) Evaluation Report - {unit_name}"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
     motor_rows = [
@@ -288,7 +288,7 @@ def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, un
 
     relay_rows = [
         ["Parameter", "Value"],
-        ["Relay Type", "GE Multilin 869 MPR"],
+        ["Relay Type", "Multilin SR469 MPR"],
         ["Overload Pickup", f"{relay_obj.overload_pickup_pct:.0f}% FLA"],
         ["Curve Multiplier (CM)", f"{relay_obj.curve_multiplier:.1f}"],
         ["Instantaneous Pickup", f"{relay_obj.inst_pickup_amps:.0f} A primary"],
@@ -308,7 +308,7 @@ def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, un
         ["Current Unbalance (%)", f"{unbalance_pct:.1f}", "—", "—", unbal_eval["status"]],
     ]
 
-    sections = [("Motor Data", motor_rows), ("Relay Parameters (GE 869 MPR)", relay_rows)]
+    sections = [("Motor Data", motor_rows), ("Relay Parameters (SR469 MPR)", relay_rows)]
 
     if approval:
         approval_rows = [

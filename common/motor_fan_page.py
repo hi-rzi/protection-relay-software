@@ -1,10 +1,17 @@
 """
 Shared render logic for the 6.9kV combustion-air fan motors (Primary Air
-Fan, Forced Draft Fan) - both use the identical GE 869 MPR-only protection
-scheme (no discrete 50/50/51 electromechanical relay), so this one module
-is called by two thin, separate view pages (views/motor_pa_fan.py and
-views/motor_fd_fan.py) instead of duplicating ~500 lines twice. Each page
-gets its own nav entry, title, and settings, but shares this logic.
+Fan, Forced Draft Fan) - both use a Multilin SR469 static motor protection
+relay (confirmed by both fans' own settings docs; NOT a GE 869 - the two
+share the same "Standard"/TCU thermal-curve architecture, which is why the
+Motor869Relay engine is reused here, but the settings sheet and labels
+below say SR469 to match the real installed hardware). Both fans' source
+docs also describe a separate discrete 50/50/51 electromechanical relay
+(IFC66KD2A) plus a backup instantaneous relay, mirroring the ID Fan's own
+retrofit relay stack - not modeled here yet (flagged, not fabricated).
+This one module is called by two thin, separate view pages
+(views/motor_pa_fan.py and views/motor_fd_fan.py) instead of duplicating
+~500 lines twice. Each page gets its own nav entry, title, and settings,
+but shares this logic.
 """
 import datetime
 import json
@@ -23,15 +30,17 @@ from common.project_state import with_restored_preset, record_equipment_settings
 from engines.motor_869 import Motor869Relay
 
 # ---------------------------------------------------------------------------
-# Presets — from Data.xlsx "Motor Data" sheet (Unit 7 & 8, 6.9kV section).
-# Settings are identical across Unit 7/8 and the A/B duplicate motors within
-# each fan type, so one preset per fan type covers all four physical units.
-# No Locked Rotor Current or Safe Stall Time is recorded for these motors in
-# that sheet (unlike the ID Fan's older settings doc), so there is no
-# starting/stall margin check here - only what this data actually supports.
-# "Short Circuit Pick-up" is given as "X CT" - confirmed to mean a multiple
-# of the CT SECONDARY rating (e.g. 9.7 x CT on a 300/5 CT = 9.7 x 5 = 48.5A
-# secondary), which is why Motor869Relay takes inst_pickup_multiple_of_ct.
+# Presets — base values from Data.xlsx "Motor Data" sheet (Unit 7 & 8, 6.9kV
+# section), cross-checked and corrected against each fan's own settings
+# calculation document where available (PA Fan: "PAFAN MOTOR PROTECTION.pdf"
+# Section 5.3; FD Fan: "FDFAN MOTOR PROTECTION.pdf" Section 5.6.3). Settings
+# are identical across Unit 7/8 and the A/B duplicate motors within each fan
+# type, so one preset per fan type covers all four physical units.
+# "Short Circuit Pick-up" / instantaneous pickup is given as "X CT" -
+# confirmed (via user-provided chat + both fans' own settings docs) to mean
+# a multiple of the CT PRIMARY rating (e.g. PA Fan: 6.5 x a 300/5 CT =
+# 6.5 x 300 = 1950A primary, ~200% of locked rotor current), which is why
+# Motor869Relay takes inst_pickup_multiple_of_ct and multiplies by ct_ratio.
 # ---------------------------------------------------------------------------
 FAN_TYPES = {
     "Primary Air (PA) Fan": {
@@ -43,17 +52,19 @@ FAN_TYPES = {
         ),
         "motor_tag": "PA FAN",
         "presets": {
-            "POMI PA Fan 7A/7B/8A/8B - 1960kW": {
+            "POMI PA Fan 7A/7B/8A/8B - 1660kW": {
                 "motor_fla": 173, "ct_ratio": 300, "ct_sec": 5.0,
                 "ground_ct_ratio": 50, "ground_ct_sec": 5.0,
-                # NOTE: Curve Multiplier is an UNVERIFIED default (4.0) - no settings
-                # calculation document has been found for the Primary Air Fan (unlike
-                # the FD Fan, confirmed at CM=6 via FDFAN MOTOR PROTECTION.pdf's own
-                # worked examples). Confirm against the real PA Fan relay/settings doc
-                # before relying on this curve for anything but exploration.
-                "overload_pickup_pct": 115.0, "curve_multiplier": 4.0,
-                "inst_pickup_multiple_of_ct": 9.7, "inst_delay_ms": 60.0,
+                # Curve Multiplier confirmed at CM=5 (not the earlier 4.0 guess) by solving
+                # the Standard-curve formula against PAFAN MOTOR PROTECTION.pdf's own two
+                # worked points: 5.83xFLA -> 13.4s and 5.10xFLA -> 17.5s both give CM~5.0.
+                "overload_pickup_pct": 115.0, "curve_multiplier": 5.0,
+                # Instantaneous pickup corrected to 6.5x CT primary (~1950A, ~200% locked
+                # rotor current, per the doc's own calc) - the earlier 9.7 was an unconfirmed
+                # carryover from Data.xlsx and gave 2910A, well above what the doc specifies.
+                "inst_pickup_multiple_of_ct": 6.5, "inst_delay_ms": 60.0,
                 "mech_jam_pct": 150.0, "mech_jam_delay_s": 1.0,
+                # Confirmed exactly as-is against the doc's own Current Unbalance (46) calc.
                 "unbal_trip_pct": 36.0, "unbal_trip_delay_s": 60.0,
                 "unbal_alarm_pct": 15.0, "unbal_alarm_delay_s": 10.0,
                 "gf_pickup_frac": 0.1, "gf_delay_ms": 60.0,
@@ -63,6 +74,14 @@ FAN_TYPES = {
                 "of_hz": 51.5, "uf_hz": 48.5,
                 "underpower_kw": 350.0, "underpower_delay_s": 10.0,
                 "starts_per_hour": 2, "time_between_starts_min": 45,
+                # Starting/stall data (from PAFAN MOTOR PROTECTION.pdf) - only the HOT safe
+                # stall time is documented (hot/cold ratio = 1.0 per the doc's own statement).
+                # 90% voltage figures are also documented (882A / 17.3s / 18s) but omitted
+                # here to match this app's 100%/80% two-level model (same simplification
+                # already used for the FD Fan).
+                "locked_rotor_amps_100": 1009.0, "locked_rotor_amps_80": 776.0,
+                "accel_time_100": 13.2, "accel_time_80": 23.8,
+                "safe_stall_100": 14.2, "safe_stall_80": 23.8,
             },
             "Custom Profile": {
                 "motor_fla": 100, "ct_ratio": 100, "ct_sec": 5.0,
@@ -79,6 +98,9 @@ FAN_TYPES = {
                 "of_hz": 51.5, "uf_hz": 48.5,
                 "underpower_kw": 100.0, "underpower_delay_s": 10.0,
                 "starts_per_hour": 2, "time_between_starts_min": 45,
+                "locked_rotor_amps_100": 600.0, "locked_rotor_amps_80": 460.0,
+                "accel_time_100": 3.0, "accel_time_80": 5.0,
+                "safe_stall_100": 15.0, "safe_stall_80": 25.0,
             },
         },
     },
@@ -167,14 +189,6 @@ def render_fan_motor_page(fan_type):
     )
     p_data = presets_with_project[selected_preset]
 
-    if project_key == "pa_fan" and selected_preset != "Custom Profile":
-        st.info(
-            "**Curve Multiplier (CM) is an unverified default (4.0)** — no settings calculation "
-            "document has been located yet for the Primary Air Fan, unlike the FD Fan, whose CM=6 "
-            "was confirmed by reproducing its settings doc's own worked examples exactly. Confirm "
-            "the real PA Fan curve setting before relying on this for anything but exploration."
-        )
-
     st.sidebar.header("Motor Data & CT Spec")
     motor_fla = st.sidebar.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(p_data["motor_fla"]), step=1.0, key=f"{project_key}__fla")
     ct_ratio = st.sidebar.number_input("CT Ratio (Primary A, e.g. 300 in '300:5')", min_value=1.0, value=float(p_data["ct_ratio"]), key=f"{project_key}__ct_ratio")
@@ -182,13 +196,12 @@ def render_fan_motor_page(fan_type):
     st.sidebar.caption(f"Effective ratio → **{ct_ratio:.0f}:{ct_secondary_rating:.0f}** (= {ct_ratio/ct_secondary_rating:.1f}:1)")
     ground_ct_ratio = st.sidebar.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["ground_ct_ratio"]), key=f"{project_key}__gct_ratio")
 
-    # Starting/Stall data only exists for the FD Fan (FDFAN MOTOR PROTECTION.pdf) - no
-    # equivalent settings document has been found for the Primary Air Fan, so these
-    # stay None there and the TCC Curve tab's safe-stall overlay is skipped for it.
+    # Starting/Stall data exists for both fans now (PAFAN / FDFAN MOTOR PROTECTION.pdf) -
+    # stays None only for a Custom Profile that hasn't supplied it.
     locked_rotor_amps_100 = locked_rotor_amps_80 = None
     accel_time_100 = accel_time_80 = None
     safe_stall_100 = safe_stall_80 = None
-    if project_key == "fd_fan":
+    if project_key in ("fd_fan", "pa_fan"):
         with st.sidebar.expander("Motor Starting & Safe Stall Data", expanded=False):
             locked_rotor_amps_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_100"]), step=1.0, key=f"{project_key}__lrc_100")
             locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_80"]), step=1.0, key=f"{project_key}__lrc_80")
@@ -198,15 +211,15 @@ def render_fan_motor_page(fan_type):
                 help="Only the hot safe stall time is documented for this motor (hot/cold ratio = 1.0 per the settings doc).")
             safe_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=p_data["safe_stall_80"], step=0.1, key=f"{project_key}__stall_80")
 
-    with st.sidebar.expander("Advanced Settings (GE 869 MPR)", expanded=False):
+    with st.sidebar.expander("Advanced Settings (SR469 MPR)", expanded=False):
         st.markdown("**Overload (Thermal Model)**")
         overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, value=p_data["overload_pickup_pct"], step=1.0, key=f"{project_key}__ovl_pct")
         curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, value=p_data["curve_multiplier"], step=0.5, key=f"{project_key}__cm",
             help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage.")
 
         st.markdown("**Instantaneous (Short Circuit)**")
-        inst_pickup_multiple_of_ct = st.number_input("Instantaneous Pickup (x CT secondary)", min_value=1.0, max_value=20.0, value=p_data["inst_pickup_multiple_of_ct"], step=0.1, key=f"{project_key}__inst_ct",
-            help="Multiple of the CT's secondary rating (e.g. 9.7 x a 300:5 CT = 9.7 x 5A secondary = 9.7 x 300A primary).")
+        inst_pickup_multiple_of_ct = st.number_input("Instantaneous Pickup (x CT primary)", min_value=1.0, max_value=20.0, value=p_data["inst_pickup_multiple_of_ct"], step=0.1, key=f"{project_key}__inst_ct",
+            help="Multiple of the CT's primary rating (e.g. 6.5 x a 300:5 CT = 6.5 x 300A primary = 1950A).")
         inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, value=p_data["inst_delay_ms"], step=10.0, key=f"{project_key}__inst_delay")
 
         st.markdown("**Ground Fault**")
@@ -273,7 +286,7 @@ def render_fan_motor_page(fan_type):
             purpose_text=fan_data["purpose"],
             sld_image_name="motor_idfan.png",
             sld_fallback_svg=motor_overcurrent_svg(
-                ct_ratio, ct_secondary_rating, tag="869 MPR",
+                ct_ratio, ct_secondary_rating, tag="SR469 MPR",
                 bus_label="6.9kV Switchgear Bus", motor_label=fan_data["motor_tag"],
             ),
             include_thermal_replica=True,
@@ -330,7 +343,7 @@ def render_fan_motor_page(fan_type):
                 mime="application/pdf",
             )
 
-            render_settings_sheet(st, "GE Multilin 869", [
+            render_settings_sheet(st, "Multilin SR469", [
                 ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Ground CT Ratio", f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Overload Pickup (% FLA)", f"{overload_pickup_pct:.0f}"),
@@ -446,7 +459,7 @@ def render_fan_motor_page(fan_type):
             ))
 
         fig.update_layout(
-            title="GE 869 Overload Trip Time vs. Multiple of FLA",
+            title="SR469 Overload Trip Time vs. Multiple of FLA",
             xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
             yaxis_type="log", template="plotly_white", height=450,
         )
@@ -489,7 +502,7 @@ def render_fan_motor_page(fan_type):
         ])
 
         st.markdown("---")
-        st.markdown("#### Other GE 869 Functions — Settings Reference (not live-simulated)")
+        st.markdown("#### Other SR469 Functions — Settings Reference (not live-simulated)")
         st.dataframe(pd.DataFrame([
             {"Function": "Overload Alarm", "Setting": f"{overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
             {"Function": "Mechanical Jam Trip", "Setting": f"{mech_jam_pct:.0f}% FLA, {mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
