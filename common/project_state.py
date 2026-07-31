@@ -132,3 +132,64 @@ def project_summary():
         health_label = {"OK": "✅ OK", "REVIEW": "⚠️ Review", "N/A": "—"}[health]
         rows.append({"Equipment": label, "Status": "Configured", "Summary": summary, "Health": health_label, "Detail": detail})
     return rows
+
+
+def differential_zone_coordination():
+    """Cross-checks CT ratios that, per the Overall GSUT-GEN relay's own settings
+    document (Transformer Diff Setting - Overall GSUT-GEN.pdf, Section 5.10), are the
+    SAME physical CT feeding two different relays at once: the Generator terminal CT
+    (feeds both 87G and the Overall relay's "Generator" input) and the GSUT HV-side CT
+    (feeds both the GSUT relay and the Overall relay's "GSUT HV" input). A mismatch
+    here means one of the two pages has a stale or incorrectly-entered CT ratio, since
+    both pages are describing the same physical instrument transformer.
+
+    Also returns the Overall relay's documented backup zone coverage. Per the same
+    document, the zone "includes the Generator, the Generator Step-Up Transformer, and
+    the bus to the Unit Auxiliary Transformer" - the Excitation Transformer is not one
+    of its three restraint inputs, so it has no backup differential zone recorded in
+    this app. The Unit Auxiliary Transformer's own differential relay (87AT7/87AT8)
+    uses a separate, independently-sized 3000/5 CT from the 24000/5 CT feeding its
+    Overall backup input (confirmed against the source document) - that is deliberate
+    CT independence between primary and backup protection, not a data error, so those
+    two CT ratios are intentionally NOT compared against each other here.
+
+    This is NOT a full coordination/grading study - it only checks consistency of data
+    already entered across pages in this session, plus documents zone coverage as
+    stated in the Overall relay's own settings document."""
+    proj = _project()["project_equipment"]
+    generator = proj.get("generator")
+    gsut = proj.get("gsut")
+    overall = proj.get("overall")
+
+    shared_ct_checks = []
+    if generator and overall:
+        gen_ct, overall_ct = generator.get("ct_t"), overall.get("ct_gen")
+        if gen_ct is not None and overall_ct is not None:
+            shared_ct_checks.append({
+                "Shared CT": "Generator terminal CT (feeds both 87G and the Overall relay's \"Generator\" input)",
+                "Consistent": "✅ Match" if gen_ct == overall_ct else "⚠️ MISMATCH — review",
+                "Generator page": f"{gen_ct:.0f}:5",
+                "Overall page": f"{overall_ct:.0f}:5",
+            })
+    if gsut and overall:
+        gsut_ct, overall_ct = gsut.get("ct_hv"), overall.get("ct_hv")
+        if gsut_ct is not None and overall_ct is not None:
+            shared_ct_checks.append({
+                "Shared CT": "GSUT HV-side CT (feeds both the GSUT relay and the Overall relay's \"GSUT HV\" input)",
+                "Consistent": "✅ Match" if gsut_ct == overall_ct else "⚠️ MISMATCH — review",
+                "GSUT page": f"{gsut_ct:.0f}:5",
+                "Overall page": f"{overall_ct:.0f}:5",
+            })
+
+    coverage_rows = [
+        {"Equipment": "Generator", "Primary Differential": "87G",
+         "Backup Zone": "✅ Overall (87OA7/87OA8)"},
+        {"Equipment": "Generator Step-Up Transformer (GSUT)", "Primary Differential": "GSUT relay",
+         "Backup Zone": "✅ Overall (87OA7/87OA8)"},
+        {"Equipment": "Unit Auxiliary Transformer", "Primary Differential": "87AT7/87AT8",
+         "Backup Zone": "✅ Overall (87OA7/87OA8) — on a separate, independently-sized CT (deliberate CT independence, not a mismatch)"},
+        {"Equipment": "Excitation Transformer (EXCT)", "Primary Differential": "EXCT relay",
+         "Backup Zone": "⚠️ None recorded — the Overall relay's documented zone (Generator + GSUT + UAT bus) does not include EXCT"},
+    ]
+
+    return shared_ct_checks, coverage_rows

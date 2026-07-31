@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from common.project_state import EQUIPMENT_LABELS, project_summary
+from common.project_state import EQUIPMENT_LABELS, project_summary, differential_zone_coordination
 
 st.title("Project")
 st.caption(
@@ -71,6 +71,23 @@ st.caption(
     "the full picture behind any ⚠️ Review flag."
 )
 st.dataframe(pd.DataFrame(project_summary()), use_container_width=True, hide_index=True)
+
+st.markdown("### Protection Zone Coordination Check")
+st.caption(
+    "Checks the Generator, GSUT, and Overall GSUT-GEN pages against each other — not a full "
+    "grading/coordination study, just (1) CT ratios that the Overall relay's own settings "
+    "document confirms are the SAME physical CT feeding two relays at once, and (2) which "
+    "equipment has a documented backup differential zone. Visit the Generator, GSUT, and "
+    "Overall pages at least once in this session for this section to populate."
+)
+shared_ct_checks, coverage_rows = differential_zone_coordination()
+if shared_ct_checks:
+    st.markdown("**Shared CT consistency**")
+    st.dataframe(pd.DataFrame(shared_ct_checks), use_container_width=True, hide_index=True)
+else:
+    st.caption("Visit the Generator, GSUT, and Overall GSUT-GEN pages to populate this check.")
+st.markdown("**Backup differential zone coverage** (per Transformer Diff Setting - Overall GSUT-GEN.pdf, Section 5.10)")
+st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
 
 st.markdown("### Save Project")
 project_export = {
