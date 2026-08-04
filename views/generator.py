@@ -14,6 +14,7 @@ from common.project_state import with_restored_preset, get_restorable_preset, re
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from engines.generator import AdvancedDifferentialRelay
+from engines.fault_current import three_phase_fault_current, relay_secondary_at_fault
 
 st.title("Enterprise Generator Differential Protection (87G) Suite")
 st.caption("Active Phase Vector Analysis, GE G60 Dual-Breakpoint Curve Engine & Secondary Injection Testing")
@@ -33,12 +34,27 @@ else:
 
 PRESETS = {
     "GENERATOR": {
-        "POMI Unit 7 & 8 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "pickup": 0.06, "s1": 20, "break_1": 1.15, "s2": 80, "break_2": 8.00},
-        "Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "pickup": 0.1, "s1": 20, "break_1": 1.15, "s2": 60, "break_2": 6.00},
+        "POMI Unit 7 & 8 - 846 MVA": {
+            "mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "pickup": 0.06, "s1": 20, "break_1": 1.15, "s2": 80, "break_2": 8.00,
+            # Fault current analysis basis - Generator Diff setting.pdf Section 5.1.1
+            # Calculation/Discussion: X1G=0.155pu, 1.73x asymmetry, 186kA grid-fed
+            # through-fault via GSUT, 84A CT/relay secondary withstand limit.
+            "x1_pu": 0.155, "asym_factor": 1.73, "external_fault_ka": 186.0, "ct_withstand_a": 84.0,
+        },
+        "Custom Profile": {
+            "mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "pickup": 0.1, "s1": 20, "break_1": 1.15, "s2": 60, "break_2": 6.00,
+            "x1_pu": 0.15, "asym_factor": 1.73, "external_fault_ka": 0.0, "ct_withstand_a": 40.0,
+        },
     },
     "GENERATOR_LEGACY": {
-        "POMI Unit 7 - 846 MVA": {"mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "target_amps": 0.2, "s1": 10},
-        "Custom Profile": {"mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "target_amps": 0.2, "s1": 10},
+        "POMI Unit 7 - 846 MVA": {
+            "mva": 846.231, "kv": 23.0, "ct_n": 24000, "ct_t": 24000, "target_amps": 0.2, "s1": 10,
+            "x1_pu": 0.155, "asym_factor": 1.73, "external_fault_ka": 186.0, "ct_withstand_a": 84.0,
+        },
+        "Custom Profile": {
+            "mva": 10.0, "kv": 11.0, "ct_n": 100, "ct_t": 100, "target_amps": 0.2, "s1": 10,
+            "x1_pu": 0.15, "asym_factor": 1.73, "external_fault_ka": 0.0, "ct_withstand_a": 40.0,
+        },
     },
 }
 
@@ -257,9 +273,10 @@ relay = AdvancedDifferentialRelay(
     target_amps=target_amps
 )
 
-tab_theory, tab1, tab2, tab3 = st.tabs([
+tab_theory, tab1, tab2, tab3, tab_fault = st.tabs([
     "Theory", "Live Vector Simulation",
-    "Commissioning & Injection Tool", "Test Point Verification & Curve"
+    "Commissioning & Injection Tool", "Test Point Verification & Curve",
+    "Fault Current Analysis",
 ])
 
 with tab_theory:
@@ -760,3 +777,69 @@ with tab3:
     render_historian_overlay(st, "generator", reference_lines=[
         ("Generator Rated (A)", relay.i_rated_pri),
     ])
+
+# ---------------------------------------------------------------------------
+# TAB — Fault Current Analysis
+# ---------------------------------------------------------------------------
+with tab_fault:
+    st.subheader("Fault Current Analysis")
+    st.write(
+        "Checks the 87G CTs against the maximum current they'll actually see for a real fault, "
+        "using the same method as the settings document's own worked example — not just the "
+        "relay's own characteristic curve in isolation."
+    )
+    st.caption(
+        "This uses only the generator's own positive-sequence reactance (a simple Thevenin "
+        "source at 1.0pu voltage) - it is NOT a full short-circuit study (no network reduction, "
+        "no negative/zero-sequence networks, no other in-feeds). The external through-fault "
+        "figure below is a reference value from the plant's own fault study, not independently "
+        "computed by this app."
+    )
+
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        st.markdown("**Generator's own contribution to an internal fault**")
+        x1_pu = st.number_input(
+            "Positive Sequence Reactance, X1G (pu)", min_value=0.01, value=p_data.get("x1_pu", 0.155), step=0.005, format="%.3f",
+            key=f"{current_mode}__{selected_preset}__x1_pu",
+            help="Subtransient/transient reactance of the generator, on its own MVA base — from the machine's own datasheet."
+        )
+        asym_factor = st.number_input(
+            "Asymmetry Factor", min_value=1.0, max_value=2.0, value=p_data.get("asym_factor", 1.73), step=0.01,
+            key=f"{current_mode}__{selected_preset}__asym_factor",
+            help="Multiplier for the worst-case DC-offset fault current, assuming the fault occurs at a voltage zero-crossing (1.73x is the settings doc's own assumption)."
+        )
+        fault_calc = three_phase_fault_current(mva, kv, x1_pu, asym_factor)
+        st.metric("Symmetrical Fault Current", f"{fault_calc['i_fault_sym_amps']:,.0f} A ({fault_calc['i_fault_pu']:.2f} pu)")
+        st.metric("Asymmetrical Fault Current (worst case)", f"{fault_calc['i_fault_asym_amps']:,.0f} A")
+        relay_sec_internal = relay_secondary_at_fault(fault_calc["i_fault_asym_amps"], ct_ratio_T, ct_secondary_rating)
+        st.metric("Relay Secondary Current at Max Fault", f"{relay_sec_internal:.1f} A")
+
+    with fc2:
+        st.markdown("**External (through-fault) contribution from upstream**")
+        external_fault_ka = st.number_input(
+            "Maximum Through-Fault Current (kA primary)", min_value=0.0, value=p_data.get("external_fault_ka", 0.0), step=1.0,
+            key=f"{current_mode}__{selected_preset}__ext_fault",
+            help="Maximum fault current that can be fed INTO this zone from elsewhere in the system (e.g. from the grid, through the step-up transformer, for a fault on the far side) - from the plant's own fault study, not computed by this app."
+        )
+        relay_sec_external = relay_secondary_at_fault(external_fault_ka * 1000.0, ct_ratio_T, ct_secondary_rating) if external_fault_ka > 0 else None
+        if relay_sec_external is not None:
+            st.metric("Relay Secondary Current at Max Through-Fault", f"{relay_sec_external:.1f} A")
+        else:
+            st.caption("Enter a through-fault current above to check it — left at 0 for a Custom Profile until you supply your own system's value.")
+
+    st.markdown("---")
+    ct_withstand_a = st.number_input(
+        "CT / Relay Secondary Current Withstand Limit (A)", min_value=1.0, value=p_data.get("ct_withstand_a", 84.0), step=1.0,
+        key=f"{current_mode}__{selected_preset}__ct_withstand",
+        help="The maximum secondary current the CT and relay input circuit can carry without excessive voltage/saturation, per the relay manufacturer's burden calculation (84A per this generator's own settings doc)."
+    )
+    if relay_sec_internal <= ct_withstand_a:
+        st.success(f"Internal-fault relay secondary current ({relay_sec_internal:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
+    else:
+        st.warning(f"Internal-fault relay secondary current ({relay_sec_internal:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
+    if relay_sec_external is not None:
+        if relay_sec_external <= ct_withstand_a:
+            st.success(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
+        else:
+            st.warning(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
