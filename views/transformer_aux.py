@@ -54,64 +54,56 @@ selected_preset = st.sidebar.selectbox(
 p_data = PRESETS_WITH_PROJECT[selected_preset]
 is_custom = selected_preset == "Custom Profile"
 
-st.sidebar.header("Protection Characteristic")
-bias_pct = slider_with_exact_input(
-    st.sidebar, "Bias, τ (%)", 5, 60, p_data["bias"], 1,
-    key=f"{selected_preset}__bias",
-    help_text="Must exceed the sum of tap-changer error, CT error, relay operating error "
-               "(10% of bias) and mismatch — see Calculation/Discussion in the settings doc."
-)
-min_operate_pct = slider_with_exact_input(
-    st.sidebar, "Minimum Operate (%)", 5, 60, p_data["min_operate"], 1,
-    key=f"{selected_preset}__min_operate",
-    help_text="Minimum differential pickup at zero restraint current."
-)
-hoc_multiple = slider_with_exact_input(
-    st.sidebar, "HOC (x tap current)", 2.0, 20.0, float(p_data["hoc"]), 0.5,
-    key=f"{selected_preset}__hoc",
-    help_text="Unrestrained instantaneous element. Set high enough not to operate on "
-               "transformer inrush current (see Calculation/Discussion)."
-)
+# ---------------------------------------------------------------------------
+# CURRENT SETTINGS — every applied setting, editable in place, with a live
+# comment on whether an adjustment improves or weakens protection. Comments
+# reuse the exact same functions as the old sidebar "Settings Calculator" (no
+# new engineering judgment invented) - just surfaced inline per-field. Taps
+# are shown against their individual T_E only as a reference (informational),
+# not a pass/fail check - same reasoning as EXCT/GSUT/Overall: taps are
+# chosen JOINTLY to minimize the actual HV/LV mismatch, not to each
+# independently match their own T_E, so the mismatch metric is the real signal.
+# ---------------------------------------------------------------------------
+st.markdown("## Current Settings")
+st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
-with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=False):
-    st.markdown("**Transformer & CT Spec**")
-    mva = st.number_input("Transformer Rating (MVA)", value=p_data["mva"], step=1.0, format="%.3f", key=f"{selected_preset}__mva")
-
-    st.markdown("**HV Winding (23kV side, Delta) — Multi-Ratio Wye CT**" if not is_custom else "**HV Winding**")
-    kv_hv = st.number_input("HV Rated Voltage (kV)", value=p_data["kv_hv"], step=1.0, format="%.3f",
-        key=f"{selected_preset}__kv_hv",
-        help="Uses Tap Position 3 (22.425kV) per the settings doc's full-load calc, not the 23kV nameplate.")
-    if is_custom:
-        ct_hv = st.number_input("HV CT Ratio (Primary A, e.g. 100 in '100:5')", value=float(p_data["ct_hv"]), key=f"{selected_preset}__ct_hv")
-    else:
-        ct_hv = st.select_slider(
-            "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_3000_5,
-            value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_3000_5 else 3000,
-            key=f"{selected_preset}__ct_hv",
-            help="3000:5 Wye-connected multi-ratio bushing CT — the tap can be reselected in the "
-                 "field based on the actual/expected load current. Documented as set on 3000:5 (max)."
+with st.container(border=True):
+    st.markdown("**Ratings and CT**")
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
+        mva = st.number_input("Transformer Rating (MVA)", value=p_data["mva"], step=1.0, format="%.3f", key=f"{selected_preset}__mva")
+        kv_hv = st.number_input("HV Rated Voltage (kV)", value=p_data["kv_hv"], step=1.0, format="%.3f",
+            key=f"{selected_preset}__kv_hv",
+            help="Uses Tap Position 3 (22.425kV) per the settings doc's full-load calc, not the 23kV nameplate.")
+        if is_custom:
+            ct_hv = st.number_input("HV CT Ratio (Primary A, e.g. 100 in '100:5')", value=float(p_data["ct_hv"]), key=f"{selected_preset}__ct_hv")
+        else:
+            ct_hv = st.select_slider(
+                "HV CT Ratio Tap (Multi-Ratio, Primary A)", options=MR_CT_TAPS_3000_5,
+                value=p_data["ct_hv"] if p_data["ct_hv"] in MR_CT_TAPS_3000_5 else 3000,
+                key=f"{selected_preset}__ct_hv",
+                help="3000:5 Wye-connected multi-ratio bushing CT — the tap can be reselected in the "
+                     "field based on the actual/expected load current. Documented as set on 3000:5 (max)."
+            )
+        ct_conn_hv = st.selectbox(
+            "HV CT Connection", ["WYE", "DELTA"],
+            index=0 if p_data.get("ct_conn_hv", "WYE") == "WYE" else 1,
+            key=f"{selected_preset}__ct_conn_hv"
         )
-    ct_conn_hv = st.selectbox(
-        "HV CT Connection", ["WYE", "DELTA"],
-        index=0 if p_data.get("ct_conn_hv", "WYE") == "WYE" else 1,
-        key=f"{selected_preset}__ct_conn_hv"
-    )
-
-    st.markdown("**LV Winding (13.8kV side, Resistance-Grounded Wye) — Delta CT**" if not is_custom else "**LV Winding**")
-    kv_lv = st.number_input("LV Rated Voltage (kV)", value=p_data["kv_lv"], step=0.1, format="%.3f", key=f"{selected_preset}__kv_lv")
-    ct_lv = st.number_input("LV CT Ratio (Primary A, e.g. 4000 in '4000:5')", value=float(p_data["ct_lv"]), key=f"{selected_preset}__ct_lv")
-    ct_conn_lv = st.selectbox(
-        "LV CT Connection", ["DELTA", "WYE"],
-        index=0 if p_data.get("ct_conn_lv", "DELTA") == "DELTA" else 1,
-        key=f"{selected_preset}__ct_conn_lv"
-    )
-
-    ct_secondary_rating = st.selectbox(
-        "CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0,
-        key=f"{selected_preset}__ct_sec",
-        help="The rated secondary current stamped on the CT nameplate (the '5' in '4000:5'). "
-             "Applied to both CTs to determine the true turns ratio used in all per-unit scaling."
-    )
+    with r1c2:
+        ct_secondary_rating = st.selectbox(
+            "CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0,
+            key=f"{selected_preset}__ct_sec",
+            help="The rated secondary current stamped on the CT nameplate (the '5' in '4000:5'). "
+                 "Applied to both CTs to determine the true turns ratio used in all per-unit scaling."
+        )
+        kv_lv = st.number_input("LV Rated Voltage (kV)", value=p_data["kv_lv"], step=0.1, format="%.3f", key=f"{selected_preset}__kv_lv")
+        ct_lv = st.number_input("LV CT Ratio (Primary A, e.g. 4000 in '4000:5')", value=float(p_data["ct_lv"]), key=f"{selected_preset}__ct_lv")
+        ct_conn_lv = st.selectbox(
+            "LV CT Connection", ["DELTA", "WYE"],
+            index=0 if p_data.get("ct_conn_lv", "DELTA") == "DELTA" else 1,
+            key=f"{selected_preset}__ct_conn_lv"
+        )
     st.caption(
         f"Effective ratio → HV: **{ct_hv:.0f}:{ct_secondary_rating:.0f}** "
         f"(= {ct_hv/ct_secondary_rating:.1f}:1)  |  "
@@ -119,20 +111,102 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
         f"(= {ct_lv/ct_secondary_rating:.1f}:1)"
     )
 
-    st.markdown("**CT Matching Taps**")
-    tap_hv = slider_with_exact_input(
-        st, "HV Tap (T1)", 0.4, 2.18, p_data["tap_hv"], 0.01,
-        key=f"{selected_preset}__tap_hv",
-        help_text="CAC1-10-M3 setting range: 0.4-2.18. Selected so the tap-corrected current at "
-                   "rated load is close to the relay's rated tap current (I_N = 5A)."
-    )
-    tap_lv = slider_with_exact_input(
-        st, "LV Tap (T2)", 0.4, 2.18, p_data["tap_lv"], 0.01,
-        key=f"{selected_preset}__tap_lv",
-        help_text="CAC1-10-M3 setting range: 0.4-2.18."
-    )
+delta_factor_hv = 1.7320508 if ct_conn_hv.upper() == "DELTA" else 1.0
+delta_factor_lv = 1.7320508 if ct_conn_lv.upper() == "DELTA" else 1.0
+i_rated_pri_hv = (mva * 1000.0) / (1.7320508 * kv_hv) if kv_hv > 0 else 0.0
+i_rated_pri_lv = (mva * 1000.0) / (1.7320508 * kv_lv) if kv_lv > 0 else 0.0
+t1_e = suggest_ct_matching_tap(i_rated_pri_hv, ct_hv, ct_secondary_rating, delta_factor_hv)
+t2_e = suggest_ct_matching_tap(i_rated_pri_lv, ct_lv, ct_secondary_rating, delta_factor_lv)
 
+with st.container(border=True):
+    st.markdown("**CT Matching Taps**")
+    st.caption(
+        "T_E is the reference tap that would give zero mismatch if this winding were tapped alone — "
+        "T1 and T2 are then chosen JOINTLY to minimize the actual mismatch between HV and LV below, "
+        "not to each independently match their own T_E. The mismatch metric below is the real signal."
+    )
+    t1c1, t1c2 = st.columns(2)
+    with t1c1:
+        tap_hv = slider_with_exact_input(
+            st, "HV Tap (T1)", 0.4, 2.18, p_data["tap_hv"], 0.01,
+            key=f"{selected_preset}__tap_hv",
+            help_text="CAC1-10-M3 setting range: 0.4-2.18. Selected so the tap-corrected current at "
+                       "rated load is close to the relay's rated tap current (I_N = 5A)."
+        )
+        if t1_e is not None:
+            st.caption(f"T1_E (reference, this winding alone) ≈ {t1_e:.3f}")
+    with t1c2:
+        tap_lv = slider_with_exact_input(
+            st, "LV Tap (T2)", 0.4, 2.18, p_data["tap_lv"], 0.01,
+            key=f"{selected_preset}__tap_lv",
+            help_text="CAC1-10-M3 setting range: 0.4-2.18."
+        )
+        if t2_e is not None:
+            st.caption(f"T2_E (reference, this winding alone) ≈ {t2_e:.3f}")
+
+    i_relay_hv_at_set_tap = (i_rated_pri_hv / (ct_hv / ct_secondary_rating) * delta_factor_hv * tap_hv) if ct_hv > 0 else None
+    i_relay_lv_at_set_tap = (i_rated_pri_lv / (ct_lv / ct_secondary_rating) * delta_factor_lv * tap_lv) if ct_lv > 0 else None
+    calc_mismatch = mismatch_ratio_pct([i_relay_hv_at_set_tap, i_relay_lv_at_set_tap])
+    st.metric("Mismatch at currently-set taps (the actual signal)", f"{calc_mismatch:.2f}%" if calc_mismatch is not None else "—")
+    if calc_mismatch is not None:
+        if calc_mismatch < 5.0:
+            st.success(f"{calc_mismatch:.2f}% mismatch — low, well within the usual rule-of-thumb range.")
+        else:
+            st.warning(f"{calc_mismatch:.2f}% mismatch — unusually high. Review the tap selection before applying.")
+
+suggestion = suggest_bias_settings(calc_mismatch or 0.0, num_windings=2)
+
+with st.container(border=True):
+    st.markdown("**Differential Settings**")
+    st.caption(
+        f"Rule-of-thumb floor for the current {calc_mismatch:.2f}% mismatch: Bias ≈ {suggestion['bias_pct']:.0f}%, "
+        f"Min Operate ≈ {suggestion['min_operate_pct']:.0f}%, HOC ≈ {suggestion['hoc_multiple']:.0f}x tap current. "
+        "Engineering review required — always confirm against a real through-fault/inrush coordination study."
+        if calc_mismatch is not None else
+        "Set the HV/LV taps above first to compute a mismatch-based floor for these settings."
+    )
+    d1c1, d1c2, d1c3 = st.columns(3)
+    with d1c1:
+        bias_pct = slider_with_exact_input(
+            st, "Bias, τ (%)", 5, 60, p_data["bias"], 1,
+            key=f"{selected_preset}__bias",
+            help_text="Must exceed the sum of tap-changer error, CT error, relay operating error "
+                       "(10% of bias) and mismatch — see Calculation/Discussion in the settings doc."
+        )
+        if bias_pct >= suggestion["bias_pct"]:
+            st.success(f"Clears the {suggestion['bias_pct']:.0f}% floor. Higher = more secure against nuisance trips, but less sensitive to small internal faults.")
+        else:
+            st.warning(f"Below the {suggestion['bias_pct']:.0f}% floor for this mismatch — raises the risk of a nuisance trip on inrush or normal mismatch current.")
+    with d1c2:
+        min_operate_pct = slider_with_exact_input(
+            st, "Minimum Operate (%)", 5, 60, p_data["min_operate"], 1,
+            key=f"{selected_preset}__min_operate",
+            help_text="Minimum differential pickup at zero restraint current."
+        )
+        if min_operate_pct >= suggestion["min_operate_pct"]:
+            st.success(f"Clears the {suggestion['min_operate_pct']:.0f}% floor — secure against CT/relay noise at light load.")
+        else:
+            st.warning(f"Below the {suggestion['min_operate_pct']:.0f}% floor — more sensitive to light internal faults, but more exposed to false operation from CT noise/tap mismatch.")
+    with d1c3:
+        hoc_multiple = slider_with_exact_input(
+            st, "HOC (x tap current)", 2.0, 20.0, float(p_data["hoc"]), 0.5,
+            key=f"{selected_preset}__hoc",
+            help_text="Unrestrained instantaneous element. Set high enough not to operate on "
+                       "transformer inrush current (see Calculation/Discussion)."
+        )
+        if hoc_multiple <= suggestion["hoc_multiple"] + 2.0:
+            st.success(f"Clears inrush at this relay family's typical {suggestion['hoc_multiple']:.0f}x floor while still tripping fast on a severe internal fault.")
+        else:
+            st.info("Higher setting — more secure against inrush/CT saturation misoperation, but needs a larger internal fault to trip instantaneously.")
+
+with st.container(border=True):
     st.markdown("**Wiring & Convention**")
+    st.caption(
+        "Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen "
+        "comment applies here. Delta-connected CTs get an automatic √3 magnitude step-up and a +30° "
+        "phase shift (see engines/transformer.py) — the standard compensation for a Wye/Delta power "
+        "transformer so healthy through-load doesn't read as a fault."
+    )
     col_conv, col_pol = st.columns(2)
     with col_conv:
         convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
@@ -164,31 +238,18 @@ with st.sidebar.expander("Advanced Settings (CT Spec, Taps & Wiring)", expanded=
                  "into the zone on one side, out on the other)."
         )
 
-with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
-    st.caption(
-        "Derives a starting point FROM the ratings above, the same direction the settings doc's own "
-        "worked example works in (Section A-E) — CT-matching taps are exact math; Bias/Min Operate/HOC "
-        "are rule-of-thumb starting points that still need engineering review."
-    )
-    delta_factor_hv = 1.7320508 if ct_conn_hv.upper() == "DELTA" else 1.0
-    delta_factor_lv = 1.7320508 if ct_conn_lv.upper() == "DELTA" else 1.0
-    i_rated_pri_hv = (mva * 1000.0) / (1.7320508 * kv_hv) if kv_hv > 0 else 0.0
-    i_rated_pri_lv = (mva * 1000.0) / (1.7320508 * kv_lv) if kv_lv > 0 else 0.0
-    t1_e = suggest_ct_matching_tap(i_rated_pri_hv, ct_hv, ct_secondary_rating, delta_factor_hv)
-    t2_e = suggest_ct_matching_tap(i_rated_pri_lv, ct_lv, ct_secondary_rating, delta_factor_lv)
-    cc1, cc2 = st.columns(2)
-    cc1.metric("Ideal HV Tap (T1_E)", f"{t1_e:.3f}" if t1_e else "—", help="T1_E = I_N / I_RH — set T1 as close as possible to this.")
-    cc2.metric("Ideal LV Tap (T2_E)", f"{t2_e:.3f}" if t2_e else "—", help="T2_E = I_N / I_RL")
-    i_relay_hv_at_set_tap = (i_rated_pri_hv / (ct_hv / ct_secondary_rating) * delta_factor_hv * tap_hv) if ct_hv > 0 else None
-    i_relay_lv_at_set_tap = (i_rated_pri_lv / (ct_lv / ct_secondary_rating) * delta_factor_lv * tap_lv) if ct_lv > 0 else None
-    calc_mismatch = mismatch_ratio_pct([i_relay_hv_at_set_tap, i_relay_lv_at_set_tap])
-    st.metric("Mismatch at currently-set taps", f"{calc_mismatch:.2f}%" if calc_mismatch is not None else "—")
-    suggestion = suggest_bias_settings(calc_mismatch or 0.0, num_windings=2)
-    st.markdown(
-        f"**Suggested starting point:** Bias ≈ **{suggestion['bias_pct']:.0f}%**, "
-        f"Min Operate ≈ **{suggestion['min_operate_pct']:.0f}%**, HOC ≈ **{suggestion['hoc_multiple']:.0f}x** tap current."
-    )
-    st.caption(suggestion["basis"])
+all_clear = (
+    calc_mismatch is not None
+    and calc_mismatch < 5.0
+    and bias_pct >= suggestion["bias_pct"]
+    and min_operate_pct >= suggestion["min_operate_pct"]
+)
+if calc_mismatch is None:
+    st.info("Overall status: set the HV/LV taps above to compute a status.")
+elif all_clear:
+    st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
+else:
+    st.warning("Overall status: one or more settings above need review before this is applied.")
 
 windings = [
     {"name": "HV (23kV)", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
@@ -202,11 +263,6 @@ record_equipment_settings("aux", {
     "bias": bias_pct, "min_operate": min_operate_pct, "hoc": hoc_multiple,
     "calc_mismatch_pct": calc_mismatch,
 })
-st.sidebar.caption(
-    "Delta-connected CTs get an automatic √3 magnitude step-up and a +30° phase "
-    "shift (see engines/transformer.py) — the standard compensation for a Wye/Delta "
-    "power transformer so healthy through-load doesn't read as a fault."
-)
 
 relay = TransformerDifferentialRelay(
     mva_rated=mva, windings=windings,
