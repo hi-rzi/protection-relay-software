@@ -273,10 +273,14 @@ relay = AdvancedDifferentialRelay(
     target_amps=target_amps
 )
 
-tab_theory, tab1, tab2, tab3, tab_fault = st.tabs([
+st.markdown("---")
+st.markdown("## Analysis & Tools")
+st.caption("Everything below reads the settings above — adjust them up there, then explore the effect down here.")
+
+tab_theory, tab1, tab2, tab3, tab_fault, tab_graphs = st.tabs([
     "Theory", "Live Vector Simulation",
     "Commissioning & Injection Tool", "Test Point Verification & Curve",
-    "Fault Current Analysis",
+    "Fault Current Analysis", "Graphs",
 ])
 
 with tab_theory:
@@ -843,3 +847,41 @@ with tab_fault:
             st.success(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
         else:
             st.warning(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
+
+# ---------------------------------------------------------------------------
+# TAB — Graphs (all charts related to this relay's protection, in one place)
+# ---------------------------------------------------------------------------
+with tab_graphs:
+    st.subheader("All Graphs")
+    st.caption(
+        "Every chart on this page, gathered in one place — each is still the live, interactive "
+        "version from its own tab, not a static copy. Adjust settings or add test points on their "
+        "own tabs; this view updates the same way."
+    )
+
+    st.markdown("#### Differential Slope Characteristic — Live Simulation")
+    st.caption("From the Live Vector Simulation tab: the relay's characteristic curve with the current phase inputs plotted as operating points.")
+    st.plotly_chart(fig, use_container_width=True, key="graphs_tab_live_fig")
+
+    st.markdown("---")
+    st.markdown("#### Differential Slope Characteristic — Test Point Verification")
+    st.caption("From the Test Point Verification & Curve tab: the theoretical curve, or a CAL. line through logged test points if any have been added.")
+    st.plotly_chart(sweep_fig, use_container_width=True, key="graphs_tab_sweep_fig")
+
+    st.markdown("---")
+    st.markdown("#### Fault Current vs. CT/Relay Withstand Limit")
+    st.caption("From the Fault Current Analysis tab: both fault scenarios' relay secondary current against the withstand limit — bars staying below the red line pass.")
+    fault_bar_fig = go.Figure()
+    bar_labels = ["Internal Fault\n(Generator contribution)"]
+    bar_values = [relay_sec_internal]
+    if relay_sec_external is not None:
+        bar_labels.append("External Through-Fault\n(Grid via GSUT)")
+        bar_values.append(relay_sec_external)
+    bar_colors = ["#DC2626" if v > ct_withstand_a else "#16A34A" for v in bar_values]
+    fault_bar_fig.add_trace(go.Bar(x=bar_labels, y=bar_values, marker_color=bar_colors, name="Relay Secondary Current"))
+    fault_bar_fig.add_hline(y=ct_withstand_a, line=dict(color="#B91C1C", width=2, dash="dash"), annotation_text=f"Withstand Limit ({ct_withstand_a:.0f} A)")
+    fault_bar_fig.update_layout(
+        yaxis_title="Relay Secondary Current (A)",
+        template="plotly_white", height=400,
+    )
+    st.plotly_chart(fault_bar_fig, use_container_width=True, key="graphs_tab_fault_fig")

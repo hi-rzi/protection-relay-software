@@ -63,15 +63,23 @@ def get_restorable_preset(equipment_key):
 
 
 def with_restored_preset(presets_dict, equipment_key):
-    """Returns a NEW presets dict with a "From Project" entry prepended if
+    """Returns a NEW presets dict with a "From Project" entry appended if
     the current project has saved settings for this equipment - callers
     just use list(...) on the result for their selectbox options, same as
-    they already do with their plain PRESETS dict."""
+    they already do with their plain PRESETS dict.
+
+    Appended, not prepended: every page's preset selectbox picks its
+    default via plain list order (no explicit index=), so putting the
+    restored entry first would silently default every page to whatever
+    was last saved in a Project instead of the real POMI equipment preset
+    the moment any Project had been loaded this session - surprising and
+    easy to miss, since nothing about the page visually flags that the
+    "current" settings are a Project restore rather than the named preset."""
     restored = get_restorable_preset(equipment_key)
     if restored is None:
         return presets_dict
-    merged = {RESTORED_PRESET_LABEL: restored}
-    merged.update(presets_dict)
+    merged = dict(presets_dict)
+    merged[RESTORED_PRESET_LABEL] = restored
     return merged
 
 
