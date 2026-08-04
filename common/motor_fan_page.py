@@ -206,12 +206,53 @@ def render_fan_motor_page(fan_type):
     )
     p_data = presets_with_project[selected_preset]
 
-    st.sidebar.header("Motor Data & CT Spec")
-    motor_fla = st.sidebar.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(p_data["motor_fla"]), step=1.0, key=f"{project_key}__fla")
-    ct_ratio = st.sidebar.number_input("CT Ratio (Primary A, e.g. 300 in '300:5')", min_value=1.0, value=float(p_data["ct_ratio"]), key=f"{project_key}__ct_ratio")
-    ct_secondary_rating = st.sidebar.selectbox("CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0, key=f"{project_key}__ct_sec")
-    st.sidebar.caption(f"Effective ratio → **{ct_ratio:.0f}:{ct_secondary_rating:.0f}** (= {ct_ratio/ct_secondary_rating:.1f}:1)")
-    ground_ct_ratio = st.sidebar.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["ground_ct_ratio"]), key=f"{project_key}__gct_ratio")
+    # -------------------------------------------------------------------
+    # CURRENT SETTINGS — every applied setting, editable in place, with a
+    # live comment on whether an adjustment improves or weakens protection.
+    # Comments reuse the exact checks already used elsewhere on this page
+    # (the "Coordination Review" pickup-vs-FLA/LRC checks, and the "Starting/
+    # Stall Margin Check") - no new engineering judgment invented, just
+    # surfaced inline per field.
+    # -------------------------------------------------------------------
+    st.markdown("## Current Settings")
+    st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
+
+    with st.container(border=True):
+        st.markdown("**Motor Data & CT Spec**")
+        d1c1, d1c2 = st.columns(2)
+        with d1c1:
+            motor_fla = st.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(p_data["motor_fla"]), step=1.0, key=f"{project_key}__fla")
+            ct_ratio = st.number_input("CT Ratio (Primary A, e.g. 300 in '300:5')", min_value=1.0, value=float(p_data["ct_ratio"]), key=f"{project_key}__ct_ratio")
+        with d1c2:
+            ct_secondary_rating = st.selectbox("CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0, key=f"{project_key}__ct_sec")
+            ground_ct_ratio = st.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["ground_ct_ratio"]), step=1.0, key=f"{project_key}__gct_ratio")
+        st.caption(f"Effective ratio → **{ct_ratio:.0f}:{ct_secondary_rating:.0f}** (= {ct_ratio/ct_secondary_rating:.1f}:1)")
+
+    with st.container(border=True):
+        st.markdown("**Overload (Thermal Model)**")
+        ovc1, ovc2 = st.columns(2)
+        with ovc1:
+            overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, value=p_data["overload_pickup_pct"], step=1.0, key=f"{project_key}__ovl_pct")
+            if overload_pickup_pct > 100.0:
+                st.success(f"Pickup set at {overload_pickup_pct:.0f}% FLA — above 100%, so a healthy full-load current won't nuisance-trip.")
+            else:
+                st.warning(f"Pickup set at {overload_pickup_pct:.0f}% FLA — at or below 100% FLA, review overload coordination.")
+        with ovc2:
+            curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, value=p_data["curve_multiplier"], step=0.5, key=f"{project_key}__cm",
+                help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage.")
+            st.caption("Higher CM = slower trip (more starting security, more thermal margin used on a stall). See the Starting/Stall Margin Check below if starting data is on record.")
+
+    # Probe relay just to evaluate the overload trip-time formula against the
+    # starting profile below - only needs ct_ratio/ct_secondary_rating/motor_fla/
+    # overload_pickup_pct/curve_multiplier. inst_pickup_multiple_of_ct=1.0 is a
+    # harmless placeholder (unused by calculate_overload_trip_time) needed only
+    # because the constructor would otherwise try inst_pickup_multiple_of_lr *
+    # locked_rotor_amps, and locked_rotor_amps isn't gathered yet at this point.
+    _probe_ovl = Motor869Relay(
+        ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating, motor_fla=motor_fla,
+        overload_pickup_pct=overload_pickup_pct, curve_multiplier=curve_multiplier,
+        inst_pickup_multiple_of_ct=1.0,
+    )
 
     # Starting/Stall data exists for both fans now (PAFAN / FDFAN MOTOR PROTECTION.pdf) -
     # stays None only for a Custom Profile that hasn't supplied it.
@@ -219,43 +260,83 @@ def render_fan_motor_page(fan_type):
     accel_time_100 = accel_time_80 = None
     safe_stall_100 = safe_stall_80 = None
     if project_key in ("fd_fan", "pa_fan"):
-        with st.sidebar.expander("Motor Starting & Safe Stall Data", expanded=False):
-            locked_rotor_amps_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_100"]), step=1.0, key=f"{project_key}__lrc_100")
-            locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_80"]), step=1.0, key=f"{project_key}__lrc_80")
-            accel_time_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=p_data["accel_time_100"], step=0.1, key=f"{project_key}__accel_100")
-            accel_time_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=p_data["accel_time_80"], step=0.1, key=f"{project_key}__accel_80")
-            safe_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=p_data["safe_stall_100"], step=0.1, key=f"{project_key}__stall_100",
-                help="Only the hot safe stall time is documented for this motor (hot/cold ratio = 1.0 per the settings doc).")
-            safe_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=p_data["safe_stall_80"], step=0.1, key=f"{project_key}__stall_80")
+        with st.container(border=True):
+            st.markdown("**Motor Starting & Safe Stall Data**")
+            s1c1, s1c2 = st.columns(2)
+            with s1c1:
+                locked_rotor_amps_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_100"]), step=1.0, key=f"{project_key}__lrc_100")
+                locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(p_data["locked_rotor_amps_80"]), step=1.0, key=f"{project_key}__lrc_80")
+            with s1c2:
+                accel_time_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=p_data["accel_time_100"], step=0.1, key=f"{project_key}__accel_100")
+                accel_time_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=p_data["accel_time_80"], step=0.1, key=f"{project_key}__accel_80")
+            s1c3, s1c4 = st.columns(2)
+            with s1c3:
+                safe_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=p_data["safe_stall_100"], step=0.1, key=f"{project_key}__stall_100",
+                    help="Only the hot safe stall time is documented for this motor (hot/cold ratio = 1.0 per the settings doc).")
+            with s1c4:
+                safe_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=p_data["safe_stall_80"], step=0.1, key=f"{project_key}__stall_80")
 
-    with st.sidebar.expander("Advanced Settings (SR469 MPR)", expanded=False):
-        st.markdown("**Overload (Thermal Model)**")
-        overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, value=p_data["overload_pickup_pct"], step=1.0, key=f"{project_key}__ovl_pct")
-        curve_multiplier = st.number_input("Curve Multiplier (CM)", min_value=1.0, max_value=8.0, value=p_data["curve_multiplier"], step=0.5, key=f"{project_key}__cm",
-            help="GE Multilin 'Standard' thermal curve shared across the 469/269Plus/369/869 lineage.")
+            t_at_lrc_100 = _probe_ovl.calculate_overload_trip_time(locked_rotor_amps_100)
+            t_at_lrc_80 = _probe_ovl.calculate_overload_trip_time(locked_rotor_amps_80)
+            ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
+            ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
+            t100_str = f"{t_at_lrc_100:.1f}s" if t_at_lrc_100 is not None else "no trip"
+            t80_str = f"{t_at_lrc_80:.1f}s" if t_at_lrc_80 is not None else "no trip"
+            if ok_100 and ok_80:
+                st.success(f"Overload trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — inside the start/safe-stall margin both times.")
+            else:
+                st.warning(f"Overload trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — outside the start/safe-stall margin at one or both voltages. See the TCC Curve tab for the full picture.")
 
+    with st.container(border=True):
         st.markdown("**Instantaneous (Short Circuit)**")
-        inst_pickup_multiple_of_ct = st.number_input("Instantaneous Pickup (x CT primary)", min_value=1.0, max_value=20.0, value=p_data["inst_pickup_multiple_of_ct"], step=0.1, key=f"{project_key}__inst_ct",
-            help="Multiple of the CT's primary rating (e.g. 6.5 x a 300:5 CT = 6.5 x 300A primary = 1950A).")
-        inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, value=p_data["inst_delay_ms"], step=10.0, key=f"{project_key}__inst_delay")
+        ic1, ic2 = st.columns(2)
+        with ic1:
+            inst_pickup_multiple_of_ct = st.number_input("Instantaneous Pickup (x CT primary)", min_value=1.0, max_value=20.0, value=p_data["inst_pickup_multiple_of_ct"], step=0.1, key=f"{project_key}__inst_ct",
+                help="Multiple of the CT's primary rating (e.g. 6.5 x a 300:5 CT = 6.5 x 300A primary = 1950A).")
+            inst_pickup_primary = inst_pickup_multiple_of_ct * ct_ratio
+            if inst_pickup_primary > motor_fla:
+                st.success(f"Pickup {inst_pickup_primary:.0f} A primary ({inst_pickup_primary/motor_fla:.2f}x FLA) clears motor FLA.")
+            else:
+                st.warning(f"Pickup {inst_pickup_primary:.0f} A primary is at or below motor FLA ({motor_fla:.0f} A) — review coordination.")
+        with ic2:
+            inst_delay_ms = st.number_input("Instantaneous Delay (ms)", min_value=0.0, value=p_data["inst_delay_ms"], step=10.0, key=f"{project_key}__inst_delay")
+            st.caption("Short definite time delay to ride through starting transients — not a tunable protection margin in the same sense as pickup.")
 
+    with st.container(border=True):
         st.markdown("**Ground Fault**")
-        gf_pickup_frac = st.number_input("GF Pickup (x Ground CT Primary A)", min_value=0.05, max_value=1.0, value=p_data["gf_pickup_frac"], step=0.05, key=f"{project_key}__gf_frac")
-        gf_delay_ms = st.number_input("GF Delay (ms)", min_value=0.0, value=p_data["gf_delay_ms"], step=10.0, key=f"{project_key}__gf_delay")
+        gfc1, gfc2 = st.columns(2)
+        with gfc1:
+            gf_pickup_frac = st.number_input("GF Pickup (x Ground CT Primary A)", min_value=0.05, max_value=1.0, value=p_data["gf_pickup_frac"], step=0.05, key=f"{project_key}__gf_frac")
+        with gfc2:
+            gf_delay_ms = st.number_input("GF Delay (ms)", min_value=0.0, value=p_data["gf_delay_ms"], step=10.0, key=f"{project_key}__gf_delay")
+        st.caption("No documented rule-of-thumb floor for this setting in the app yet — reference only.")
 
+    with st.container(border=True):
         st.markdown("**Current Unbalance**")
-        unbal_alarm_pct = st.number_input("Unbalance Alarm Pickup (%)", min_value=1.0, max_value=50.0, value=p_data["unbal_alarm_pct"], step=1.0, key=f"{project_key}__unb_alarm_pct")
-        unbal_alarm_delay_s = st.number_input("Unbalance Alarm Delay (s)", min_value=0.0, value=p_data["unbal_alarm_delay_s"], step=1.0, key=f"{project_key}__unb_alarm_delay")
-        unbal_trip_pct = st.number_input("Unbalance Trip Pickup (%)", min_value=1.0, max_value=50.0, value=p_data["unbal_trip_pct"], step=1.0, key=f"{project_key}__unb_trip_pct")
-        unbal_trip_delay_s = st.number_input("Unbalance Trip Delay (s)", min_value=0.0, value=p_data["unbal_trip_delay_s"], step=1.0, key=f"{project_key}__unb_trip_delay")
+        uc1, uc2 = st.columns(2)
+        with uc1:
+            unbal_alarm_pct = st.number_input("Unbalance Alarm Pickup (%)", min_value=1.0, max_value=50.0, value=p_data["unbal_alarm_pct"], step=1.0, key=f"{project_key}__unb_alarm_pct")
+            unbal_alarm_delay_s = st.number_input("Unbalance Alarm Delay (s)", min_value=0.0, value=p_data["unbal_alarm_delay_s"], step=1.0, key=f"{project_key}__unb_alarm_delay")
+        with uc2:
+            unbal_trip_pct = st.number_input("Unbalance Trip Pickup (%)", min_value=1.0, max_value=50.0, value=p_data["unbal_trip_pct"], step=1.0, key=f"{project_key}__unb_trip_pct")
+            unbal_trip_delay_s = st.number_input("Unbalance Trip Delay (s)", min_value=0.0, value=p_data["unbal_trip_delay_s"], step=1.0, key=f"{project_key}__unb_trip_delay")
+        if unbal_trip_pct >= unbal_alarm_pct:
+            st.success(f"Trip pickup ({unbal_trip_pct:.0f}%) is at or above alarm pickup ({unbal_alarm_pct:.0f}%) — alarm gives advance warning before the trip stage.")
+        else:
+            st.warning(f"Trip pickup ({unbal_trip_pct:.0f}%) is below alarm pickup ({unbal_alarm_pct:.0f}%) — the trip stage would fire before any alarm, review this pair.")
 
+    with st.container(border=True):
         st.markdown("**Other Settings (reference only)**")
-        mech_jam_pct = st.number_input("Mechanical Jam Pickup (% FLA)", min_value=100.0, value=p_data["mech_jam_pct"], step=5.0, key=f"{project_key}__jam_pct")
-        mech_jam_delay_s = st.number_input("Mechanical Jam Delay (s)", min_value=0.0, value=p_data["mech_jam_delay_s"], step=0.5, key=f"{project_key}__jam_delay")
-        accel_timer_s = st.number_input("Acceleration Timer (s)", min_value=1.0, value=p_data["accel_timer_s"], step=1.0, key=f"{project_key}__accel")
-        overload_alarm_delay_s = st.number_input("Overload Alarm Delay (s)", min_value=0.0, value=p_data["overload_alarm_delay_s"], step=0.5, key=f"{project_key}__ovl_alarm_delay")
-        phase_diff_pickup_frac = st.number_input("Phase Differential Pickup (x CT)", min_value=0.05, max_value=1.0, value=p_data["phase_diff_pickup_frac"], step=0.05, key=f"{project_key}__pdiff_frac")
-        phase_diff_delay_ms = st.number_input("Phase Differential Delay (ms)", min_value=0.0, value=p_data["phase_diff_delay_ms"], step=10.0, key=f"{project_key}__pdiff_delay")
+        st.caption("No documented rule-of-thumb floor for these in the app yet — reference only, not live-checked.")
+        oc1, oc2 = st.columns(2)
+        with oc1:
+            mech_jam_pct = st.number_input("Mechanical Jam Pickup (% FLA)", min_value=100.0, value=p_data["mech_jam_pct"], step=5.0, key=f"{project_key}__jam_pct")
+            mech_jam_delay_s = st.number_input("Mechanical Jam Delay (s)", min_value=0.0, value=p_data["mech_jam_delay_s"], step=0.5, key=f"{project_key}__jam_delay")
+            accel_timer_s = st.number_input("Acceleration Timer (s)", min_value=1.0, value=p_data["accel_timer_s"], step=1.0, key=f"{project_key}__accel")
+        with oc2:
+            overload_alarm_delay_s = st.number_input("Overload Alarm Delay (s)", min_value=0.0, value=p_data["overload_alarm_delay_s"], step=0.5, key=f"{project_key}__ovl_alarm_delay")
+            phase_diff_pickup_frac = st.number_input("Phase Differential Pickup (x CT)", min_value=0.05, max_value=1.0, value=p_data["phase_diff_pickup_frac"], step=0.05, key=f"{project_key}__pdiff_frac")
+            phase_diff_delay_ms = st.number_input("Phase Differential Delay (ms)", min_value=0.0, value=p_data["phase_diff_delay_ms"], step=10.0, key=f"{project_key}__pdiff_delay")
 
     # IFC66KD2A discrete 50/50/51 electromechanical relay + HFC22B2A backup instantaneous relay -
     # confirmed present on the Primary Air Fan (PAFAN MOTOR PROTECTION.pdf Section 5.3.1/5.3.2),
@@ -263,30 +344,90 @@ def render_fan_motor_page(fan_type):
     ifc_tap_51 = ifc_time_dial = ifc_pickup_50a = ifc_dropout_50b = ifc_target_seal_in = None
     ifc_backup_enabled = False
     ifc_backup_ct_ratio = ifc_backup_pickup_50 = None
+    ifc_all_clear = True
     if project_key == "pa_fan":
-        with st.sidebar.expander("Advanced Settings (IFC66KD2A 50/50/51)", expanded=False):
+        with st.container(border=True):
+            st.markdown("**IFC66KD2A 50/50/51 (separate discrete electromechanical relay)**")
             st.caption(
-                "Separate discrete electromechanical relay documented alongside the SR469 MPR "
-                "above - same relay model as the Induced Draft Fan's own 50/50/51, on this "
-                "motor's 300:5 phase CT."
+                "Documented alongside the SR469 MPR above - same relay model as the Induced Draft "
+                "Fan's own 50/50/51, on this motor's 300:5 phase CT."
             )
-            st.markdown("**51 (Long Time Inverse)**")
-            ifc_tap_51 = st.number_input("51 Tap (A sec.)", min_value=2.5, max_value=7.5, value=p_data["ifc_tap_51"], step=0.1, key=f"{project_key}__ifc_tap51",
-                help="IFC66KD2A range: 2.5-7.5A at discrete taps (2.5, 2.8, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.5).")
-            ifc_time_dial = st.number_input("51 Time Dial", min_value=0.5, max_value=10.0, value=p_data["ifc_time_dial"], step=0.1, key=f"{project_key}__ifc_td",
-                help="IAC 'Long Time Inverse' curve (GEK-106618C constants) - same formula used for the ID Fan's IFC66KD2A.")
+            i51c1, i51c2 = st.columns(2)
+            with i51c1:
+                ifc_tap_51 = st.number_input("51 Tap (A sec.)", min_value=2.5, max_value=7.5, value=p_data["ifc_tap_51"], step=0.1, key=f"{project_key}__ifc_tap51",
+                    help="IFC66KD2A range: 2.5-7.5A at discrete taps (2.5, 2.8, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.5).")
+                ifc_effective_ratio = ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else ct_ratio
+                ifc_pickup_51_primary = ifc_tap_51 * ifc_effective_ratio
+                if ifc_pickup_51_primary > motor_fla:
+                    st.success(f"Pickup {ifc_pickup_51_primary:.0f} A primary ({ifc_pickup_51_primary/motor_fla:.2f}x FLA) clears motor FLA.")
+                else:
+                    st.warning(f"Pickup {ifc_pickup_51_primary:.0f} A primary is at or below motor FLA ({motor_fla:.0f} A) — review overload coordination.")
+            with i51c2:
+                ifc_time_dial = st.number_input("51 Time Dial", min_value=0.5, max_value=10.0, value=p_data["ifc_time_dial"], step=0.1, key=f"{project_key}__ifc_td",
+                    help="IAC 'Long Time Inverse' curve (GEK-106618C constants) - same formula used for the ID Fan's IFC66KD2A.")
+                _probe_ifc = MotorTimeOvercurrentRelay(
+                    ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
+                    tap_51=ifc_tap_51, time_dial=ifc_time_dial, pickup_50a=1e9, dropout_50b=1e9,
+                    motor_fla=motor_fla, locked_rotor_amps=locked_rotor_amps_100,
+                )
+                t_ifc_100 = _probe_ifc.calculate_51_trip_time(_probe_ifc.relay_current(locked_rotor_amps_100)) if locked_rotor_amps_100 else None
+                t_ifc_80 = _probe_ifc.calculate_51_trip_time(_probe_ifc.relay_current(locked_rotor_amps_80)) if locked_rotor_amps_80 else None
+                ifc_ok_100 = t_ifc_100 is not None and accel_time_100 < t_ifc_100 < safe_stall_100
+                ifc_ok_80 = t_ifc_80 is not None and accel_time_80 < t_ifc_80 < safe_stall_80
+                t_ifc_100_str = f"{t_ifc_100:.1f}s" if t_ifc_100 is not None else "no trip"
+                t_ifc_80_str = f"{t_ifc_80:.1f}s" if t_ifc_80 is not None else "no trip"
+                if ifc_ok_100 and ifc_ok_80:
+                    st.success(f"Trips in {t_ifc_100_str} @ 100%V / {t_ifc_80_str} @ 80%V at locked rotor — inside the start/safe-stall margin both times.")
+                else:
+                    st.warning(f"Trips in {t_ifc_100_str} @ 100%V / {t_ifc_80_str} @ 80%V at locked rotor — outside the margin at one or both voltages (the settings doc itself accepts this at 100%V — see the IFC66KD2A tab for details).")
 
-            st.markdown("**50A / 50B (Instantaneous)**")
-            ifc_pickup_50a = st.number_input("50A Pickup (A sec.)", min_value=6.0, max_value=150.0, value=p_data["ifc_pickup_50a"], step=1.0, key=f"{project_key}__ifc_50a",
-                help="Set at ~200-300% of locked rotor current to allow starting inrush.")
-            ifc_dropout_50b = st.number_input("50B Dropout (A sec.)", min_value=2.0, max_value=8.0, value=p_data["ifc_dropout_50b"], step=0.1, key=f"{project_key}__ifc_50b",
-                help="High-dropout overload ALARM element - estimated pickup = dropout / 0.8.")
+            i50c1, i50c2 = st.columns(2)
+            with i50c1:
+                ifc_pickup_50a = st.number_input("50A Pickup (A sec.)", min_value=6.0, max_value=150.0, value=p_data["ifc_pickup_50a"], step=1.0, key=f"{project_key}__ifc_50a",
+                    help="Set at ~200-300% of locked rotor current to allow starting inrush.")
+                ifc_pickup_50a_primary = ifc_pickup_50a * ifc_effective_ratio
+                if locked_rotor_amps_100 and ifc_pickup_50a_primary > locked_rotor_amps_100:
+                    st.success(f"Pickup {ifc_pickup_50a_primary:.0f} A primary ({ifc_pickup_50a_primary/locked_rotor_amps_100:.2f}x LRC) clears locked-rotor current.")
+                elif locked_rotor_amps_100:
+                    st.warning(f"Pickup {ifc_pickup_50a_primary:.0f} A primary is at or below locked-rotor current ({locked_rotor_amps_100:.0f} A) — a normal start could trip instantaneously.")
+            with i50c2:
+                ifc_dropout_50b = st.number_input("50B Dropout (A sec.)", min_value=2.0, max_value=8.0, value=p_data["ifc_dropout_50b"], step=0.1, key=f"{project_key}__ifc_50b",
+                    help="High-dropout overload ALARM element - estimated pickup = dropout / 0.8.")
+                ifc_pickup_50b_primary = (ifc_dropout_50b / 0.8) * ifc_effective_ratio
+                if ifc_pickup_50b_primary > motor_fla:
+                    st.success(f"Estimated pickup {ifc_pickup_50b_primary:.0f} A primary ({ifc_pickup_50b_primary/motor_fla:.2f}x FLA) clears motor FLA.")
+                else:
+                    st.warning(f"Estimated pickup {ifc_pickup_50b_primary:.0f} A primary is at or below motor FLA ({motor_fla:.0f} A) — review the overload-alarm setting.")
             ifc_target_seal_in = st.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, value=p_data["ifc_target_seal_in"], step=0.1, key=f"{project_key}__ifc_target")
 
-            st.markdown("**Backup Instantaneous (50, HFC22B2A)**")
             ifc_backup_enabled = st.checkbox("Enable HFC22B2A backup relay", value=True, key=f"{project_key}__ifc_backup_en")
-            ifc_backup_ct_ratio = st.number_input("Backup CT Ratio (Primary A, e.g. 2000 in '2000:5')", min_value=1.0, value=float(p_data["ifc_backup_ct_ratio"]), key=f"{project_key}__ifc_backup_ct", disabled=not ifc_backup_enabled)
-            ifc_backup_pickup_50 = st.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, value=p_data["ifc_backup_pickup_50"], step=0.5, key=f"{project_key}__ifc_backup_pickup", disabled=not ifc_backup_enabled)
+            bkc1, bkc2 = st.columns(2)
+            with bkc1:
+                ifc_backup_ct_ratio = st.number_input("Backup CT Ratio (Primary A, e.g. 2000 in '2000:5')", min_value=1.0, value=float(p_data["ifc_backup_ct_ratio"]), key=f"{project_key}__ifc_backup_ct", disabled=not ifc_backup_enabled)
+            with bkc2:
+                ifc_backup_pickup_50 = st.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, value=p_data["ifc_backup_pickup_50"], step=0.5, key=f"{project_key}__ifc_backup_pickup", disabled=not ifc_backup_enabled)
+            if ifc_backup_enabled and locked_rotor_amps_100:
+                ifc_backup_effective_ratio = ifc_backup_ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else ifc_backup_ct_ratio
+                ifc_backup_pickup_primary = ifc_backup_pickup_50 * ifc_backup_effective_ratio
+                if ifc_backup_pickup_primary > locked_rotor_amps_100:
+                    st.success(f"Pickup {ifc_backup_pickup_primary:.0f} A primary ({ifc_backup_pickup_primary/locked_rotor_amps_100:.2f}x LRC) clears locked-rotor current.")
+                else:
+                    st.warning(f"Pickup {ifc_backup_pickup_primary:.0f} A primary is at or below locked-rotor current ({locked_rotor_amps_100:.0f} A) — review starting security and coordination.")
+                ifc_all_clear = ifc_pickup_51_primary > motor_fla and ifc_ok_100 and ifc_ok_80 and ifc_pickup_50a_primary > locked_rotor_amps_100 and ifc_pickup_50b_primary > motor_fla and ifc_backup_pickup_primary > locked_rotor_amps_100
+            else:
+                ifc_all_clear = ifc_pickup_51_primary > motor_fla and ifc_pickup_50b_primary > motor_fla
+
+    all_clear = (
+        overload_pickup_pct > 100.0
+        and inst_pickup_primary > motor_fla
+        and unbal_trip_pct >= unbal_alarm_pct
+        and (project_key not in ("fd_fan", "pa_fan") or (ok_100 and ok_80))
+        and ifc_all_clear
+    )
+    if all_clear:
+        st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
+    else:
+        st.warning("Overall status: one or more settings above need review before this is applied.")
 
     record_equipment_settings(project_key, {
         "motor_fla": motor_fla, "ct_ratio": ct_ratio, "ct_sec": ct_secondary_rating,
