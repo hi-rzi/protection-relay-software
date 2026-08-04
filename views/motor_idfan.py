@@ -354,12 +354,13 @@ record_equipment_settings("motor", {
 with outer_analysis:
     st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
 
-    tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab4, tab_graphs = st.tabs([
         "Theory",
         "Live Simulation",
         "Commissioning & Injection Tool",
         "TCC Curve",
         "Settings Summary & Approval",
+        "Graphs",
     ])
 
     with tab_theory:
@@ -822,4 +823,15 @@ with outer_analysis:
             mime="application/json",
             help="Download the active settings and document-control fields for later reload in this app.",
         )
+
+    with tab_graphs:
+        st.subheader("All Graphs")
+        st.caption(
+            "Every chart on this page, gathered in one place — still the live, interactive version "
+            "from the TCC Curve tab, not a static copy. Adjust settings there; this view updates the "
+            "same way."
+        )
+        st.markdown("#### Time-Current Characteristic (TCC) Curve")
+        st.caption("From the TCC Curve tab: the 51 curve with the motor's starting profile and safe-stall limits overlaid.")
+        st.plotly_chart(fig, use_container_width=True, key="idfan_graphs_tab_fig")
 

@@ -278,9 +278,10 @@ amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current,
 with outer_analysis:
     st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
 
-    tab_theory, tab1, tab2, tab3 = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab_graphs = st.tabs([
         "Theory", "Live Vector Simulation",
-        "Commissioning & Injection Tool", "Test Point Verification & Curve"
+        "Commissioning & Injection Tool", "Test Point Verification & Curve",
+        "Graphs",
     ])
 
     with tab_theory:
@@ -694,3 +695,21 @@ with outer_analysis:
             ("HV Rated (A)", relay.windings[0]["i_rated_pri"]),
             ("LV Rated (A)", relay.windings[1]["i_rated_pri"]),
         ])
+
+
+    with tab_graphs:
+        st.subheader("All Graphs")
+        st.caption(
+            "Every chart on this page, gathered in one place — each is still the live, interactive "
+            "version from its own tab, not a static copy. Adjust settings or add test points on their "
+            "own tabs; this view updates the same way."
+        )
+
+        st.markdown("#### Differential Bias Characteristic — Live Simulation")
+        st.caption("From the Live Vector Simulation tab: the relay's characteristic curve with the current phase inputs plotted as operating points.")
+        st.plotly_chart(fig, use_container_width=True, key="exct_graphs_tab_live_fig")
+
+        st.markdown("---")
+        st.markdown("#### Differential Bias Characteristic — Test Point Verification")
+        st.caption("From the Test Point Verification & Curve tab: the theoretical curve, or a CAL. line through logged test points if any have been added.")
+        st.plotly_chart(sweep_fig, use_container_width=True, key="exct_graphs_tab_sweep_fig")

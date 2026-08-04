@@ -18,6 +18,44 @@ def render_placeholder(title, caption, note="Coming soon — this relay type is 
     st.info(note)
 
 
+# Shared definitions for the fault-current terms used across every Fault
+# Current Analysis tab - kept in one place so the wording stays identical
+# everywhere it appears, and so future equipment pages read from the same
+# glossary instead of re-explaining these terms slightly differently each time.
+FAULT_CURRENT_DEFINITIONS = {
+    "symmetrical": (
+        "The steady-state RMS fault current, with the initial DC offset transient already "
+        "decayed away — what the current settles to a few cycles after the fault starts. "
+        "This is the value a per-unit source-impedance calculation gives directly."
+    ),
+    "asymmetrical": (
+        "The worst-case RMS fault current INCLUDING the DC offset transient present in the "
+        "first cycle(s) after the fault occurs (worst case when the fault happens at a voltage "
+        "zero-crossing). Always higher than the symmetrical value — this is the number "
+        "protection equipment (CTs, relays, breakers) actually has to survive without "
+        "saturating or being damaged, not just the settled-out symmetrical figure."
+    ),
+    "through": (
+        "Fault current that flows THROUGH a piece of equipment's CTs for a fault OUTSIDE its "
+        "own protected zone (an external/'through' fault — e.g. a fault on the far side of a "
+        "transformer, or fed from the grid into an adjacent zone). A differential relay must "
+        "correctly RESTRAIN (not trip) for this current, however large it is — CT saturation "
+        "during a severe through-fault is a well-documented cause of relay misoperation, which "
+        "is exactly what checking this current against the CT/relay withstand limit guards against."
+    ),
+}
+
+
+def fault_term_info(term_key, label=None):
+    """A small clickable ⓘ button next to a fault-current metric that reveals
+    that term's definition on click (st.popover) - label defaults to the
+    term_key itself, title-cased, if not given."""
+    display_label = label or term_key.replace("_", " ").title()
+    with st.popover(f"ⓘ {display_label}", help=f"Click for the definition of {display_label}"):
+        st.markdown(f"**{display_label}**")
+        st.write(FAULT_CURRENT_DEFINITIONS[term_key])
+
+
 def slider_with_exact_input(container, label, min_v, max_v, default, step, key, help_text=None):
     slider_key = f"{key}__slider"
     number_key = f"{key}__number"

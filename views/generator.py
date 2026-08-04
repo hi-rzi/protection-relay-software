@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
-from common.ui_helpers import slider_with_exact_input
+from common.ui_helpers import slider_with_exact_input, fault_term_info
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -815,13 +815,25 @@ with outer_analysis:
                 help="Multiplier for the worst-case DC-offset fault current, assuming the fault occurs at a voltage zero-crossing (1.73x is the settings doc's own assumption)."
             )
             fault_calc = three_phase_fault_current(mva, kv, x1_pu, asym_factor)
-            st.metric("Symmetrical Fault Current", f"{fault_calc['i_fault_sym_amps']:,.0f} A ({fault_calc['i_fault_pu']:.2f} pu)")
-            st.metric("Asymmetrical Fault Current (worst case)", f"{fault_calc['i_fault_asym_amps']:,.0f} A")
+            sm1, sm2 = st.columns([3, 1])
+            with sm1:
+                st.metric("Symmetrical Fault Current", f"{fault_calc['i_fault_sym_amps']:,.0f} A ({fault_calc['i_fault_pu']:.2f} pu)")
+            with sm2:
+                fault_term_info("symmetrical", "Symmetrical")
+            am1, am2 = st.columns([3, 1])
+            with am1:
+                st.metric("Asymmetrical Fault Current (worst case)", f"{fault_calc['i_fault_asym_amps']:,.0f} A")
+            with am2:
+                fault_term_info("asymmetrical", "Asymmetrical")
             relay_sec_internal = relay_secondary_at_fault(fault_calc["i_fault_asym_amps"], ct_ratio_T, ct_secondary_rating)
             st.metric("Relay Secondary Current at Max Fault", f"{relay_sec_internal:.1f} A")
 
         with fc2:
-            st.markdown("**External (through-fault) contribution from upstream**")
+            tm1, tm2 = st.columns([3, 1])
+            with tm1:
+                st.markdown("**External (through-fault) contribution from upstream**")
+            with tm2:
+                fault_term_info("through", "Through-Fault")
             external_fault_ka = st.number_input(
                 "Maximum Through-Fault Current (kA primary)", min_value=0.0, value=p_data.get("external_fault_ka", 0.0), step=1.0,
                 key=f"{current_mode}__{selected_preset}__ext_fault",
