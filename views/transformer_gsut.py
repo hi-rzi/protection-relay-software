@@ -8,7 +8,8 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import two_winding_transformer_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, fault_term_info
+from engines.fault_current import transformer_through_fault_current, relay_secondary_at_fault
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -33,6 +34,12 @@ PRESETS = {
         "ct_conn_hv": "DELTA", "ct_conn_lv": "WYE",
         "tap_hv": 1.0, "tap_lv": 1.1,
         "bias": 30, "min_operate": 30, "hoc": 5,
+        # Through-fault basis - Design Impedance 10% on 468MVA (OA) base, per the
+        # "Generator Step-Up Transformer Data" section embedded in Transformer Diff
+        # Setting - Overall GSUT-GEN.pdf. X/R ratio is NOT confirmed against this
+        # transformer's own design data (no worked through-fault example found for
+        # GSUT specifically, unlike EXCT) - flagged as an editable placeholder.
+        "fault_mva_base": 468.0, "z_pct": 10.0, "x_over_r": 20.0, "ct_withstand_a": 60.0,
     },
     "Custom Profile": {
         "mva": 10.0,
@@ -41,6 +48,7 @@ PRESETS = {
         "ct_conn_hv": "WYE", "ct_conn_lv": "WYE",
         "tap_hv": 1.0, "tap_lv": 1.0,
         "bias": 25, "min_operate": 20, "hoc": 8,
+        "fault_mva_base": 10.0, "z_pct": 10.0, "x_over_r": 20.0, "ct_withstand_a": 40.0,
     },
 }
 
@@ -272,10 +280,10 @@ amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current,
 with outer_analysis:
     st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
 
-    tab_theory, tab1, tab2, tab3, tab_graphs = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab_fault, tab_graphs = st.tabs([
         "Theory", "Live Vector Simulation",
         "Commissioning & Injection Tool", "Test Point Verification & Curve",
-        "Graphs",
+        "Fault Current Analysis", "Graphs",
     ])
 
     with tab_theory:
@@ -690,6 +698,75 @@ with outer_analysis:
             ("LV Rated (A)", relay.windings[1]["i_rated_pri"]),
         ])
 
+    with tab_fault:
+        st.subheader("Fault Current Analysis")
+        st.write(
+            "Checks the 87GT CTs against the maximum through-fault current this transformer's own "
+            "impedance allows, using the same method as EXCT's own settings document worked example "
+            "— not just the relay's own characteristic curve in isolation."
+        )
+        st.caption(
+            "A transformer isn't a fault current source the way a generator is — its own impedance "
+            "instead LIMITS the maximum through-fault current for a fault at or beyond its "
+            "terminals. This uses only this transformer's own nameplate impedance (an 'infinite "
+            "bus' simplifying assumption — no source impedance beyond the transformer, no network "
+            "reduction). The X/R ratio below is NOT confirmed against GSUT's own design data (no "
+            "worked through-fault example was found for this transformer specifically) — review it "
+            "before relying on the asymmetry figure."
+        )
+
+        fmc1, fmc2 = st.columns(2)
+        with fmc1:
+            fault_mva_base = st.number_input(
+                "Impedance Base (MVA)", min_value=0.1, value=p_data.get("fault_mva_base", mva), step=1.0, format="%.3f",
+                key=f"{selected_preset}__fault_mva_base",
+                help="The MVA rating the nameplate impedance % is stated on (468MVA OA base, per the "
+                     "Overall GSUT-GEN settings doc's embedded GSUT data)."
+            )
+            z_pct = st.number_input(
+                "Transformer Impedance, Z (%)", min_value=0.5, value=p_data.get("z_pct", 10.0), step=0.1,
+                key=f"{selected_preset}__z_pct",
+                help="From the transformer nameplate or design data (10% on 468MVA base, confirmed)."
+            )
+            x_over_r = st.number_input(
+                "X/R Ratio", min_value=1.0, value=p_data.get("x_over_r", 20.0), step=0.5,
+                key=f"{selected_preset}__x_over_r",
+                help="From the transformer nameplate/design data — NOT confirmed for GSUT specifically, review before relying on this."
+            )
+            fault_side = st.radio(
+                "Check CT On", ["HV", "LV"], horizontal=True, key=f"{selected_preset}__fault_side",
+                help="Which winding's CT to check."
+            )
+
+        fault_kv = kv_hv if fault_side == "HV" else kv_lv
+        fault_ct = ct_hv if fault_side == "HV" else ct_lv
+        fault_calc = transformer_through_fault_current(fault_mva_base, fault_kv, z_pct / 100.0, x_over_r)
+        relay_sec_fault = relay_secondary_at_fault(fault_calc["i_asym_amps"], fault_ct, ct_secondary_rating)
+
+        with fmc2:
+            sm1, sm2 = st.columns([3, 1])
+            with sm1:
+                st.metric("Symmetrical Through-Fault Current", f"{fault_calc['i_sym_amps']:,.0f} A")
+            with sm2:
+                fault_term_info("symmetrical", "Symmetrical")
+            am1, am2 = st.columns([3, 1])
+            with am1:
+                st.metric("Asymmetrical Through-Fault Current", f"{fault_calc['i_asym_amps']:,.0f} A ({fault_calc['asym_factor']:.2f}x)")
+            with am2:
+                fault_term_info("through", "Through-Fault")
+            st.metric(f"Relay Secondary Current ({fault_side} CT)", f"{relay_sec_fault:.1f} A")
+
+        st.markdown("---")
+        ct_withstand_a = st.number_input(
+            "CT / Relay Secondary Current Withstand Limit (A)", min_value=1.0, value=p_data.get("ct_withstand_a", 60.0), step=1.0,
+            key=f"{selected_preset}__ct_withstand",
+            help="Editable reference value — confirm against the relay manufacturer's own burden/CT "
+                 "saturation calculation for this specific CT and cable run."
+        )
+        if relay_sec_fault <= ct_withstand_a:
+            st.success(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
+        else:
+            st.warning(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio, impedance base, or relay burden.")
 
     with tab_graphs:
         st.subheader("All Graphs")
