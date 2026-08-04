@@ -153,77 +153,164 @@ selected_preset = st.sidebar.selectbox(
 )
 p_data = PRESETS_WITH_PROJECT[selected_preset]
 
-st.sidebar.header("Protection Characteristic")
+# ---------------------------------------------------------------------------
+# CURRENT SETTINGS — every applied setting, editable in place, with a live
+# comment on whether an adjustment improves or weakens protection. Comments
+# reuse the exact same checks already used elsewhere on this page (the old
+# "Engineering Input Checks" in the Live Simulation tab, and the "Starting/
+# Stall Margin Check") - no new engineering judgment invented, just surfaced
+# inline per-field instead of only after entering a test current.
+# ---------------------------------------------------------------------------
+st.markdown("## Current Settings")
+st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
 ensure_setting("motor_ct_ratio", float(p_data["ct_ratio"]))
 ensure_setting("motor_ct_sec", p_data["ct_sec"])
+ensure_setting("motor_fla", float(p_data["motor_fla"]))
+ensure_setting("motor_lrc_100", float(p_data["locked_rotor_amps"]))
+ensure_setting("motor_lrc_80", float(p_data["locked_rotor_amps_80pct"]))
+ensure_setting("motor_accel_time_100", p_data["accel_time_100"])
+ensure_setting("motor_accel_time_80", p_data["accel_time_80"])
+ensure_setting("motor_safe_stall_100", p_data["safe_stall_100_hot"])
+ensure_setting("motor_safe_stall_80", p_data["safe_stall_80_hot"])
+ensure_setting("motor_safe_stall_100_cold", p_data["safe_stall_100_ambient"])
+ensure_setting("motor_safe_stall_80_cold", p_data["safe_stall_80_ambient"])
 
-st.sidebar.markdown("**51 (Long Time Inverse)**")
-tap_51_options = [2.5, 2.8, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.5]
-ensure_setting("motor_tap_51", p_data["tap_51"])
-tap_51 = st.sidebar.select_slider(
-    "51 Tap (A sec.)", options=tap_51_options, key="motor_tap_51",
-    help="IFC66KD2A range: 2.5-7.5A at these discrete taps."
-)
-time_dial = slider_with_exact_input(
-    st.sidebar, "51 Time Dial", 0.5, 10.0, p_data["time_dial"], 0.1,
-    key="motor_time_dial",
-    help_text="IFC66KD2A range: 1/2 to 10, continuously adjustable. Curve: GE IAC 'Long Time "
-               "Inverse' 5-constant polynomial (GEK-106618C constants), calibrated to the "
-               "settings doc's reference point of ~16s at 500% pickup."
-)
-
-st.sidebar.markdown("**50A / 50B (Instantaneous)**")
-pickup_50a = slider_with_exact_input(
-    st.sidebar, "50A Pickup (A sec.)", 6.0, 150.0, p_data["pickup_50a"], 1.0,
-    key="motor_pickup_50a",
-    help_text="IFC66KD2A range: L-tap 6-30A, H-tap 30-150A. Should be set at ~300% of locked "
-               "rotor current to allow motor starting inrush."
-)
-dropout_50b = slider_with_exact_input(
-    st.sidebar, "50B Dropout (A sec.)", 2.0, 8.0, p_data["dropout_50b"], 0.1,
-    key="motor_dropout_50b",
-    help_text="IFC66KD2A range: L-tap 2-4A, H-tap 4-8A. High-dropout overload ALARM element — "
-               "estimated pickup = dropout / 0.8 (per GEK-49949, dropout occurs above 80% of pickup)."
-)
-ensure_setting("motor_target_seal_in", p_data["target_seal_in"])
-target_seal_in = st.sidebar.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, step=0.1, key="motor_target_seal_in")
-
-st.sidebar.markdown("**Backup Instantaneous (50)**")
-ensure_setting("motor_enable_backup", True)
-ensure_setting("motor_backup_ct_ratio", float(p_data["backup_ct_ratio"]))
-ensure_setting("motor_backup_pickup_50", p_data["backup_pickup_50"])
-enable_backup = st.sidebar.checkbox("Enable HFC22B2A backup relay", key="motor_enable_backup")
-backup_ct_ratio = st.sidebar.number_input("Backup CT Ratio (Primary A, e.g. 3000 in '3000:5')", min_value=1.0, key="motor_backup_ct_ratio", disabled=not enable_backup)
-backup_pickup_50 = st.sidebar.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, step=0.5, key="motor_backup_pickup_50", disabled=not enable_backup)
-
-with st.sidebar.expander("Advanced Settings (Motor Data & CT Spec)", expanded=False):
-    st.markdown("**Motor Data**")
-    ensure_setting("motor_fla", float(p_data["motor_fla"]))
-    ensure_setting("motor_lrc_100", float(p_data["locked_rotor_amps"]))
-    ensure_setting("motor_lrc_80", float(p_data["locked_rotor_amps_80pct"]))
-    ensure_setting("motor_accel_time_100", p_data["accel_time_100"])
-    ensure_setting("motor_accel_time_80", p_data["accel_time_80"])
-    ensure_setting("motor_safe_stall_100", p_data["safe_stall_100_hot"])
-    ensure_setting("motor_safe_stall_80", p_data["safe_stall_80_hot"])
-    ensure_setting("motor_safe_stall_100_cold", p_data["safe_stall_100_ambient"])
-    ensure_setting("motor_safe_stall_80_cold", p_data["safe_stall_80_ambient"])
-    motor_fla = st.number_input("Full Load Current (A)", min_value=1.0, step=1.0, key="motor_fla")
-    locked_rotor_amps = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, step=1.0, key="motor_lrc_100")
-    locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, step=1.0, key="motor_lrc_80")
-    accel_time_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, step=0.1, key="motor_accel_time_100")
-    accel_time_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, step=0.1, key="motor_accel_time_80")
-    safe_stall_100 = st.number_input("Safe Stall Time @ 100% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100",
-        help="Using the 'after one start attempt' (hot) value — the more conservative of the two documented safe stall times.")
-    safe_stall_80 = st.number_input("Safe Stall Time @ 80% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80")
-    safe_stall_100_cold = st.number_input("Safe Stall Time @ 100% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100_cold",
-        help="The 'from ambient' (cold) safe stall time — used only to compute the GE 869's Hot/Cold Safe Stall Ratio (HCR), not for the coordination checks above.")
-    safe_stall_80_cold = st.number_input("Safe Stall Time @ 80% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80_cold")
-
-    st.markdown("**CT Spec**")
-    ct_ratio = st.number_input("50/50/51 CT Ratio (Primary A, e.g. 600 in '600:5')", min_value=1.0, key="motor_ct_ratio")
-    ct_secondary_rating = st.selectbox("CT Secondary Rating (A)", [1.0, 5.0], key="motor_ct_sec")
+with st.container(border=True):
+    st.markdown("**Motor Data & CT Spec**")
+    m1c1, m1c2 = st.columns(2)
+    with m1c1:
+        motor_fla = st.number_input("Full Load Current (A)", min_value=1.0, step=1.0, key="motor_fla")
+        locked_rotor_amps = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, step=1.0, key="motor_lrc_100")
+        locked_rotor_amps_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, step=1.0, key="motor_lrc_80")
+        accel_time_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, step=0.1, key="motor_accel_time_100")
+        accel_time_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, step=0.1, key="motor_accel_time_80")
+    with m1c2:
+        safe_stall_100 = st.number_input("Safe Stall Time @ 100% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100",
+            help="Using the 'after one start attempt' (hot) value — the more conservative of the two documented safe stall times.")
+        safe_stall_80 = st.number_input("Safe Stall Time @ 80% V, hot (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80")
+        safe_stall_100_cold = st.number_input("Safe Stall Time @ 100% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_100_cold",
+            help="The 'from ambient' (cold) safe stall time — used only to compute the GE 869's Hot/Cold Safe Stall Ratio (HCR), not for the coordination checks below.")
+        safe_stall_80_cold = st.number_input("Safe Stall Time @ 80% V, cold (s)", min_value=0.1, step=0.1, key="motor_safe_stall_80_cold")
+        ct_ratio = st.number_input("50/50/51 CT Ratio (Primary A, e.g. 600 in '600:5')", min_value=1.0, key="motor_ct_ratio")
+        ct_secondary_rating = st.selectbox("CT Secondary Rating (A)", [1.0, 5.0], key="motor_ct_sec")
     st.caption(f"Effective ratio → **{ct_ratio/ct_secondary_rating:.1f}:1**")
+    if safe_stall_100 > accel_time_100:
+        st.success(f"Safe stall time @ 100% V ({safe_stall_100:.1f}s) exceeds acceleration time ({accel_time_100:.1f}s) — a normal start won't be mistaken for a stall.")
+    else:
+        st.warning(f"Safe stall time @ 100% V ({safe_stall_100:.1f}s) does not exceed acceleration time ({accel_time_100:.1f}s) — review this motor data before relying on the margin checks below.")
+    if safe_stall_80 > accel_time_80:
+        st.success(f"Safe stall time @ 80% V ({safe_stall_80:.1f}s) exceeds acceleration time ({accel_time_80:.1f}s) — a normal start won't be mistaken for a stall.")
+    else:
+        st.warning(f"Safe stall time @ 80% V ({safe_stall_80:.1f}s) does not exceed acceleration time ({accel_time_80:.1f}s) — review this motor data before relying on the margin checks below.")
+
+effective_ratio = ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else ct_ratio
+i_sec_at_fla = motor_fla / ct_ratio * ct_secondary_rating if ct_ratio > 0 else 0.0
+ideal_tap_51 = i_sec_at_fla * 1.15
+tap_51_options = [2.5, 2.8, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.5]
+nearest_tap_51 = min(tap_51_options, key=lambda t: abs(t - ideal_tap_51))
+
+with st.container(border=True):
+    st.markdown("**51 (Long Time Inverse)**")
+    st.caption(f"Ideal tap ≈ FLA + 15% = {ideal_tap_51:.2f} A sec. (nearest available: {nearest_tap_51:.1f} A sec.)")
+    ensure_setting("motor_tap_51", p_data["tap_51"])
+    t51c1, t51c2 = st.columns(2)
+    with t51c1:
+        tap_51 = st.select_slider(
+            "51 Tap (A sec.)", options=tap_51_options, key="motor_tap_51",
+            help="IFC66KD2A range: 2.5-7.5A at these discrete taps."
+        )
+        pickup_51_primary = tap_51 * effective_ratio
+        if pickup_51_primary > motor_fla:
+            st.success(f"Pickup {pickup_51_primary:.0f} A primary ({pickup_51_primary/motor_fla:.2f}x FLA) clears motor FLA.")
+        else:
+            st.warning(f"Pickup {pickup_51_primary:.0f} A primary is at or below motor FLA ({motor_fla:.0f} A) — review overload coordination.")
+    with t51c2:
+        time_dial = slider_with_exact_input(
+            st, "51 Time Dial", 0.5, 10.0, p_data["time_dial"], 0.1,
+            key="motor_time_dial",
+            help_text="IFC66KD2A range: 1/2 to 10, continuously adjustable. Curve: GE IAC 'Long Time "
+                       "Inverse' 5-constant polynomial (GEK-106618C constants), calibrated to the "
+                       "settings doc's reference point of ~16s at 500% pickup."
+        )
+        # Probe relay just to evaluate the 51 trip-time formula against the starting
+        # profile - 50A/50B fields aren't set yet at this point in the page, so dummy
+        # (irrelevant-to-this-check) values are used for those two required args.
+        _probe_51 = MotorTimeOvercurrentRelay(
+            ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
+            tap_51=tap_51, time_dial=time_dial, pickup_50a=1e9, dropout_50b=1e9,
+            motor_fla=motor_fla, locked_rotor_amps=locked_rotor_amps,
+        )
+        t_at_lrc_100 = _probe_51.calculate_51_trip_time(_probe_51.relay_current(locked_rotor_amps))
+        t_at_lrc_80 = _probe_51.calculate_51_trip_time(_probe_51.relay_current(locked_rotor_amps_80))
+        ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
+        ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
+        t100_str = f"{t_at_lrc_100:.1f}s" if t_at_lrc_100 is not None else "no trip"
+        t80_str = f"{t_at_lrc_80:.1f}s" if t_at_lrc_80 is not None else "no trip"
+        if ok_100 and ok_80:
+            st.success(f"Trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — inside the start/safe-stall margin both times. Lower time dial = faster trip (less thermal margin used on a stall) but less starting security.")
+        else:
+            st.warning(f"Trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — outside the start/safe-stall margin at one or both voltages. See the TCC Curve tab for the full picture.")
+
+with st.container(border=True):
+    st.markdown("**50A / 50B (Instantaneous)**")
+    t50c1, t50c2 = st.columns(2)
+    with t50c1:
+        pickup_50a = slider_with_exact_input(
+            st, "50A Pickup (A sec.)", 6.0, 150.0, p_data["pickup_50a"], 1.0,
+            key="motor_pickup_50a",
+            help_text="IFC66KD2A range: L-tap 6-30A, H-tap 30-150A. Should be set at ~300% of locked "
+                       "rotor current to allow motor starting inrush."
+        )
+        pickup_50a_primary = pickup_50a * effective_ratio
+        if pickup_50a_primary > locked_rotor_amps:
+            st.success(f"Pickup {pickup_50a_primary:.0f} A primary ({pickup_50a_primary/locked_rotor_amps:.2f}x LRC) clears locked-rotor current — won't trip instantaneously on a normal start.")
+        else:
+            st.warning(f"Pickup {pickup_50a_primary:.0f} A primary is at or below locked-rotor current ({locked_rotor_amps:.0f} A) — a normal start could trip instantaneously.")
+    with t50c2:
+        dropout_50b = slider_with_exact_input(
+            st, "50B Dropout (A sec.)", 2.0, 8.0, p_data["dropout_50b"], 0.1,
+            key="motor_dropout_50b",
+            help_text="IFC66KD2A range: L-tap 2-4A, H-tap 4-8A. High-dropout overload ALARM element — "
+                       "estimated pickup = dropout / 0.8 (per GEK-49949, dropout occurs above 80% of pickup)."
+        )
+        pickup_50b_primary = (dropout_50b / 0.8) * effective_ratio
+        if pickup_50b_primary > motor_fla:
+            st.success(f"Estimated pickup {pickup_50b_primary:.0f} A primary ({pickup_50b_primary/motor_fla:.2f}x FLA) clears motor FLA.")
+        else:
+            st.warning(f"Estimated pickup {pickup_50b_primary:.0f} A primary is at or below motor FLA ({motor_fla:.0f} A) — review the overload-alarm setting.")
+    ensure_setting("motor_target_seal_in", p_data["target_seal_in"])
+    target_seal_in = st.number_input("Target & Seal-in (A)", min_value=0.2, max_value=2.0, step=0.1, key="motor_target_seal_in")
+
+with st.container(border=True):
+    st.markdown("**Backup Instantaneous (50, HFC22B2A)**")
+    ensure_setting("motor_enable_backup", True)
+    ensure_setting("motor_backup_ct_ratio", float(p_data["backup_ct_ratio"]))
+    ensure_setting("motor_backup_pickup_50", p_data["backup_pickup_50"])
+    enable_backup = st.checkbox("Enable HFC22B2A backup relay", key="motor_enable_backup")
+    bkc1, bkc2 = st.columns(2)
+    with bkc1:
+        backup_ct_ratio = st.number_input("Backup CT Ratio (Primary A, e.g. 3000 in '3000:5')", min_value=1.0, key="motor_backup_ct_ratio", disabled=not enable_backup)
+    with bkc2:
+        backup_pickup_50 = st.number_input("Backup 50 Pickup (A sec.)", min_value=2.0, max_value=50.0, step=0.5, key="motor_backup_pickup_50", disabled=not enable_backup)
+    if enable_backup:
+        backup_effective_ratio = backup_ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else backup_ct_ratio
+        backup_pickup_primary = backup_pickup_50 * backup_effective_ratio
+        if backup_pickup_primary > locked_rotor_amps:
+            st.success(f"Pickup {backup_pickup_primary:.0f} A primary ({backup_pickup_primary/locked_rotor_amps:.2f}x LRC) clears locked-rotor current.")
+        else:
+            st.warning(f"Pickup {backup_pickup_primary:.0f} A primary is at or below locked-rotor current ({locked_rotor_amps:.0f} A) — review starting security and coordination.")
+    else:
+        st.caption("Backup relay disabled — not included in the checks below.")
+
+lr_multiple = (locked_rotor_amps / motor_fla) if motor_fla > 0 else 0.0
+k_conservative = (230.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
+k_typical = (175.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
+with st.expander("K-factor reference (GE 869 unbalance-bias formula, informational)", expanded=False):
+    st.caption("Not used by this page's IFC66KD2A relay — reference only, in case a GE 869 MPR is later added for this motor.")
+    kc1, kc2 = st.columns(2)
+    kc1.metric("K-factor (conservative)", f"{k_conservative:.2f}", help="K = 230 / (LRC ÷ FLA)²")
+    kc2.metric("K-factor (typical)", f"{k_typical:.2f}", help="K = 175 / (LRC ÷ FLA)² — GE Multilin's less-conservative published alternative.")
 
 relay = MotorTimeOvercurrentRelay(
     ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
@@ -235,33 +322,19 @@ backup_relay = BackupInstantaneousRelay(
     ct_ratio=backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=backup_pickup_50
 ) if enable_backup else None
 
-with st.sidebar.expander("🧮 Settings Calculator (from ratings)", expanded=False):
-    st.caption(
-        "Derives a starting point FROM the motor data above — the 51 Tap suggestion is a hard "
-        "formula (nearest available tap to FLA + margin); K-factor is GE Multilin's own two "
-        "published variants; Overload Pickup is a rule-of-thumb starting point."
-    )
-    i_sec_at_fla = motor_fla / ct_ratio * ct_secondary_rating if ct_ratio > 0 else 0.0
-    ideal_tap_51 = i_sec_at_fla * 1.15
-    nearest_tap_51 = min(tap_51_options, key=lambda t: abs(t - ideal_tap_51))
-    cc1, cc2 = st.columns(2)
-    cc1.metric("Ideal 51 Tap (FLA + 15%)", f"{ideal_tap_51:.2f} A sec.")
-    cc2.metric("Nearest available tap", f"{nearest_tap_51:.1f} A sec.")
-    lr_multiple = (locked_rotor_amps / motor_fla) if motor_fla > 0 else 0.0
-    k_conservative = (230.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
-    k_typical = (175.0 / (lr_multiple ** 2)) if lr_multiple > 0 else 0.0
-    cc3, cc4 = st.columns(2)
-    cc3.metric("K-factor (conservative)", f"{k_conservative:.2f}", help="K = 230 / (LRC ÷ FLA)² — the GE 869's own unbalance-bias formula for the thermal model.")
-    cc4.metric("K-factor (typical)", f"{k_typical:.2f}", help="K = 175 / (LRC ÷ FLA)² — GE Multilin's less-conservative published alternative.")
-    st.markdown(
-        "**Suggested starting point:** Overload Pickup ≈ **110-115% FLA** (GE Multilin guidance, "
-        "matched to the motor's service factor); Instantaneous ≈ **200% locked-rotor current** "
-        "(clears starting inrush, trips well below a genuine terminal fault)."
-    )
-    st.caption(
-        "Engineering review required — these are starting points, not a substitute for a "
-        "coordination study against the motor's actual thermal damage curve."
-    )
+all_clear = (
+    pickup_51_primary > motor_fla
+    and pickup_50a_primary > locked_rotor_amps
+    and pickup_50b_primary > motor_fla
+    and safe_stall_100 > accel_time_100
+    and safe_stall_80 > accel_time_80
+    and ok_100 and ok_80
+    and (not enable_backup or backup_pickup_primary > locked_rotor_amps)
+)
+if all_clear:
+    st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
+else:
+    st.warning("Overall status: one or more settings above need review before this is applied.")
 
 record_equipment_settings("motor", {
     "motor_fla": motor_fla, "locked_rotor_amps": locked_rotor_amps, "locked_rotor_amps_80pct": locked_rotor_amps_80,
