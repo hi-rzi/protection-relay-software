@@ -1,4 +1,5 @@
 import datetime
+import time
 
 import numpy as np
 import pandas as pd
@@ -968,41 +969,109 @@ with outer_analysis:
         else:
             st.info("Enter a Maximum Through-Fault Current above (it's currently 0) to run this scenario.")
 
-        if sim_eval is not None:
-            fig_sim = go.Figure()
-            if sim_eval["is_trip"]:
-                total_ms = relay_operate_cycles * cycle_ms + breaker_cycles * cycle_ms
-                t = [-preload_ms, 0, 0, total_ms, total_ms, total_ms + 40.0]
-                i = [preload_current, preload_current, sim_current_primary, sim_current_primary, 0.0, 0.0]
-
-                sc1, sc2 = st.columns(2)
-                with sc1:
-                    st.metric("Relay Trip Decision", sim_eval["status"])
-                with sc2:
-                    st.metric("Total Clearing Time", f"{total_ms:.0f} ms ({total_ms / cycle_ms:.1f} cycles)")
-
-                fig_sim.add_trace(go.Scatter(x=t, y=i, mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current"))
-                fig_sim.add_vline(x=relay_operate_cycles * cycle_ms, line=dict(color="#F59E0B", width=1.5, dash="dot"), annotation_text="Relay Trips")
-                fig_sim.add_vline(x=total_ms, line=dict(color="#16A34A", width=1.5, dash="dash"), annotation_text="Breaker Clears")
-            else:
-                total_window_ms = 200.0
-                t = [-preload_ms, 0, 0, total_window_ms]
-                i = [preload_current, preload_current, sim_current_primary, sim_current_primary]
-
-                st.metric("Relay Trip Decision", sim_eval["status"])
-                if fault_scenario.startswith("External"):
-                    st.info(
-                        "87G correctly stays SECURE for this through-fault — current keeps flowing "
-                        "through the zone. Clearing it is the job of protection outside 87G's zone "
-                        "(upstream/downstream backup relays), which isn't modeled on this page."
-                    )
-                else:
-                    st.warning("This fault current doesn't exceed the relay's trip threshold at the settings above — no clearing to simulate.")
-
-                fig_sim.add_trace(go.Scatter(x=t, y=i, mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current"))
-
-            fig_sim.update_layout(
+        def _fault_sim_base_fig():
+            fig = go.Figure()
+            fig.update_layout(
                 xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
                 template="plotly_white", height=340, margin=dict(t=20, b=40),
             )
-            st.plotly_chart(fig_sim, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_fig")
+            return fig
+
+        if sim_eval is not None:
+            run_sim = st.button(
+                "▶ Run Fault Simulation", key=f"{current_mode}__{selected_preset}__run_fault_sim",
+                help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
+            )
+            sim_caption_ph = st.empty()
+            sim_chart_ph = st.empty()
+            done_key = f"{current_mode}__{selected_preset}__fault_sim_last"
+
+            if run_sim:
+                if sim_eval["is_trip"]:
+                    relay_ms = relay_operate_cycles * cycle_ms
+                    total_ms = relay_ms + breaker_cycles * cycle_ms
+
+                    sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current spikes to {sim_current_primary:,.0f} A primary.")
+                    fig1 = _fault_sim_base_fig()
+                    fig1.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0], y=[preload_current, preload_current, sim_current_primary],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    sim_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_f1")
+                    time.sleep(0.9)
+
+                    sim_caption_ph.warning(f"🔍 Relay detects the fault and issues a trip signal at t={relay_ms:.0f} ms — {sim_eval['status']}.")
+                    fig2 = _fault_sim_base_fig()
+                    fig2.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0, relay_ms], y=[preload_current, preload_current, sim_current_primary, sim_current_primary],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    fig2.add_vline(x=relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                    sim_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_f2")
+                    time.sleep(0.9)
+
+                    sim_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={total_ms:.0f} ms. Total clearing time: {total_ms:.0f} ms ({total_ms / cycle_ms:.1f} cycles).")
+                    fig3 = _fault_sim_base_fig()
+                    fig3.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0, total_ms, total_ms, total_ms + 40.0],
+                        y=[preload_current, preload_current, sim_current_primary, sim_current_primary, 0.0, 0.0],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    fig3.add_vline(x=relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                    fig3.add_vline(x=total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                    sim_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_f3")
+
+                    st.session_state[done_key] = {
+                        "kind": "trip", "status": sim_eval["status"], "relay_ms": relay_ms, "total_ms": total_ms,
+                        "sim_current_primary": sim_current_primary, "preload_current": preload_current,
+                    }
+                else:
+                    window_ms = 200.0
+                    sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {sim_current_primary:,.0f} A primary.")
+                    fig1 = _fault_sim_base_fig()
+                    fig1.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0], y=[preload_current, preload_current, sim_current_primary],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    sim_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_f1n")
+                    time.sleep(0.9)
+
+                    if fault_scenario.startswith("External"):
+                        sim_caption_ph.info("🛡️ Relay checks the fault — operate current stays at zero. 87G correctly stays SECURE; clearing this through-fault is outside its zone.")
+                    else:
+                        sim_caption_ph.info("🛡️ Relay checks the fault — current stays below the trip threshold at the settings above. No trip.")
+                    fig2 = _fault_sim_base_fig()
+                    fig2.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0, window_ms], y=[preload_current, preload_current, sim_current_primary, sim_current_primary],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    sim_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_f2n")
+
+                    st.session_state[done_key] = {
+                        "kind": "no_trip", "status": sim_eval["status"], "window_ms": window_ms,
+                        "sim_current_primary": sim_current_primary, "preload_current": preload_current,
+                    }
+            else:
+                last = st.session_state.get(done_key)
+                if last is None:
+                    sim_caption_ph.caption("Click **Run Fault Simulation** to watch the fault current spike, the relay detect it, and the breaker clear it, step by step.")
+                elif last["kind"] == "trip":
+                    sim_caption_ph.success(f"Last run: {last['status']} — total clearing time {last['total_ms']:.0f} ms ({last['total_ms'] / cycle_ms:.1f} cycles).")
+                    fig_last = _fault_sim_base_fig()
+                    fig_last.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0, last["total_ms"], last["total_ms"], last["total_ms"] + 40.0],
+                        y=[last["preload_current"], last["preload_current"], last["sim_current_primary"], last["sim_current_primary"], 0.0, 0.0],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    fig_last.add_vline(x=last["relay_ms"], line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                    fig_last.add_vline(x=last["total_ms"], line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                    sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_last_fig")
+                else:
+                    sim_caption_ph.info(f"Last run: {last['status']} — no trip.")
+                    fig_last = _fault_sim_base_fig()
+                    fig_last.add_trace(go.Scatter(
+                        x=[-preload_ms, 0, 0, last["window_ms"]],
+                        y=[last["preload_current"], last["preload_current"], last["sim_current_primary"], last["sim_current_primary"]],
+                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                    ))
+                    sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_last_fig")
