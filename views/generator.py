@@ -83,6 +83,57 @@ is_custom = selected_preset == "Custom Profile"
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
+    # Live preview of the differential characteristic curve, right at the top so its shape is
+    # visible immediately without switching to Analysis & Tools. Reads straight from
+    # session_state (falling back to the preset default) since the actual settings widgets are
+    # drawn further down this same tab and haven't run yet on this script pass - this preview
+    # reflects whatever was set on the PREVIOUS interaction, and updates on the next rerun same
+    # as everything else on the page. Deliberately theoretical only (no operating points, no
+    # unrestrained high-set line) - the full picture with live test inputs is still the Live
+    # Vector Simulation tab in Analysis & Tools.
+    _pv_key = f"{current_mode}__{selected_preset}__"
+    _pv_mva = st.session_state.get(_pv_key + "mva", p_data["mva"])
+    _pv_kv = st.session_state.get(_pv_key + "kv", p_data["kv"])
+    _pv_ct_n = st.session_state.get(_pv_key + "ct_n", p_data["ct_n"])
+    _pv_ct_t = st.session_state.get(_pv_key + "ct_t", p_data["ct_t"])
+    _pv_ct_sec = st.session_state.get(_pv_key + "ct_sec", 5.0)
+    if current_mode == "GENERATOR_LEGACY":
+        _pv_relay = AdvancedDifferentialRelay(
+            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
+            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
+            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
+            target_amps=st.session_state.get(_pv_key + "target_amps", p_data["target_amps"]),
+        )
+        _pv_max_x = 6.0
+    else:
+        _pv_break_2 = st.session_state.get(_pv_key + "break2", p_data["break_2"])
+        _pv_relay = AdvancedDifferentialRelay(
+            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
+            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
+            i_pickup=st.session_state.get(_pv_key + "pickup", p_data["pickup"]),
+            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
+            slope_2=st.session_state.get(_pv_key + "slope2", p_data["s2"]),
+            break_1=st.session_state.get(_pv_key + "break1", p_data["break_1"]),
+            break_2=_pv_break_2,
+        )
+        _pv_max_x = max(6.0, _pv_break_2 + 1.0)
+    st.markdown("#### Live Preview — Differential Characteristic Curve")
+    st.caption(
+        "Reflects the settings below as you adjust them. Operating-point testing and the "
+        "unrestrained high-set line (if enabled) are in the Live Vector Simulation tab under "
+        "Analysis & Tools."
+    )
+    _pv_x = np.linspace(0, _pv_max_x, 200)
+    _pv_y = [_pv_relay.calculate_trip_threshold(x) for x in _pv_x]
+    _pv_fig = go.Figure()
+    _pv_fig.add_trace(go.Scatter(x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3)))
+    _pv_fig.update_layout(
+        xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+        template="plotly_white", height=320, margin=dict(t=20, b=40),
+    )
+    st.plotly_chart(_pv_fig, use_container_width=True, key="generator_settings_preview_fig")
+    st.markdown("---")
+
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
