@@ -226,44 +226,49 @@ def render_fan_motor_page(fan_type):
     # -------------------------------------------------------------------
     outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
     with outer_settings:
-        # Live preview of the SR469 overload curve PLUS the 87M differential pickup, right at the
-        # top so both are visible immediately without switching to Analysis & Tools. Reads every
-        # value straight from session_state (falling back to the preset default) since the actual
-        # settings widgets are drawn further down this same tab and haven't run yet on this script
-        # pass. Uses real FLA/CT values (not dummy placeholders) so the x-axis can be plotted in
-        # actual primary Amps - the only unit the overload curve and the 87M pickup (a completely
-        # separate, independent CT/relay) can both be shown on meaningfully.
-        _pv_fla = st.session_state.get(f"{project_key}__fla", float(p_data["motor_fla"]))
-        _pv_ct_ratio = st.session_state.get(f"{project_key}__ct_ratio", float(p_data["ct_ratio"]))
-        _pv_ct_sec = st.session_state.get(f"{project_key}__ct_sec", p_data["ct_sec"])
-        _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
-        _pv_probe = Motor869Relay(
-            ct_ratio=_pv_ct_ratio, ct_secondary_rating=_pv_ct_sec, motor_fla=_pv_fla,
-            overload_pickup_pct=115.0, curve_multiplier=_pv_cm, inst_pickup_multiple_of_ct=1.0,
-        )
-        _pv_diff87m_ct_ratio = st.session_state.get(f"{project_key}__diff87m_ct_ratio", float(p_data["diff87m_ct_ratio"]))
-        _pv_diff87m_pickup_sec = st.session_state.get(f"{project_key}__diff87m_pickup_sec", p_data["diff87m_pickup_sec"])
-        _pv_diff87m_pickup_primary = _pv_diff87m_pickup_sec * (_pv_diff87m_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_diff87m_ct_ratio)
+        # Live preview, right at the top so it's visible immediately without switching to
+        # Analysis & Tools. Reads every value straight from session_state (falling back to the
+        # preset default) since the actual settings widgets are drawn further down this same tab
+        # and haven't run yet on this script pass. The overload element (a time-current curve) and
+        # the 87M element (instantaneous, single pickup, no curve, on its own separate CT) are
+        # physically different kinds of protection, so they're shown as two separate visuals
+        # rather than one merged chart.
+        _pv_col_tcc, _pv_col_diff = st.columns([2, 1])
 
-        st.markdown("#### Live Preview — Overload (51) Curve + 87M Differential Pickup")
-        st.caption(
-            "Reflects the Curve Multiplier and 87M settings below as you adjust them. The dashed "
-            "line is the 87M's instantaneous pickup (it measures imbalance current on its own "
-            "separate CT, not phase current — shown here in equivalent primary Amps for reference, "
-            "not as a curve, since 87M has none). Starting/safe-stall overlay and commissioning "
-            "tools are in the TCC Curve tab under Analysis & Tools."
-        )
-        _pv_m = np.linspace(1.01, 8.0, 200)
-        _pv_x_amps = _pv_m * _pv_fla
-        _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
-        _pv_fig = go.Figure()
-        _pv_fig.add_trace(go.Scatter(x=_pv_x_amps, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3)))
-        _pv_fig.add_vline(x=_pv_diff87m_pickup_primary, line=dict(color="#DC2626", width=2, dash="dash"), annotation_text="87M Pickup")
-        _pv_fig.update_layout(
-            xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
-            xaxis_type="log", yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
-        )
-        st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
+        with _pv_col_tcc:
+            _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
+            _pv_probe = Motor869Relay(
+                ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
+                overload_pickup_pct=115.0, curve_multiplier=_pv_cm, inst_pickup_multiple_of_ct=1.0,
+            )
+            st.markdown("**Live Preview — Overload (51) Curve**")
+            st.caption(
+                "Reflects the Curve Multiplier setting below as you adjust it. Starting/safe-stall "
+                "overlay and commissioning tools are in the TCC Curve tab under Analysis & Tools."
+            )
+            _pv_m = np.linspace(1.01, 8.0, 200)
+            _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
+            _pv_fig = go.Figure()
+            _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3)))
+            _pv_fig.update_layout(
+                xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+                yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+            )
+            st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
+
+        with _pv_col_diff:
+            _pv_ct_sec = st.session_state.get(f"{project_key}__ct_sec", p_data["ct_sec"])
+            _pv_diff87m_ct_ratio = st.session_state.get(f"{project_key}__diff87m_ct_ratio", float(p_data["diff87m_ct_ratio"]))
+            _pv_diff87m_pickup_sec = st.session_state.get(f"{project_key}__diff87m_pickup_sec", p_data["diff87m_pickup_sec"])
+            _pv_diff87m_pickup_primary = _pv_diff87m_pickup_sec * (_pv_diff87m_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_diff87m_ct_ratio)
+            st.markdown("**Live Preview — 87M Differential Pickup**")
+            st.caption(
+                "Instantaneous, no time-current curve — trips as soon as imbalance current on its "
+                "own separate CT reaches this threshold."
+            )
+            st.metric("Pickup (Primary A)", f"{_pv_diff87m_pickup_primary:.1f} A")
+            st.caption(f"= {_pv_diff87m_pickup_sec:.2f} A secondary × {_pv_diff87m_ct_ratio:.0f}:{_pv_ct_sec:.0f} CT")
+
         st.markdown("---")
 
         st.markdown("## Current Settings")
