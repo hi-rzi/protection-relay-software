@@ -226,48 +226,34 @@ def render_fan_motor_page(fan_type):
     # -------------------------------------------------------------------
     outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
     with outer_settings:
-        # Live preview, right at the top so it's visible immediately without switching to
-        # Analysis & Tools. Reads every value straight from session_state (falling back to the
-        # preset default) since the actual settings widgets are drawn further down this same tab
-        # and haven't run yet on this script pass. The overload element (a time-current curve) and
-        # the 87M element (instantaneous, single pickup, no curve, on its own separate CT) are
-        # physically different kinds of protection, so they're shown as two separate visuals
-        # rather than one merged chart.
-        _pv_col_tcc, _pv_col_diff = st.columns([2, 1])
-
-        with _pv_col_tcc:
-            _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
-            _pv_probe = Motor869Relay(
-                ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
-                overload_pickup_pct=115.0, curve_multiplier=_pv_cm, inst_pickup_multiple_of_ct=1.0,
-            )
-            st.markdown("**Live Preview — Overload (51) Curve**")
-            st.caption(
-                "Reflects the Curve Multiplier setting below as you adjust it. Starting/safe-stall "
-                "overlay and commissioning tools are in the TCC Curve tab under Analysis & Tools."
-            )
-            _pv_m = np.linspace(1.01, 8.0, 200)
-            _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
-            _pv_fig = go.Figure()
-            _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3)))
-            _pv_fig.update_layout(
-                xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
-                yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
-            )
-            st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
-
-        with _pv_col_diff:
-            _pv_ct_sec = st.session_state.get(f"{project_key}__ct_sec", p_data["ct_sec"])
-            _pv_diff87m_ct_ratio = st.session_state.get(f"{project_key}__diff87m_ct_ratio", float(p_data["diff87m_ct_ratio"]))
-            _pv_diff87m_pickup_sec = st.session_state.get(f"{project_key}__diff87m_pickup_sec", p_data["diff87m_pickup_sec"])
-            _pv_diff87m_pickup_primary = _pv_diff87m_pickup_sec * (_pv_diff87m_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_diff87m_ct_ratio)
-            st.markdown("**Live Preview — 87M Differential Pickup**")
-            st.caption(
-                "Instantaneous, no time-current curve — trips as soon as imbalance current on its "
-                "own separate CT reaches this threshold."
-            )
-            st.metric("Pickup (Primary A)", f"{_pv_diff87m_pickup_primary:.1f} A")
-            st.caption(f"= {_pv_diff87m_pickup_sec:.2f} A secondary × {_pv_diff87m_ct_ratio:.0f}:{_pv_ct_sec:.0f} CT")
+        # Live preview of the SR469 overload curve, right at the top so its shape is visible
+        # immediately without switching to Analysis & Tools. Reads Curve Multiplier straight from
+        # session_state (falling back to the preset default) since the actual settings widget is
+        # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe
+        # relay with motor_fla=1.0 so the x-axis is directly "multiple of FLA" without needing the
+        # real motor/CT values that also aren't gathered yet at this point - reuses the real
+        # Standard thermal curve formula rather than duplicating it inline. The 87M element has no
+        # time-current curve (instantaneous, single pickup), so it isn't part of this chart - its
+        # pickup value is shown in its own settings card further down instead.
+        _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
+        _pv_probe = Motor869Relay(
+            ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
+            overload_pickup_pct=115.0, curve_multiplier=_pv_cm, inst_pickup_multiple_of_ct=1.0,
+        )
+        st.markdown("#### Live Preview — Overload (51) Curve")
+        st.caption(
+            "Reflects the Curve Multiplier setting below as you adjust it. Starting/safe-stall "
+            "overlay and commissioning tools are in the TCC Curve tab under Analysis & Tools."
+        )
+        _pv_m = np.linspace(1.01, 8.0, 200)
+        _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3)))
+        _pv_fig.update_layout(
+            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+            yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
 
         st.markdown("---")
 
