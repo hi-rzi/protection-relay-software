@@ -366,11 +366,17 @@ amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current,
 
 
 with outer_analysis:
-    st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
+    st.caption(
+        "Everything below reads the settings from the Current Settings tab — adjust them there. "
+        "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
+        "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+        "(where present) → Settings Summary & Approval. Full guide on the Home page."
+    )
 
-    tab_theory, tab1, tab2, tab3 = st.tabs([
-        "Theory", "Live Vector Simulation",
-        "Commissioning & Injection Tool", "Test Point Verification & Curve",
+    tab_theory, tab1, tab2, tab3, tab_approval = st.tabs([
+        "Theory", "Live Simulation",
+        "Commissioning & Injection Tool", "TCC Curve & Test Points",
+        "Settings Summary & Approval",
     ])
 
     with tab_theory:
@@ -482,29 +488,8 @@ with outer_analysis:
                 for p in phases:
                     mags = evals[p]["winding_mags_pu"]
                     st.caption(f"**{p}**: " + " | ".join(f"{n}: {m:.3f} pu" for n, m in zip(winding_names, mags)))
-
+            st.caption("The Relay-Ready Settings Sheet, settings export, and a certified audit report are in the Settings Summary & Approval tab.")
             winding_currents = {p: [inputs[p]["i_hv"], inputs[p]["i_gen"], inputs[p]["i_uat"]] for p in phases}
-            pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
-            st.download_button(
-                label="Export Certified Protection Audit Report",
-                data=pdf_bytes,
-                file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf"
-            )
-
-            render_settings_sheet(st, "CAC2-10-M3", [
-                ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
-                ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
-                ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
-                ("T1 (HV Tap)", f"{tap_hv:.3f}"),
-                ("T2 (Generator Tap)", f"{tap_gen:.3f}"),
-                ("T3 (UAT Tap)", f"{tap_uat:.3f}"),
-                ("Bias, τ (%)", f"{bias_pct:.0f}"),
-                ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
-                ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
-                ("Restraint Standard", convention),
-                ("CT Polarity Reference", ct_polarity),
-            ], key_prefix="Overall")
 
         st.subheader("Differential Bias Characteristic Curve")
 
@@ -815,3 +800,57 @@ with outer_analysis:
             ("Generator Rated (A)", relay.windings[1]["i_rated_pri"]),
             ("UAT Rated (A)", relay.windings[2]["i_rated_pri"]),
         ])
+
+    # ---------------------------------------------------------------------------
+    # TAB — Settings Summary & Approval
+    # ---------------------------------------------------------------------------
+    with tab_approval:
+        st.subheader("Settings Summary & Approval Record")
+        st.caption(
+            "Record the settings basis and review status before exporting a controlled report. "
+            "This record supports engineering review; it does not replace the approved protection study."
+        )
+
+        st.session_state.setdefault("overall_source_document", "Transformer Diff Setting - Overall GSUT-GEN.pdf")
+        st.session_state.setdefault("overall_revision", "Rev. 0")
+        st.session_state.setdefault("overall_prepared_by", "")
+        st.session_state.setdefault("overall_reviewed_by", "")
+        st.session_state.setdefault("overall_approval_status", "Draft — engineering review required")
+        st.session_state.setdefault("overall_review_note", "")
+
+        source_document = st.text_input("Source document", key="overall_source_document")
+        col_doc_1, col_doc_2 = st.columns(2)
+        with col_doc_1:
+            revision = st.text_input("Document / settings revision", key="overall_revision")
+            prepared_by = st.text_input("Prepared by", key="overall_prepared_by")
+        with col_doc_2:
+            reviewed_by = st.text_input("Reviewed by", key="overall_reviewed_by")
+            approval_status = st.selectbox(
+                "Review status",
+                ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
+                key="overall_approval_status",
+            )
+        review_note = st.text_area("Review note / change description", key="overall_review_note")
+
+        st.markdown("---")
+        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
+        st.download_button(
+            label="Export Certified Protection Audit Report",
+            data=pdf_bytes,
+            file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
+
+        render_settings_sheet(st, "CAC2-10-M3", [
+            ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
+            ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
+            ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
+            ("T1 (HV Tap)", f"{tap_hv:.3f}"),
+            ("T2 (Generator Tap)", f"{tap_gen:.3f}"),
+            ("T3 (UAT Tap)", f"{tap_uat:.3f}"),
+            ("Bias, τ (%)", f"{bias_pct:.0f}"),
+            ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
+            ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
+            ("Restraint Standard", convention),
+            ("CT Polarity Reference", ct_polarity),
+        ], key_prefix="Overall")

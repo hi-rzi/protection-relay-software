@@ -638,13 +638,18 @@ def render_fan_motor_page(fan_type):
 
 
     with outer_analysis:
-        st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
+        st.caption(
+            "Everything below reads the settings from the Current Settings tab — adjust them there. "
+            "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
+            "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+            "(where present) → Settings Summary & Approval. Full guide on the Home page."
+        )
 
         tab_names = [
             "Theory",
             "Live Simulation",
             "Commissioning & Injection Tool",
-            "TCC Curve",
+            "TCC Curve & Test Points",
             "Settings Summary & Approval",
         ]
         if project_key == "pa_fan":

@@ -371,12 +371,17 @@ relay = AdvancedDifferentialRelay(
 )
 
 with outer_analysis:
-    st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
+    st.caption(
+        "Everything below reads the settings from the Current Settings tab — adjust them there. "
+        "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
+        "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+        "(where present) → Settings Summary & Approval. Full guide on the Home page."
+    )
 
-    tab_theory, tab1, tab2, tab3, tab_fault = st.tabs([
-        "Theory", "Live Vector Simulation",
-        "Commissioning & Injection Tool", "Test Point Verification & Curve",
-        "Fault Current Analysis",
+    tab_theory, tab1, tab2, tab3, tab_fault, tab_approval = st.tabs([
+        "Theory", "Live Simulation",
+        "Commissioning & Injection Tool", "TCC Curve & Test Points",
+        "Fault Current Analysis", "Settings Summary & Approval",
     ])
 
     with tab_theory:
@@ -461,38 +466,7 @@ with outer_analysis:
                     "Action Verdict": e["status"]
                 })
             st.table(table_rows)
-
-            pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases, inputs=inputs)
-            st.download_button(
-                label="Export Certified Protection Audit Report",
-                data=pdf_bytes,
-                file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf"
-            )
-
-            if current_mode == "GENERATOR_LEGACY":
-                _sheet_rows = [
-                    ("Relay Type", "GE CFD22B4A (GEK-34124)"),
-                    ("Target/Seal-in Pickup (A sec.)", f"{target_amps:.2f}" if target_amps is not None else "N/A"),
-                    ("Restraint Slope (%)", f"{slope_1:.0f}"),
-                ]
-            else:
-                _sheet_rows = [
-                    ("Relay Type", "GE G60 (Numerical)"),
-                    ("Pickup (pu)", f"{i_pickup:.3f}"),
-                    ("Slope 1 (%)", f"{slope_1:.0f}"),
-                    ("Break 1 (pu)", f"{break_1:.2f}"),
-                    ("Slope 2 (%)", f"{slope_2:.0f}"),
-                    ("Break 2 (pu)", f"{break_2:.2f}"),
-                    ("Unrestrained High-Set (pu)", f"{i_unrestrained_value:.2f}" if i_unrestrained_value is not None else "Not enabled"),
-                ]
-            _sheet_rows += [
-                ("Neutral CT Ratio", f"{ct_ratio_N:.0f}:{ct_secondary_rating:.0f}"),
-                ("Terminal CT Ratio", f"{ct_ratio_T:.0f}:{ct_secondary_rating:.0f}"),
-                ("Restraint Standard", convention),
-                ("CT Polarity Reference", ct_polarity),
-            ]
-            render_settings_sheet(st, "GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows, key_prefix="Generator")
+            st.caption("The Relay-Ready Settings Sheet, settings export, and a certified audit report are in the Settings Summary & Approval tab.")
 
 
         st.subheader("Differential Slope Characteristic Curve")
@@ -1118,3 +1092,67 @@ with outer_analysis:
                         mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
                     ))
                     sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_last_fig")
+
+    # ---------------------------------------------------------------------------
+    # TAB — Settings Summary & Approval
+    # ---------------------------------------------------------------------------
+    with tab_approval:
+        st.subheader("Settings Summary & Approval Record")
+        st.caption(
+            "Record the settings basis and review status before exporting a controlled report. "
+            "This record supports engineering review; it does not replace the approved protection study."
+        )
+
+        st.session_state.setdefault("generator_source_document", "Generator Diff setting.pdf / GEK-34124E")
+        st.session_state.setdefault("generator_revision", "Rev. 0")
+        st.session_state.setdefault("generator_prepared_by", "")
+        st.session_state.setdefault("generator_reviewed_by", "")
+        st.session_state.setdefault("generator_approval_status", "Draft — engineering review required")
+        st.session_state.setdefault("generator_review_note", "")
+
+        source_document = st.text_input("Source document", key="generator_source_document")
+        col_doc_1, col_doc_2 = st.columns(2)
+        with col_doc_1:
+            revision = st.text_input("Document / settings revision", key="generator_revision")
+            prepared_by = st.text_input("Prepared by", key="generator_prepared_by")
+        with col_doc_2:
+            reviewed_by = st.text_input("Reviewed by", key="generator_reviewed_by")
+            approval_status = st.selectbox(
+                "Review status",
+                ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
+                key="generator_approval_status",
+            )
+        review_note = st.text_area("Review note / change description", key="generator_review_note")
+
+        st.markdown("---")
+        pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases, inputs=inputs)
+        st.download_button(
+            label="Export Certified Protection Audit Report",
+            data=pdf_bytes,
+            file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf"
+        )
+
+        if current_mode == "GENERATOR_LEGACY":
+            _sheet_rows = [
+                ("Relay Type", "GE CFD22B4A (GEK-34124)"),
+                ("Target/Seal-in Pickup (A sec.)", f"{target_amps:.2f}" if target_amps is not None else "N/A"),
+                ("Restraint Slope (%)", f"{slope_1:.0f}"),
+            ]
+        else:
+            _sheet_rows = [
+                ("Relay Type", "GE G60 (Numerical)"),
+                ("Pickup (pu)", f"{i_pickup:.3f}"),
+                ("Slope 1 (%)", f"{slope_1:.0f}"),
+                ("Break 1 (pu)", f"{break_1:.2f}"),
+                ("Slope 2 (%)", f"{slope_2:.0f}"),
+                ("Break 2 (pu)", f"{break_2:.2f}"),
+                ("Unrestrained High-Set (pu)", f"{i_unrestrained_value:.2f}" if i_unrestrained_value is not None else "Not enabled"),
+            ]
+        _sheet_rows += [
+            ("Neutral CT Ratio", f"{ct_ratio_N:.0f}:{ct_secondary_rating:.0f}"),
+            ("Terminal CT Ratio", f"{ct_ratio_T:.0f}:{ct_secondary_rating:.0f}"),
+            ("Restraint Standard", convention),
+            ("CT Polarity Reference", ct_polarity),
+        ]
+        render_settings_sheet(st, "GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows, key_prefix="Generator")
