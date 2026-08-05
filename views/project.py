@@ -1,10 +1,14 @@
 import datetime
 import json
 
+import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from common.project_state import EQUIPMENT_LABELS, project_summary, differential_zone_coordination
+from engines.motor import MotorTimeOvercurrentRelay
+from engines.motor_869 import Motor869Relay
 
 st.title("Project")
 st.caption(
@@ -88,6 +92,72 @@ else:
     st.caption("Visit the Generator, GSUT, and Overall GSUT-GEN pages to populate this check.")
 st.markdown("**Backup differential zone coverage** (per Transformer Diff Setting - Overall GSUT-GEN.pdf, Section 5.10)")
 st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
+
+st.markdown("### Motor Protection Coordination Curves")
+st.caption(
+    "Overlays each motor's time-overcurrent curve(s) on one chart, in absolute primary Amps, "
+    "so curves from motors with different FLA/CT ratios can still be compared directly. These "
+    "are parallel loads on the same bus, not a primary/backup series pair, so there's no strict "
+    "coordination-time-interval requirement between different motors — treat this as a "
+    "settings-consistency comparison. The one genuine same-zone pair is on the Primary Air Fan "
+    "itself: its SR469 and IFC66KD2A are two independent relays protecting the SAME motor on "
+    "the SAME CT, so those two curves are worth checking for sensible margin between them. "
+    "Visit each motor page at least once in this session to populate its curve(s) here."
+)
+
+_proj_equipment = st.session_state.get("project_equipment", {})
+_curve_defs = []
+
+_id_fan_data = _proj_equipment.get("motor")
+if _id_fan_data and all(_id_fan_data.get(k) is not None for k in ("ct_ratio", "ct_sec", "tap_51", "time_dial")):
+    _r = MotorTimeOvercurrentRelay(
+        ct_ratio=_id_fan_data["ct_ratio"], ct_secondary_rating=_id_fan_data["ct_sec"],
+        tap_51=1.0, time_dial=_id_fan_data["time_dial"], pickup_50a=1e9, dropout_50b=1e9,
+    )
+    _m = np.linspace(1.01, 20.0, 200)
+    _x = _m * _id_fan_data["tap_51"] * _r.effective_ratio
+    _y = [_r.calculate_51_trip_time(mm) for mm in _m]
+    _curve_defs.append(("ID Fan — IFC66KD2A 51", _x, _y))
+
+for _fan_key, _fan_label in [("pa_fan", "Primary Air Fan"), ("fd_fan", "Forced Draft Fan")]:
+    _data = _proj_equipment.get(_fan_key)
+    if _data and all(_data.get(k) is not None for k in ("motor_fla", "curve_multiplier")):
+        _r869 = Motor869Relay(
+            ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
+            overload_pickup_pct=115.0, curve_multiplier=_data["curve_multiplier"], inst_pickup_multiple_of_ct=1.0,
+        )
+        _m = np.linspace(1.01, 8.0, 200)
+        _x = _m * _data["motor_fla"]
+        _y = [_r869.calculate_overload_trip_time(mm) for mm in _m]
+        _curve_defs.append((f"{_fan_label} — SR469 Overload (51)", _x, _y))
+    if _data and all(_data.get(k) is not None for k in ("ifc_tap_51", "ifc_time_dial", "ct_ratio", "ct_sec")):
+        _r_ifc = MotorTimeOvercurrentRelay(
+            ct_ratio=_data["ct_ratio"], ct_secondary_rating=_data["ct_sec"],
+            tap_51=1.0, time_dial=_data["ifc_time_dial"], pickup_50a=1e9, dropout_50b=1e9,
+        )
+        _m = np.linspace(1.01, 20.0, 200)
+        _x = _m * _data["ifc_tap_51"] * _r_ifc.effective_ratio
+        _y = [_r_ifc.calculate_51_trip_time(mm) for mm in _m]
+        _curve_defs.append((f"{_fan_label} — IFC66KD2A 51", _x, _y))
+
+if len(_curve_defs) < 2:
+    st.info("Visit at least 2 of the motor pages (Induced Draft Fan, Primary Air Fan, Forced Draft Fan) this session to populate this comparison.")
+else:
+    _curve_labels = [c[0] for c in _curve_defs]
+    _selected_curves = st.multiselect("Curves to compare", _curve_labels, default=_curve_labels, key="project_coord_curve_select")
+    _coord_colors = ["#2563EB", "#DC2626", "#16A34A", "#7C3AED", "#F59E0B"]
+    _coord_fig = go.Figure()
+    for _i, (_label, _x, _y) in enumerate(_curve_defs):
+        if _label in _selected_curves:
+            _coord_fig.add_trace(go.Scatter(
+                x=_x, y=_y, mode="lines", name=_label,
+                line=dict(width=3, color=_coord_colors[_i % len(_coord_colors)]),
+            ))
+    _coord_fig.update_layout(
+        xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
+        xaxis_type="log", yaxis_type="log", template="plotly_white", height=450,
+    )
+    st.plotly_chart(_coord_fig, use_container_width=True, key="project_coord_curve_fig")
 
 st.markdown("### Save Project")
 project_export = {
