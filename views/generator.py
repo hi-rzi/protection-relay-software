@@ -911,3 +911,98 @@ with outer_analysis:
                 st.success(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
             else:
                 st.warning(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
+
+        st.markdown("---")
+        st.markdown("#### Fault Clearing Time Simulation")
+        st.caption(
+            "Feeds the fault current above through the same trip logic as the Live Vector Simulation "
+            "tab, then adds typical relay and breaker operating times to show how long fault current "
+            "actually flows before the breaker interrupts it. Relay/breaker times below are typical "
+            "values for this class of equipment (not confirmed against this generator's own relay and "
+            "breaker manuals) — adjust them if better data is available."
+        )
+
+        fault_scenario = st.radio(
+            "Fault Scenario",
+            ["Internal Fault (within 87G zone)", "External Through-Fault"],
+            key=f"{current_mode}__{selected_preset}__fault_sim_scenario",
+            horizontal=True,
+            help=(
+                "Internal: fault current is fed almost entirely from the generator's own neutral "
+                "side, with little/no current reaching the terminal CT — a large, easily-detected "
+                "mismatch. External: the same current passes through both CTs in the zone, so a "
+                "healthy 87G should NOT operate — it's outside this differential zone's job to "
+                "clear it."
+            ),
+        )
+
+        fc_t1, fc_t2 = st.columns(2)
+        with fc_t1:
+            relay_operate_cycles = st.number_input(
+                "Relay Operate Time (cycles)", min_value=0.25, max_value=10.0, value=1.5, step=0.25,
+                key=f"{current_mode}__{selected_preset}__relay_op_cycles",
+                help="Time from fault inception to the relay issuing a trip signal. Microprocessor differential relays of this class are typically under 2 cycles — not a figure confirmed against this relay's own manual."
+            )
+        with fc_t2:
+            breaker_cycles = st.number_input(
+                "Breaker Interrupting Time (cycles)", min_value=1.0, max_value=15.0, value=5.0, step=0.5,
+                key=f"{current_mode}__{selected_preset}__breaker_cycles",
+                help="Time from trip coil energization to fault current interruption — typical generator/main breakers are 3-5 cycles. Not confirmed against this plant's own breaker nameplate."
+            )
+
+        cycle_ms = 1000.0 / 60.0
+        preload_ms = 40.0
+        preload_current = relay.i_rated_pri
+
+        sim_eval = None
+        sim_current_primary = 0.0
+        if fault_scenario.startswith("Internal"):
+            sim_eval = relay.evaluate_protection(fault_calc["i_fault_asym_amps"], 0.0, 0.0, 0.0)
+            sim_current_primary = fault_calc["i_fault_asym_amps"]
+        elif external_fault_ka > 0:
+            thru_amps = external_fault_ka * 1000.0
+            ang_T = 0.0
+            ang_N = ang_T if ct_polarity == "OPPOSITE" else ang_T + 180.0
+            sim_eval = relay.evaluate_protection(thru_amps, ang_N, thru_amps, ang_T)
+            sim_current_primary = thru_amps
+        else:
+            st.info("Enter a Maximum Through-Fault Current above (it's currently 0) to run this scenario.")
+
+        if sim_eval is not None:
+            fig_sim = go.Figure()
+            if sim_eval["is_trip"]:
+                total_ms = relay_operate_cycles * cycle_ms + breaker_cycles * cycle_ms
+                t = [-preload_ms, 0, 0, total_ms, total_ms, total_ms + 40.0]
+                i = [preload_current, preload_current, sim_current_primary, sim_current_primary, 0.0, 0.0]
+
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    st.metric("Relay Trip Decision", sim_eval["status"])
+                with sc2:
+                    st.metric("Total Clearing Time", f"{total_ms:.0f} ms ({total_ms / cycle_ms:.1f} cycles)")
+
+                fig_sim.add_trace(go.Scatter(x=t, y=i, mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current"))
+                fig_sim.add_vline(x=relay_operate_cycles * cycle_ms, line=dict(color="#F59E0B", width=1.5, dash="dot"), annotation_text="Relay Trips")
+                fig_sim.add_vline(x=total_ms, line=dict(color="#16A34A", width=1.5, dash="dash"), annotation_text="Breaker Clears")
+            else:
+                total_window_ms = 200.0
+                t = [-preload_ms, 0, 0, total_window_ms]
+                i = [preload_current, preload_current, sim_current_primary, sim_current_primary]
+
+                st.metric("Relay Trip Decision", sim_eval["status"])
+                if fault_scenario.startswith("External"):
+                    st.info(
+                        "87G correctly stays SECURE for this through-fault — current keeps flowing "
+                        "through the zone. Clearing it is the job of protection outside 87G's zone "
+                        "(upstream/downstream backup relays), which isn't modeled on this page."
+                    )
+                else:
+                    st.warning("This fault current doesn't exceed the relay's trip threshold at the settings above — no clearing to simulate.")
+
+                fig_sim.add_trace(go.Scatter(x=t, y=i, mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current"))
+
+            fig_sim.update_layout(
+                xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
+                template="plotly_white", height=340, margin=dict(t=20, b=40),
+            )
+            st.plotly_chart(fig_sim, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_sim_fig")
