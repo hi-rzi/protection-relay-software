@@ -16,11 +16,13 @@ from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
+from engines.motor_differential import SelfBalancingDifferentialRelay
 
 st.title("Induced Draft (ID) Fan Motor Protection")
 st.caption(
     "10,001HP, 13.2kV — GE IFC66KD2A electromechanical 50/50/51 time-overcurrent relay, "
-    "GE HFC22B2A backup instantaneous relay, and GE 869 microprocessor Motor Protection Relay."
+    "GE HFC22B2A backup instantaneous relay, GE 869 microprocessor Motor Protection Relay, "
+    "and GE HFC23C1A self-balancing differential (87M)."
 )
 
 st.warning(
@@ -42,6 +44,10 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 4.5,
         "pickup_50a": 47.0, "dropout_50b": 3.3, "target_seal_in": 0.2,
         "backup_ct_ratio": 3000, "backup_pickup_50": 10.0,
+        # 87M self-balancing differential (Section 5.13) - Induced Draft Fans use a
+        # different, larger CT (100/5, Low tap) than every other motor (50/5, High tap).
+        # Pickup is 20A primary either way: 20/(100/5) = 1.0A secondary here.
+        "diff87m_ct_ratio": 100, "diff87m_pickup_sec": 1.0,
     },
     "Custom Profile": {
         "motor_fla": 100, "locked_rotor_amps": 600, "locked_rotor_amps_80pct": 480,
@@ -52,6 +58,7 @@ PRESETS = {
         "tap_51": 4.0, "time_dial": 5.0,
         "pickup_50a": 50.0, "dropout_50b": 3.0, "target_seal_in": 0.2,
         "backup_ct_ratio": 200, "backup_pickup_50": 10.0,
+        "diff87m_ct_ratio": 50, "diff87m_pickup_sec": 2.0,
     },
 }
 
@@ -62,7 +69,8 @@ MOTOR_CONFIG_FIELDS = (
     "motor_ct_ratio", "motor_ct_sec", "motor_tap_51",
     "motor_time_dial", "motor_pickup_50a", "motor_dropout_50b",
     "motor_target_seal_in", "motor_enable_backup", "motor_backup_ct_ratio",
-    "motor_backup_pickup_50", "motor_source_document", "motor_revision",
+    "motor_backup_pickup_50", "motor_diff87m_ct_ratio", "motor_diff87m_pickup_sec",
+    "motor_source_document", "motor_revision",
     "motor_prepared_by", "motor_reviewed_by", "motor_approval_status", "motor_review_note",
 )
 
@@ -132,6 +140,7 @@ def _load_preset_into_state():
         "motor_accel_time_100": pd_["accel_time_100"], "motor_accel_time_80": pd_["accel_time_80"],
         "motor_safe_stall_100": pd_["safe_stall_100_hot"], "motor_safe_stall_80": pd_["safe_stall_80_hot"],
         "motor_safe_stall_100_cold": pd_["safe_stall_100_ambient"], "motor_safe_stall_80_cold": pd_["safe_stall_80_ambient"],
+        "motor_diff87m_ct_ratio": float(pd_["diff87m_ct_ratio"]), "motor_diff87m_pickup_sec": pd_["diff87m_pickup_sec"],
     }
     for k, v in plain_fields.items():
         st.session_state[k] = v
@@ -177,6 +186,8 @@ with outer_settings:
     ensure_setting("motor_safe_stall_80", p_data["safe_stall_80_hot"])
     ensure_setting("motor_safe_stall_100_cold", p_data["safe_stall_100_ambient"])
     ensure_setting("motor_safe_stall_80_cold", p_data["safe_stall_80_ambient"])
+    ensure_setting("motor_diff87m_ct_ratio", float(p_data["diff87m_ct_ratio"]))
+    ensure_setting("motor_diff87m_pickup_sec", p_data["diff87m_pickup_sec"])
 
     with st.container(border=True):
         st.markdown("**Motor Data & CT Spec**")
@@ -205,6 +216,31 @@ with outer_settings:
             st.success(f"Safe stall time @ 80% V ({safe_stall_80:.1f}s) exceeds acceleration time ({accel_time_80:.1f}s) — a normal start won't be mistaken for a stall.")
         else:
             st.warning(f"Safe stall time @ 80% V ({safe_stall_80:.1f}s) does not exceed acceleration time ({accel_time_80:.1f}s) — review this motor data before relying on the margin checks below.")
+
+    with st.container(border=True):
+        st.markdown("**87M Self-Balancing Differential (GE HFC23C1A)**")
+        st.caption(
+            "A separate relay from the 50/50/51 above — both the line and neutral conductors of "
+            "each phase pass through ONE current transformer here, so a healthy motor's current "
+            "cancels to zero at the relay. Fitted to motors over 1500HP. Not restraint/bias-based "
+            "and has no time-current curve — instantaneous, one pickup setting."
+        )
+        d87c1, d87c2 = st.columns(2)
+        with d87c1:
+            diff87m_ct_ratio = st.number_input(
+                "87M CT Ratio (Primary A, e.g. 100 in '100:5')", min_value=1.0, step=1.0, key="motor_diff87m_ct_ratio",
+                help="Induced Draft Fans use a 100/5 CT here — every other motor at this plant uses 50/5."
+            )
+        with d87c2:
+            diff87m_pickup_sec = st.number_input(
+                "87M Pickup (A sec.)", min_value=0.5, max_value=4.0, step=0.1, key="motor_diff87m_pickup_sec",
+                help="HFC23C1A range: Low tap 0.5-2A, High tap 2-4A, continuously adjustable."
+            )
+        diff87m_pickup_primary = diff87m_pickup_sec * (diff87m_ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else diff87m_ct_ratio)
+        if abs(diff87m_pickup_primary - 20.0) < 0.5:
+            st.success(f"Pickup = {diff87m_pickup_primary:.1f} A primary — matches the settings doc's own 20A primary target for every 87M relay at this plant.")
+        else:
+            st.warning(f"Pickup = {diff87m_pickup_primary:.1f} A primary — the settings doc sets every 87M relay to 20A primary regardless of CT ratio; review this if the difference isn't intentional.")
 
     effective_ratio = ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else ct_ratio
     i_sec_at_fla = motor_fla / ct_ratio * ct_secondary_rating if ct_ratio > 0 else 0.0
@@ -323,6 +359,9 @@ with outer_settings:
     backup_relay = BackupInstantaneousRelay(
         ct_ratio=backup_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps=backup_pickup_50
     ) if enable_backup else None
+    diff87m_relay = SelfBalancingDifferentialRelay(
+        ct_ratio=diff87m_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps_sec=diff87m_pickup_sec
+    )
 
     all_clear = (
         pickup_51_primary > motor_fla
@@ -332,6 +371,7 @@ with outer_settings:
         and safe_stall_80 > accel_time_80
         and ok_100 and ok_80
         and (not enable_backup or backup_pickup_primary > locked_rotor_amps)
+        and abs(diff87m_pickup_primary - 20.0) < 0.5
     )
     if all_clear:
         st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
@@ -348,6 +388,7 @@ record_equipment_settings("motor", {
     "tap_51": tap_51, "time_dial": time_dial,
     "pickup_50a": pickup_50a, "dropout_50b": dropout_50b, "target_seal_in": target_seal_in,
     "backup_ct_ratio": backup_ct_ratio, "backup_pickup_50": backup_pickup_50,
+    "diff87m_ct_ratio": diff87m_ct_ratio, "diff87m_pickup_sec": diff87m_pickup_sec,
 })
 
 
@@ -405,9 +446,15 @@ with outer_analysis:
                 help="Try the motor FLA (392A, should be SAFE), locked rotor current (1869A, should "
                      "time-delay trip), or 50A pickup primary current to see each element respond."
             )
+            diff87m_test_imbalance = st.number_input(
+                "87M Imbalance Test Current [A]", value=0.0, min_value=0.0, step=1.0,
+                help="The NET (line minus neutral) current through the self-balancing CT — zero for "
+                     "a healthy motor. Try the pickup primary current above to see it trip."
+            )
 
             eval_result = relay.evaluate_protection(test_current)
             backup_result = backup_relay.evaluate_protection(test_current) if backup_relay else None
+            diff87m_result = diff87m_relay.evaluate_protection(diff87m_test_imbalance)
 
         with col_results:
             st.subheader("Real-time Protection Verdict")
@@ -438,6 +485,11 @@ with outer_analysis:
                     "State": "TRIP" if backup_result["is_trip"] else "Below Pickup",
                     "Detail": f"Pickup {backup_relay.pickup_amps:.1f}A sec. (higher-ratio CT, won't saturate)"
                 })
+            elem_rows.append({
+                "Element": "87M (Self-Balancing Differential)",
+                "State": "TRIP" if diff87m_result["is_trip"] else "Below Pickup",
+                "Detail": f"Pickup {diff87m_relay.pickup_amps_sec:.1f}A sec. ({diff87m_relay.pickup_amps_primary:.0f}A primary) — separate CT from the elements above"
+            })
             st.table(elem_rows)
 
             st.markdown("---")
@@ -545,6 +597,12 @@ with outer_analysis:
                     ("Backup 50 Pickup (A sec.)", f"{backup_pickup_50:.2f}"),
                 ]
             render_settings_sheet(st, "IFC66KD2A", _motor_sheet_rows, key_prefix="IDFan")
+
+            render_settings_sheet(st, "GE HFC23C1A", [
+                ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
+                ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
+            ], key_prefix="IDFan_87M")
 
     # ---------------------------------------------------------------------------
     # TAB 2 — Commissioning & Injection Tool

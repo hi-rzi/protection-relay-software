@@ -31,6 +31,7 @@ from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
+from engines.motor_differential import SelfBalancingDifferentialRelay
 
 # ---------------------------------------------------------------------------
 # Presets — base values from Data.xlsx "Motor Data" sheet (Unit 7 & 8, 6.9kV
@@ -96,6 +97,10 @@ FAN_TYPES = {
                 # Backup instantaneous relay (GEK-49826C HFC22B2A), Section 5.3.2 - separate,
                 # higher-ratio 2000/5 CT so it won't saturate under high fault current.
                 "ifc_backup_ct_ratio": 2000, "ifc_backup_pickup_50": 7.5,
+                # 87M self-balancing differential (Motor_Protection_Setting doc family,
+                # Section 5.13) - "all motors except Induced Draft Fans" use a 50/5 CT,
+                # High tap, 2.0A secondary pickup (20A primary, same target for every motor).
+                "diff87m_ct_ratio": 50, "diff87m_pickup_sec": 2.0,
             },
             "Custom Profile": {
                 "motor_fla": 100, "ct_ratio": 100, "ct_sec": 5.0,
@@ -118,6 +123,7 @@ FAN_TYPES = {
                 "ifc_tap_51": 4.0, "ifc_time_dial": 5.0,
                 "ifc_pickup_50a": 50.0, "ifc_dropout_50b": 3.0, "ifc_target_seal_in": 0.2,
                 "ifc_backup_ct_ratio": 200, "ifc_backup_pickup_50": 10.0,
+                "diff87m_ct_ratio": 50, "diff87m_pickup_sec": 2.0,
             },
         },
     },
@@ -159,6 +165,9 @@ FAN_TYPES = {
                 "locked_rotor_amps_100": 965.0, "locked_rotor_amps_80": 739.0,
                 "accel_time_100": 3.2, "accel_time_80": 5.3,
                 "safe_stall_100": 20.0, "safe_stall_80": 34.0,
+                # 87M self-balancing differential - "all motors except Induced Draft Fans"
+                # use a 50/5 CT, High tap, 2.0A secondary pickup (20A primary).
+                "diff87m_ct_ratio": 50, "diff87m_pickup_sec": 2.0,
             },
             "Custom Profile": {
                 "motor_fla": 100, "ct_ratio": 100, "ct_sec": 5.0,
@@ -178,6 +187,7 @@ FAN_TYPES = {
                 "locked_rotor_amps_100": 600.0, "locked_rotor_amps_80": 460.0,
                 "accel_time_100": 3.0, "accel_time_80": 5.0,
                 "safe_stall_100": 15.0, "safe_stall_80": 25.0,
+                "diff87m_ct_ratio": 50, "diff87m_pickup_sec": 2.0,
             },
         },
     },
@@ -229,6 +239,33 @@ def render_fan_motor_page(fan_type):
                 ct_secondary_rating = st.selectbox("CT Secondary Rating (A)", [1.0, 5.0], index=1 if p_data["ct_sec"] == 5.0 else 0, key=f"{project_key}__ct_sec")
                 ground_ct_ratio = st.number_input("Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["ground_ct_ratio"]), step=1.0, key=f"{project_key}__gct_ratio")
             st.caption(f"Effective ratio → **{ct_ratio:.0f}:{ct_secondary_rating:.0f}** (= {ct_ratio/ct_secondary_rating:.1f}:1)")
+
+        with st.container(border=True):
+            st.markdown("**87M Self-Balancing Differential (GE HFC23C1A)**")
+            st.caption(
+                "A separate relay from the SR469/IFC66KD2A above — both the line and neutral "
+                "conductors of each phase pass through ONE current transformer here, so a healthy "
+                "motor's current cancels to zero at the relay. Fitted to motors over 1500HP. Not "
+                "restraint/bias-based and has no time-current curve — instantaneous, one pickup setting."
+            )
+            d87c1, d87c2 = st.columns(2)
+            with d87c1:
+                diff87m_ct_ratio = st.number_input(
+                    "87M CT Ratio (Primary A, e.g. 50 in '50:5')", min_value=1.0, value=float(p_data["diff87m_ct_ratio"]), step=1.0,
+                    key=f"{project_key}__diff87m_ct_ratio",
+                    help="Induced Draft Fans use a 100/5 CT here — every other motor at this plant uses 50/5."
+                )
+            with d87c2:
+                diff87m_pickup_sec = st.number_input(
+                    "87M Pickup (A sec.)", min_value=0.5, max_value=4.0, value=p_data["diff87m_pickup_sec"], step=0.1,
+                    key=f"{project_key}__diff87m_pickup_sec",
+                    help="HFC23C1A range: Low tap 0.5-2A, High tap 2-4A, continuously adjustable."
+                )
+            diff87m_pickup_primary = diff87m_pickup_sec * (diff87m_ct_ratio / ct_secondary_rating if ct_secondary_rating > 0 else diff87m_ct_ratio)
+            if abs(diff87m_pickup_primary - 20.0) < 0.5:
+                st.success(f"Pickup = {diff87m_pickup_primary:.1f} A primary — matches the settings doc's own 20A primary target for every 87M relay at this plant.")
+            else:
+                st.warning(f"Pickup = {diff87m_pickup_primary:.1f} A primary — the settings doc sets every 87M relay to 20A primary regardless of CT ratio; review this if the difference isn't intentional.")
 
         with st.container(border=True):
             st.markdown("**Overload (Thermal Model)**")
@@ -425,6 +462,7 @@ def render_fan_motor_page(fan_type):
             and unbal_trip_pct >= unbal_alarm_pct
             and (project_key not in ("fd_fan", "pa_fan") or (ok_100 and ok_80))
             and ifc_all_clear
+            and abs(diff87m_pickup_primary - 20.0) < 0.5
         )
         if all_clear:
             st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
@@ -454,7 +492,12 @@ def render_fan_motor_page(fan_type):
         "ifc_pickup_50a": ifc_pickup_50a, "ifc_dropout_50b": ifc_dropout_50b,
         "ifc_target_seal_in": ifc_target_seal_in,
         "ifc_backup_ct_ratio": ifc_backup_ct_ratio, "ifc_backup_pickup_50": ifc_backup_pickup_50,
+        "diff87m_ct_ratio": diff87m_ct_ratio, "diff87m_pickup_sec": diff87m_pickup_sec,
     })
+
+    diff87m_relay = SelfBalancingDifferentialRelay(
+        ct_ratio=diff87m_ct_ratio, ct_secondary_rating=ct_secondary_rating, pickup_amps_sec=diff87m_pickup_sec
+    )
 
     ifc_relay = ifc_backup_relay = None
     if project_key == "pa_fan":
@@ -534,11 +577,16 @@ def render_fan_motor_page(fan_type):
                 unbalance_input = st.number_input(
                     "Current Unbalance (%, I2/I1)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"{project_key}__unbalance_input"
                 )
+                diff87m_test_imbalance = st.number_input(
+                    "87M Imbalance Test Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key=f"{project_key}__diff87m_test_imbalance",
+                    help="The NET (line minus neutral) current through the self-balancing CT — zero for a healthy motor. Try the pickup primary current to see it trip."
+                )
 
             eval_result = relay.evaluate_protection(test_current)
             gf_eval = relay.evaluate_ground_fault(ground_current)
             unbal_eval = relay.evaluate_unbalance(unbalance_input)
-            any_trip = eval_result["is_trip"] or gf_eval["is_trip"] or unbal_eval["is_trip"]
+            diff87m_result = diff87m_relay.evaluate_protection(diff87m_test_imbalance)
+            any_trip = eval_result["is_trip"] or gf_eval["is_trip"] or unbal_eval["is_trip"] or diff87m_result["is_trip"]
 
             with col_results:
                 st.subheader("Real-time Protection Verdict")
@@ -550,6 +598,7 @@ def render_fan_motor_page(fan_type):
                     {"Function": "Overload (51) / Instantaneous (50)", "Multiple": f"{eval_result['multiple_of_fla']:.2f}x FLA", "Status": eval_result["status"]},
                     {"Function": "Ground Fault (50G/51G)", "Multiple": f"{ground_current:.1f} A", "Status": gf_eval["status"]},
                     {"Function": "Current Unbalance (46)", "Multiple": f"{unbalance_input:.1f} %", "Status": unbal_eval["status"]},
+                    {"Function": "87M (Self-Balancing Differential)", "Multiple": f"{diff87m_test_imbalance:.1f} A", "Status": diff87m_result["status"]},
                 ])
 
                 pdf_bytes = generate_fan_motor_pdf_report(
@@ -575,6 +624,12 @@ def render_fan_motor_page(fan_type):
                     ("Unbalance Alarm/Trip (%)", f"{unbal_alarm_pct:.0f} / {unbal_trip_pct:.0f}"),
                     ("Mechanical Jam Pickup (% FLA)", f"{mech_jam_pct:.0f}"),
                 ], key_prefix=project_key.upper())
+
+                render_settings_sheet(st, "GE HFC23C1A", [
+                    ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                    ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
+                    ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
+                ], key_prefix=f"{project_key.upper()}_87M")
 
         # -----------------------------------------------------------------------
         # TAB 2 — Commissioning & Injection Tool
