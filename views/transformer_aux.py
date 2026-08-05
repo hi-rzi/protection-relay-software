@@ -1,4 +1,5 @@
 import datetime
+import time
 
 import numpy as np
 import pandas as pd
@@ -802,3 +803,169 @@ with outer_analysis:
             st.success(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
         else:
             st.warning(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio, impedance base, or relay burden.")
+
+        st.markdown("---")
+        st.markdown("#### Fault Clearing Time Simulation")
+        st.caption(
+            "Feeds the fault current above through the same trip logic as the Live Vector Simulation "
+            "tab, then adds typical relay and breaker operating times to show how long fault current "
+            "actually flows before the breaker interrupts it. Relay/breaker times below are typical "
+            "values for this class of equipment (not confirmed against this transformer's own relay "
+            "and breaker manuals) — adjust them if better data is available."
+        )
+
+        fault_scenario = st.radio(
+            "Fault Scenario",
+            ["Internal Fault (within 87AT zone)", "External Through-Fault"],
+            key=f"{selected_preset}__fault_sim_scenario",
+            horizontal=True,
+            help=(
+                f"Internal: modeled as the fault current above appearing only at the {fault_side} "
+                "winding, with ~0 reaching the other winding — a large, easily-detected mismatch. "
+                "This app doesn't model a separate internal-fault current for transformers, so it "
+                "reuses the through-fault current computed above as a stand-in magnitude — treat "
+                "this as illustrative, not a verified worst-case internal-fault study. External: the "
+                "same current passes through both windings (properly turns-ratio referred), so a "
+                "healthy 87AT should NOT operate — it's outside this differential zone's job to "
+                "clear it."
+            ),
+        )
+
+        fc_t1, fc_t2 = st.columns(2)
+        with fc_t1:
+            relay_operate_cycles = st.number_input(
+                "Relay Operate Time (cycles)", min_value=0.25, max_value=10.0, value=1.5, step=0.25,
+                key=f"{selected_preset}__relay_op_cycles",
+                help="Time from fault inception to the relay issuing a trip signal. Microprocessor differential relays of this class are typically under 2 cycles — not a figure confirmed against this relay's own manual."
+            )
+        with fc_t2:
+            breaker_cycles = st.number_input(
+                "Breaker Interrupting Time (cycles)", min_value=1.0, max_value=15.0, value=5.0, step=0.5,
+                key=f"{selected_preset}__breaker_cycles",
+                help="Time from trip coil energization to fault current interruption — typical power transformer breakers are 3-5 cycles. Not confirmed against this plant's own breaker nameplate."
+            )
+
+        cycle_ms = 1000.0 / 60.0
+        preload_ms = 40.0
+        preload_current = relay.windings[0]["i_rated_pri"]
+        fault_idx = 0 if fault_side == "HV" else 1
+        other_idx = 1 - fault_idx
+
+        winding_inputs = [(0.0, 0.0) for _ in relay.windings]
+        winding_inputs[fault_idx] = (fault_calc["i_asym_amps"], 0.0)
+        if fault_scenario.startswith("External"):
+            other_rated = relay.windings[other_idx]["i_rated_pri"]
+            fault_rated = relay.windings[fault_idx]["i_rated_pri"]
+            ref_mult = fault_calc["i_asym_amps"] / fault_rated if fault_rated > 0 else 0.0
+            other_amps = ref_mult * other_rated
+            other_angle = solve_healthy_target_angle(relay, other_idx, fault_idx, fault_calc["i_asym_amps"], 0.0)
+            winding_inputs[other_idx] = (other_amps, other_angle)
+
+        sim_eval = relay.evaluate_protection(winding_inputs)
+        sim_current_primary = fault_calc["i_asym_amps"]
+
+        def _fault_sim_base_fig():
+            fig = go.Figure()
+            fig.update_layout(
+                xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
+                template="plotly_white", height=340, margin=dict(t=20, b=40),
+            )
+            return fig
+
+        run_sim = st.button(
+            "▶ Run Fault Simulation", key=f"{selected_preset}__run_fault_sim",
+            help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
+        )
+        sim_caption_ph = st.empty()
+        sim_chart_ph = st.empty()
+        done_key = f"{selected_preset}__fault_sim_last"
+
+        if run_sim:
+            if sim_eval["is_trip"]:
+                relay_ms = relay_operate_cycles * cycle_ms
+                total_ms = relay_ms + breaker_cycles * cycle_ms
+
+                sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current spikes to {sim_current_primary:,.0f} A primary.")
+                fig1 = _fault_sim_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0], y=[preload_current, preload_current, sim_current_primary],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                sim_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{selected_preset}__fault_sim_f1")
+                time.sleep(0.9)
+
+                sim_caption_ph.warning(f"🔍 Relay detects the fault and issues a trip signal at t={relay_ms:.0f} ms — {sim_eval['status']}.")
+                fig2 = _fault_sim_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0, relay_ms], y=[preload_current, preload_current, sim_current_primary, sim_current_primary],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig2.add_vline(x=relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                sim_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{selected_preset}__fault_sim_f2")
+                time.sleep(0.9)
+
+                sim_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={total_ms:.0f} ms. Total clearing time: {total_ms:.0f} ms ({total_ms / cycle_ms:.1f} cycles).")
+                fig3 = _fault_sim_base_fig()
+                fig3.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0, total_ms, total_ms, total_ms + 40.0],
+                    y=[preload_current, preload_current, sim_current_primary, sim_current_primary, 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig3.add_vline(x=relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                fig3.add_vline(x=total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                sim_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{selected_preset}__fault_sim_f3")
+
+                st.session_state[done_key] = {
+                    "kind": "trip", "status": sim_eval["status"], "relay_ms": relay_ms, "total_ms": total_ms,
+                    "sim_current_primary": sim_current_primary, "preload_current": preload_current,
+                }
+            else:
+                window_ms = 200.0
+                sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {sim_current_primary:,.0f} A primary.")
+                fig1 = _fault_sim_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0], y=[preload_current, preload_current, sim_current_primary],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                sim_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{selected_preset}__fault_sim_f1n")
+                time.sleep(0.9)
+
+                if fault_scenario.startswith("External"):
+                    sim_caption_ph.info("🛡️ Relay checks the fault — operate current stays at zero. 87AT correctly stays SECURE; clearing this through-fault is outside its zone.")
+                else:
+                    sim_caption_ph.info("🛡️ Relay checks the fault — current stays below the trip threshold at the settings above. No trip.")
+                fig2 = _fault_sim_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0, window_ms], y=[preload_current, preload_current, sim_current_primary, sim_current_primary],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                sim_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{selected_preset}__fault_sim_f2n")
+
+                st.session_state[done_key] = {
+                    "kind": "no_trip", "status": sim_eval["status"], "window_ms": window_ms,
+                    "sim_current_primary": sim_current_primary, "preload_current": preload_current,
+                }
+        else:
+            last = st.session_state.get(done_key)
+            if last is None:
+                sim_caption_ph.caption("Click **Run Fault Simulation** to watch the fault current spike, the relay detect it, and the breaker clear it, step by step.")
+            elif last["kind"] == "trip":
+                sim_caption_ph.success(f"Last run: {last['status']} — total clearing time {last['total_ms']:.0f} ms ({last['total_ms'] / cycle_ms:.1f} cycles).")
+                fig_last = _fault_sim_base_fig()
+                fig_last.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0, last["total_ms"], last["total_ms"], last["total_ms"] + 40.0],
+                    y=[last["preload_current"], last["preload_current"], last["sim_current_primary"], last["sim_current_primary"], 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig_last.add_vline(x=last["relay_ms"], line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                fig_last.add_vline(x=last["total_ms"], line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{selected_preset}__fault_sim_last_fig")
+            else:
+                sim_caption_ph.info(f"Last run: {last['status']} — no trip.")
+                fig_last = _fault_sim_base_fig()
+                fig_last.add_trace(go.Scatter(
+                    x=[-preload_ms, 0, 0, last["window_ms"]],
+                    y=[last["preload_current"], last["preload_current"], last["sim_current_primary"], last["sim_current_primary"]],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{selected_preset}__fault_sim_last_fig")
