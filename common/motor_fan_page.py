@@ -226,6 +226,34 @@ def render_fan_motor_page(fan_type):
     # -------------------------------------------------------------------
     outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
     with outer_settings:
+        # Live preview of the SR469 overload curve, right at the top so its shape is visible
+        # immediately without switching to Analysis & Tools. Reads Curve Multiplier straight from
+        # session_state (falling back to the preset default) since the actual settings widget is
+        # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe
+        # relay with motor_fla=1.0 so the x-axis is directly "multiple of FLA" without needing the
+        # real motor/CT values that also aren't gathered yet at this point - reuses the real
+        # Standard thermal curve formula rather than duplicating it inline.
+        _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
+        _pv_probe = Motor869Relay(
+            ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
+            overload_pickup_pct=115.0, curve_multiplier=_pv_cm, inst_pickup_multiple_of_ct=1.0,
+        )
+        st.markdown("#### Live Preview — Overload (51) Curve")
+        st.caption(
+            "Reflects the Curve Multiplier setting below as you adjust it. Starting/safe-stall "
+            "overlay and commissioning tools are in the TCC Curve tab under Analysis & Tools."
+        )
+        _pv_m = np.linspace(1.01, 8.0, 200)
+        _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3)))
+        _pv_fig.update_layout(
+            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+            yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
+        st.markdown("---")
+
         st.markdown("## Current Settings")
         st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -537,11 +565,9 @@ def render_fan_motor_page(fan_type):
         ]
         if project_key == "pa_fan":
             tab_names.append("IFC66KD2A 50/50/51")
-        tab_names.append("Graphs")
         all_tabs = st.tabs(tab_names)
         tab_theory, tab1, tab2, tab3, tab4 = all_tabs[:5]
         tab_ifc = all_tabs[5] if project_key == "pa_fan" else None
-        tab_graphs = all_tabs[6] if project_key == "pa_fan" else all_tabs[5]
 
         with tab_theory:
             render_theory_tab(
@@ -1036,20 +1062,3 @@ def render_fan_motor_page(fan_type):
                         ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
                     ]
                 render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
-
-    with tab_graphs:
-        st.subheader("All Graphs")
-        st.caption(
-            "Every chart on this page, gathered in one place — still the live, interactive version "
-            "from its own tab, not a static copy. Adjust settings on their own tabs; this view "
-            "updates the same way."
-        )
-        st.markdown("#### SR469 Overload (51) Time-Current Characteristic")
-        st.caption("From the TCC Curve tab.")
-        st.plotly_chart(fig, use_container_width=True, key=f"{project_key}_graphs_tab_fig")
-
-        if project_key == "pa_fan":
-            st.markdown("---")
-            st.markdown("#### IFC66KD2A 50/50/51 Time-Current Characteristic")
-            st.caption("From the IFC66KD2A 50/50/51 tab.")
-            st.plotly_chart(fig_ifc, use_container_width=True, key=f"{project_key}_graphs_tab_fig_ifc")

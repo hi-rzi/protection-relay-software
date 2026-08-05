@@ -74,6 +74,32 @@ is_custom = selected_preset == "Custom Profile"
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
+    # Live preview of the differential characteristic curve, right at the top so its shape is
+    # visible immediately without switching to Analysis & Tools. Reads straight from
+    # session_state (falling back to the preset default) since the actual settings widgets are
+    # drawn further down this same tab and haven't run yet on this script pass. The curve only
+    # depends on Bias/Minimum Operate (see engines/transformer.py's calculate_trip_threshold) -
+    # CT ratios and taps don't affect its shape, only where operating points land on it, so no
+    # relay object is needed here at all.
+    _pv_bias = st.session_state.get(f"{selected_preset}__bias", p_data["bias"]) / 100.0
+    _pv_min_op = st.session_state.get(f"{selected_preset}__min_operate", p_data["min_operate"]) / 100.0
+    st.markdown("#### Live Preview — Differential Bias Characteristic Curve")
+    st.caption(
+        "Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and "
+        "operating-point testing are in the Live Vector Simulation tab under Analysis & Tools."
+    )
+    _pv_max_x = 6.0
+    _pv_x = np.linspace(0, _pv_max_x, 200)
+    _pv_y = [max(_pv_min_op, _pv_bias * x) for x in _pv_x]
+    _pv_fig = go.Figure()
+    _pv_fig.add_trace(go.Scatter(x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3)))
+    _pv_fig.update_layout(
+        xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+        template="plotly_white", height=320, margin=dict(t=20, b=40),
+    )
+    st.plotly_chart(_pv_fig, use_container_width=True, key="gsut_settings_preview_fig")
+    st.markdown("---")
+
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -280,10 +306,10 @@ amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current,
 with outer_analysis:
     st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
 
-    tab_theory, tab1, tab2, tab3, tab_fault, tab_graphs = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab_fault = st.tabs([
         "Theory", "Live Vector Simulation",
         "Commissioning & Injection Tool", "Test Point Verification & Curve",
-        "Fault Current Analysis", "Graphs",
+        "Fault Current Analysis",
     ])
 
     with tab_theory:
@@ -767,20 +793,3 @@ with outer_analysis:
             st.success(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) is within the {ct_withstand_a:.0f} A withstand limit.")
         else:
             st.warning(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio, impedance base, or relay burden.")
-
-    with tab_graphs:
-        st.subheader("All Graphs")
-        st.caption(
-            "Every chart on this page, gathered in one place — each is still the live, interactive "
-            "version from its own tab, not a static copy. Adjust settings or add test points on their "
-            "own tabs; this view updates the same way."
-        )
-
-        st.markdown("#### Differential Bias Characteristic — Live Simulation")
-        st.caption("From the Live Vector Simulation tab: the relay's characteristic curve with the current phase inputs plotted as operating points.")
-        st.plotly_chart(fig, use_container_width=True, key="gsut_graphs_tab_live_fig")
-
-        st.markdown("---")
-        st.markdown("#### Differential Bias Characteristic — Test Point Verification")
-        st.caption("From the Test Point Verification & Curve tab: the theoretical curve, or a CAL. line through logged test points if any have been added.")
-        st.plotly_chart(sweep_fig, use_container_width=True, key="gsut_graphs_tab_sweep_fig")

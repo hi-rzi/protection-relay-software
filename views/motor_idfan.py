@@ -172,6 +172,34 @@ p_data = PRESETS_WITH_PROJECT[selected_preset]
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
+    # Live preview of the 51 (Long Time Inverse) curve, right at the top so its shape is visible
+    # immediately without switching to Analysis & Tools. Reads Time Dial straight from
+    # session_state (falling back to the preset default) since the actual settings widget is
+    # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe relay
+    # with tap_51=1.0 so the x-axis is directly "multiple of tap" without needing motor
+    # FLA/locked-rotor/CT values that also aren't gathered yet at this point on the page - reuses
+    # the real IAC Long Time Inverse formula rather than duplicating it inline.
+    _pv_time_dial = st.session_state.get("motor_time_dial", p_data["time_dial"])
+    _pv_probe = MotorTimeOvercurrentRelay(
+        ct_ratio=1.0, ct_secondary_rating=1.0, tap_51=1.0, time_dial=_pv_time_dial,
+        pickup_50a=1e9, dropout_50b=1e9,
+    )
+    st.markdown("#### Live Preview — 51 (Long Time Inverse) Curve")
+    st.caption(
+        "Reflects the Time Dial setting below as you adjust it. Starting/safe-stall overlay and "
+        "commissioning tools are in the TCC Curve tab under Analysis & Tools."
+    )
+    _pv_m = np.linspace(1.01, 20.0, 200)
+    _pv_t = [_pv_probe.calculate_51_trip_time(m) for m in _pv_m]
+    _pv_fig = go.Figure()
+    _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3)))
+    _pv_fig.update_layout(
+        xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
+        yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+    )
+    st.plotly_chart(_pv_fig, use_container_width=True, key="idfan_settings_preview_fig")
+    st.markdown("---")
+
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -395,13 +423,12 @@ record_equipment_settings("motor", {
 with outer_analysis:
     st.caption("Everything below reads the settings from the Current Settings tab — adjust them there, then explore the effect here.")
 
-    tab_theory, tab1, tab2, tab3, tab4, tab_graphs = st.tabs([
+    tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
         "Theory",
         "Live Simulation",
         "Commissioning & Injection Tool",
         "TCC Curve",
         "Settings Summary & Approval",
-        "Graphs",
     ])
 
     with tab_theory:
@@ -881,15 +908,3 @@ with outer_analysis:
             mime="application/json",
             help="Download the active settings and document-control fields for later reload in this app.",
         )
-
-    with tab_graphs:
-        st.subheader("All Graphs")
-        st.caption(
-            "Every chart on this page, gathered in one place — still the live, interactive version "
-            "from the TCC Curve tab, not a static copy. Adjust settings there; this view updates the "
-            "same way."
-        )
-        st.markdown("#### Time-Current Characteristic (TCC) Curve")
-        st.caption("From the TCC Curve tab: the 51 curve with the motor's starting profile and safe-stall limits overlaid.")
-        st.plotly_chart(fig, use_container_width=True, key="idfan_graphs_tab_fig")
-
