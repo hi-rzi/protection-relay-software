@@ -173,14 +173,18 @@ p_data = PRESETS_WITH_PROJECT[selected_preset]
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
     # Live preview of the 51 (Long Time Inverse) curve, right at the top so its shape is visible
-    # immediately without switching to Analysis & Tools. Reads Time Dial straight from
-    # session_state (falling back to the preset default) since the actual settings widget is
-    # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe relay
-    # with tap_51=1.0 so the x-axis is directly "multiple of tap" without needing motor
-    # FLA/locked-rotor/CT values that also aren't gathered yet at this point on the page - reuses
-    # the real IAC Long Time Inverse formula rather than duplicating it inline. The 87M element has
-    # no time-current curve (instantaneous, single pickup), so it isn't part of this chart - its
-    # pickup value is shown in its own settings card further down instead.
+    # immediately without switching to Analysis & Tools. Reads CT Ratio, Tap, and Time Dial
+    # straight from session_state (falling back to the preset default) since the actual settings
+    # widgets are drawn further down this same tab and haven't run yet on this script pass. The
+    # probe relay itself still uses dummy ct_ratio=1.0/tap_51=1.0 (the curve's SHAPE in "x tap"
+    # terms doesn't depend on their absolute values) - the real values are applied only when
+    # scaling the x-axis to absolute primary Amps, so changing CT Ratio or Tap visibly shifts the
+    # curve instead of silently doing nothing. The 87M element has no time-current curve
+    # (instantaneous, single pickup), so it isn't part of this chart - its pickup value is shown in
+    # its own settings card further down instead.
+    _pv_ct_ratio = st.session_state.get("motor_ct_ratio", float(p_data["ct_ratio"]))
+    _pv_ct_sec = st.session_state.get("motor_ct_sec", p_data["ct_sec"])
+    _pv_tap_51 = st.session_state.get("motor_tap_51", p_data["tap_51"])
     _pv_time_dial = st.session_state.get("motor_time_dial", p_data["time_dial"])
     _pv_probe = MotorTimeOvercurrentRelay(
         ct_ratio=1.0, ct_secondary_rating=1.0, tap_51=1.0, time_dial=_pv_time_dial,
@@ -188,23 +192,26 @@ with outer_settings:
     )
     st.markdown("#### Live Preview — 51 (Long Time Inverse) Curve")
     st.caption(
-        "Reflects the Time Dial setting below as you adjust it. Starting/safe-stall overlay and "
-        "commissioning tools are in the TCC Curve tab under Analysis & Tools."
+        "Reflects the CT Ratio, 51 Tap, and Time Dial settings below as you adjust them. "
+        "Starting/safe-stall overlay and commissioning tools are in the TCC Curve tab under "
+        "Analysis & Tools."
     )
     _pv_m = np.linspace(1.01, 20.0, 200)
+    _pv_effective_ratio = _pv_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_ct_ratio
+    _pv_x_amps = _pv_m * _pv_tap_51 * _pv_effective_ratio
     _pv_t = [_pv_probe.calculate_51_trip_time(m) for m in _pv_m]
     _pv_y_lower = min(_pv_t) * 0.3
     _pv_y_upper = max(_pv_t) * 2.5
     _pv_fig = go.Figure()
     _pv_fig.add_trace(go.Scatter(
-        x=_pv_m, y=np.full_like(_pv_m, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
     ))
     _pv_fig.add_trace(go.Scatter(
-        x=_pv_m, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3),
+        x=_pv_x_amps, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3),
         fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
     ))
     _pv_fig.add_trace(go.Scatter(
-        x=_pv_m, y=np.full_like(_pv_m, _pv_y_upper), mode="lines", line=dict(width=0),
+        x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_upper), mode="lines", line=dict(width=0),
         fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
     ))
     _pv_fig.add_annotation(
@@ -218,7 +225,7 @@ with outer_settings:
         bgcolor="rgba(255,255,255,0.75)",
     )
     _pv_fig.update_layout(
-        xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
+        xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
         yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
     )
     st.plotly_chart(_pv_fig, use_container_width=True, key="idfan_settings_preview_fig")

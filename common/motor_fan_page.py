@@ -227,14 +227,16 @@ def render_fan_motor_page(fan_type):
     outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
     with outer_settings:
         # Live preview of the SR469 overload curve, right at the top so its shape is visible
-        # immediately without switching to Analysis & Tools. Reads Curve Multiplier straight from
-        # session_state (falling back to the preset default) since the actual settings widget is
-        # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe
-        # relay with motor_fla=1.0 so the x-axis is directly "multiple of FLA" without needing the
-        # real motor/CT values that also aren't gathered yet at this point - reuses the real
-        # Standard thermal curve formula rather than duplicating it inline. The 87M element has no
-        # time-current curve (instantaneous, single pickup), so it isn't part of this chart - its
-        # pickup value is shown in its own settings card further down instead.
+        # immediately without switching to Analysis & Tools. Reads Motor FLA and Curve Multiplier
+        # straight from session_state (falling back to the preset default) since the actual
+        # settings widgets are drawn further down this same tab and haven't run yet on this script
+        # pass. The probe relay itself still uses a dummy motor_fla=1.0 (the curve's SHAPE in "x
+        # FLA" terms doesn't depend on the absolute FLA value) - the real FLA is applied only when
+        # scaling the x-axis to absolute Amps, so changing Motor FLA visibly shifts the curve
+        # instead of silently doing nothing. The 87M element has no time-current curve
+        # (instantaneous, single pickup), so it isn't part of this chart - its pickup value is
+        # shown in its own settings card further down instead.
+        _pv_fla = st.session_state.get(f"{project_key}__fla", float(p_data["motor_fla"]))
         _pv_cm = st.session_state.get(f"{project_key}__cm", p_data["curve_multiplier"])
         _pv_probe = Motor869Relay(
             ct_ratio=1.0, ct_secondary_rating=1.0, motor_fla=1.0,
@@ -242,23 +244,25 @@ def render_fan_motor_page(fan_type):
         )
         st.markdown("#### Live Preview — Overload (51) Curve")
         st.caption(
-            "Reflects the Curve Multiplier setting below as you adjust it. Starting/safe-stall "
-            "overlay and commissioning tools are in the TCC Curve tab under Analysis & Tools."
+            "Reflects the Motor FLA and Curve Multiplier settings below as you adjust them. "
+            "Starting/safe-stall overlay and commissioning tools are in the TCC Curve tab under "
+            "Analysis & Tools."
         )
         _pv_m = np.linspace(1.01, 8.0, 200)
+        _pv_x_amps = _pv_m * _pv_fla
         _pv_t = [_pv_probe.calculate_overload_trip_time(m) for m in _pv_m]
         _pv_y_lower = min(_pv_t) * 0.3
         _pv_y_upper = max(_pv_t) * 2.5
         _pv_fig = go.Figure()
         _pv_fig.add_trace(go.Scatter(
-            x=_pv_m, y=np.full_like(_pv_m, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+            x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
         ))
         _pv_fig.add_trace(go.Scatter(
-            x=_pv_m, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3),
+            x=_pv_x_amps, y=_pv_t, mode="lines", name=f"Curve X{_pv_cm:g}", line=dict(color="#2563EB", width=3),
             fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
         ))
         _pv_fig.add_trace(go.Scatter(
-            x=_pv_m, y=np.full_like(_pv_m, _pv_y_upper), mode="lines", line=dict(width=0),
+            x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_upper), mode="lines", line=dict(width=0),
             fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
         ))
         _pv_fig.add_annotation(
@@ -272,7 +276,7 @@ def render_fan_motor_page(fan_type):
             bgcolor="rgba(255,255,255,0.75)",
         )
         _pv_fig.update_layout(
-            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+            xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
             yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
         )
         st.plotly_chart(_pv_fig, use_container_width=True, key=f"{project_key}_settings_preview_fig")
