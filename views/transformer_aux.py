@@ -61,6 +61,21 @@ selected_preset = st.sidebar.selectbox(
 p_data = PRESETS_WITH_PROJECT[selected_preset]
 is_custom = selected_preset == "Custom Profile"
 
+if st.sidebar.button(
+    "↺ Reset to preset defaults", key=f"{selected_preset}__reset_btn",
+    help="Revert every Current Settings field below back to the selected preset's stock values.",
+):
+    # Every field's widget key is namespaced f"{selected_preset}__...", including
+    # slider_with_exact_input's paired __slider/__number sub-keys - so deleting
+    # everything under that prefix is enough to make every widget fall back to
+    # its value=p_data[...] default on the next draw, without needing to know
+    # each field's name individually.
+    _reset_prefix = f"{selected_preset}__"
+    for _k in [k for k in st.session_state.keys() if k.startswith(_reset_prefix)]:
+        del st.session_state[_k]
+    st.toast(f"Reset to {selected_preset} defaults.")
+    st.rerun()
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

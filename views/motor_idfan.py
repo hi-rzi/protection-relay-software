@@ -162,6 +162,14 @@ selected_preset = st.sidebar.selectbox(
 )
 p_data = PRESETS_WITH_PROJECT[selected_preset]
 
+if st.sidebar.button(
+    "↺ Reset to preset defaults", key="motor_reset_btn",
+    help="Revert every Current Settings field below back to the selected preset's stock values.",
+):
+    _load_preset_into_state()
+    st.toast(f"Reset to {selected_preset} defaults.")
+    st.rerun()
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

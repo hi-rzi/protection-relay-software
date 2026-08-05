@@ -216,6 +216,42 @@ def render_fan_motor_page(fan_type):
     )
     p_data = presets_with_project[selected_preset]
 
+    # Field-key map for the "Reset to preset defaults" button below - every
+    # Current Settings widget that's actually backed by a preset value (not
+    # test/analysis-tool inputs, and not review metadata like "Reviewed by",
+    # which a reset shouldn't silently erase). ifc_* fields are PA Fan only -
+    # p_data won't have them for FD Fan, so they're skipped automatically.
+    _RESET_FIELD_MAP = {
+        "fla": "motor_fla", "ct_ratio": "ct_ratio", "ct_sec": "ct_sec",
+        "gct_ratio": "ground_ct_ratio",
+        "diff87m_ct_ratio": "diff87m_ct_ratio", "diff87m_pickup_sec": "diff87m_pickup_sec",
+        "ovl_pct": "overload_pickup_pct", "cm": "curve_multiplier",
+        "lrc_100": "locked_rotor_amps_100", "lrc_80": "locked_rotor_amps_80",
+        "accel_100": "accel_time_100", "accel_80": "accel_time_80",
+        "stall_100": "safe_stall_100", "stall_80": "safe_stall_80",
+        "inst_ct": "inst_pickup_multiple_of_ct", "inst_delay": "inst_delay_ms",
+        "gf_frac": "gf_pickup_frac", "gf_delay": "gf_delay_ms",
+        "unb_alarm_pct": "unbal_alarm_pct", "unb_alarm_delay": "unbal_alarm_delay_s",
+        "unb_trip_pct": "unbal_trip_pct", "unb_trip_delay": "unbal_trip_delay_s",
+        "jam_pct": "mech_jam_pct", "jam_delay": "mech_jam_delay_s",
+        "accel": "accel_timer_s", "ovl_alarm_delay": "overload_alarm_delay_s",
+        "pdiff_frac": "phase_diff_pickup_frac", "pdiff_delay": "phase_diff_delay_ms",
+        "ifc_tap51": "ifc_tap_51", "ifc_td": "ifc_time_dial",
+        "ifc_50a": "ifc_pickup_50a", "ifc_50b": "ifc_dropout_50b",
+        "ifc_target": "ifc_target_seal_in",
+        "ifc_backup_ct": "ifc_backup_ct_ratio", "ifc_backup_pickup": "ifc_backup_pickup_50",
+    }
+
+    if st.sidebar.button(
+        "↺ Reset to preset defaults", key=f"{project_key}__reset_btn",
+        help="Revert every Current Settings field below back to the selected preset's stock values.",
+    ):
+        for _suffix, _preset_key in _RESET_FIELD_MAP.items():
+            if _preset_key in p_data:
+                st.session_state[f"{project_key}__{_suffix}"] = p_data[_preset_key]
+        st.toast(f"Reset to {selected_preset} defaults.")
+        st.rerun()
+
     # -------------------------------------------------------------------
     # CURRENT SETTINGS — every applied setting, editable in place, with a
     # live comment on whether an adjustment improves or weakens protection.
