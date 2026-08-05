@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 import json
+import time
 
 import numpy as np
 import pandas as pd
@@ -822,6 +823,201 @@ with outer_analysis:
             ("51 Pickup (A primary)", relay.tap_51 * relay.effective_ratio),
             ("Locked Rotor Current (A)", locked_rotor_amps),
         ])
+
+        st.markdown("---")
+        st.markdown("#### Fault Clearing Time Simulation")
+        st.caption(
+            "Feeds a fault current through the same evaluate_protection() logic as the Live "
+            "Simulation tab, then adds a typical breaker operating time to show how long the "
+            "current actually flows before it's cleared. The 51 element's trip time comes "
+            "straight from the curve above; the 50A instantaneous element's own operate time "
+            "below is a typical value for this class of equipment, not confirmed against this "
+            "relay's own manual."
+        )
+
+        idfan_fault_scenario = st.radio(
+            "Fault Scenario",
+            ["Locked Rotor / Stall", "Short-Circuit Fault"],
+            key="idfan_fault_sim_scenario",
+            horizontal=True,
+            help=(
+                "Locked Rotor / Stall: uses this motor's own Locked Rotor Current @ 100% V — "
+                "normally only enough to exercise the 51 time-overcurrent curve, not the "
+                "instantaneous element. Short-Circuit Fault: a current above the 50A pickup, to "
+                "show the instantaneous element operating instead."
+            ),
+        )
+        idfan_fc1, idfan_fc2 = st.columns(2)
+        with idfan_fc1:
+            idfan_relay_op_cycles = st.number_input(
+                "50A Instantaneous Operate Time (cycles)", min_value=0.25, max_value=10.0, value=1.0, step=0.25,
+                key="idfan_relay_op_cycles",
+                help="Time from fault inception to the 50A element issuing a trip signal — electromechanical instantaneous elements of this class are typically under 1-2 cycles. Not a figure confirmed against this relay's own manual."
+            )
+        with idfan_fc2:
+            idfan_breaker_cycles = st.number_input(
+                "Breaker Interrupting Time (cycles)", min_value=1.0, max_value=15.0, value=5.0, step=0.5,
+                key="idfan_breaker_cycles",
+                help="Time from trip coil energization to fault current interruption — typical motor breakers/contactors are 3-5 cycles. Not confirmed against this plant's own breaker nameplate."
+            )
+
+        idfan_cycle_ms = 1000.0 / 60.0
+        idfan_preload_ms = 40.0
+        idfan_preload_current = motor_fla
+        if idfan_fault_scenario.startswith("Locked"):
+            idfan_sim_current = locked_rotor_amps
+        else:
+            idfan_sim_current = relay.pickup_50a * relay.effective_ratio * 1.5
+        idfan_sim_eval = relay.evaluate_protection(idfan_sim_current)
+
+        idfan_run_sim = st.button(
+            "▶ Run Fault Simulation", key="idfan_run_fault_sim",
+            help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
+        )
+        idfan_sim_caption_ph = st.empty()
+        idfan_sim_chart_ph = st.empty()
+        idfan_done_key = "idfan_fault_sim_last"
+
+        def _idfan_fault_sim_base_fig():
+            fig = go.Figure()
+            fig.update_layout(
+                xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
+                template="plotly_white", height=340, margin=dict(t=20, b=40),
+            )
+            return fig
+
+        if idfan_run_sim:
+            if idfan_sim_eval["trip_50a"]:
+                idfan_relay_ms = idfan_relay_op_cycles * idfan_cycle_ms
+                idfan_total_ms = idfan_relay_ms + idfan_breaker_cycles * idfan_cycle_ms
+
+                idfan_sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current spikes to {idfan_sim_current:,.0f} A primary.")
+                fig1 = _idfan_fault_sim_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                idfan_sim_chart_ph.plotly_chart(fig1, use_container_width=True, key="idfan_fault_sim_f1")
+                time.sleep(0.9)
+
+                idfan_sim_caption_ph.warning(f"🔍 The 50A instantaneous element detects the fault and issues a trip signal at t={idfan_relay_ms:.0f} ms — {idfan_sim_eval['status']}.")
+                fig2 = _idfan_fault_sim_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_relay_ms], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig2.add_vline(x=idfan_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50A Trips")
+                idfan_sim_chart_ph.plotly_chart(fig2, use_container_width=True, key="idfan_fault_sim_f2")
+                time.sleep(0.9)
+
+                idfan_sim_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={idfan_total_ms:.0f} ms. Total clearing time: {idfan_total_ms:.0f} ms ({idfan_total_ms / idfan_cycle_ms:.1f} cycles).")
+                fig3 = _idfan_fault_sim_base_fig()
+                fig3.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_total_ms, idfan_total_ms, idfan_total_ms + 40.0],
+                    y=[idfan_preload_current, idfan_preload_current, idfan_sim_current, idfan_sim_current, 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig3.add_vline(x=idfan_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50A Trips")
+                fig3.add_vline(x=idfan_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                idfan_sim_chart_ph.plotly_chart(fig3, use_container_width=True, key="idfan_fault_sim_f3")
+
+                st.session_state[idfan_done_key] = {
+                    "kind": "trip", "status": idfan_sim_eval["status"], "relay_ms": idfan_relay_ms, "total_ms": idfan_total_ms,
+                    "sim_current": idfan_sim_current, "preload_current": idfan_preload_current, "log_x": False,
+                }
+            elif idfan_sim_eval["trip_51"]:
+                idfan_relay_ms = idfan_sim_eval["t51"] * 1000.0
+                idfan_total_ms = idfan_relay_ms + idfan_breaker_cycles * idfan_cycle_ms
+
+                idfan_sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {idfan_sim_current:,.0f} A primary (locked rotor).")
+                fig1 = _idfan_fault_sim_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig1.update_xaxes(type="log")
+                idfan_sim_chart_ph.plotly_chart(fig1, use_container_width=True, key="idfan_fault_sim_f1t")
+                time.sleep(0.9)
+
+                idfan_sim_caption_ph.warning(f"🔍 The 51 time-overcurrent element times out and issues a trip signal at t={idfan_relay_ms:.0f} ms ({idfan_sim_eval['t51']:.2f}s) — {idfan_sim_eval['status']}.")
+                fig2 = _idfan_fault_sim_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_relay_ms], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig2.add_vline(x=idfan_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
+                fig2.update_xaxes(type="log")
+                idfan_sim_chart_ph.plotly_chart(fig2, use_container_width=True, key="idfan_fault_sim_f2t")
+                time.sleep(0.9)
+
+                idfan_sim_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={idfan_total_ms:.0f} ms. Total clearing time: {idfan_total_ms / 1000.0:.2f} s.")
+                fig3 = _idfan_fault_sim_base_fig()
+                fig3.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_total_ms, idfan_total_ms, idfan_total_ms * 1.1 + 40.0],
+                    y=[idfan_preload_current, idfan_preload_current, idfan_sim_current, idfan_sim_current, 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig3.add_vline(x=idfan_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
+                fig3.add_vline(x=idfan_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                fig3.update_xaxes(type="log")
+                idfan_sim_chart_ph.plotly_chart(fig3, use_container_width=True, key="idfan_fault_sim_f3t")
+
+                st.session_state[idfan_done_key] = {
+                    "kind": "trip_51", "status": idfan_sim_eval["status"], "relay_ms": idfan_relay_ms, "total_ms": idfan_total_ms,
+                    "sim_current": idfan_sim_current, "preload_current": idfan_preload_current, "log_x": True,
+                }
+            else:
+                idfan_window_ms = 200.0
+                idfan_sim_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {idfan_sim_current:,.0f} A primary.")
+                fig1 = _idfan_fault_sim_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                idfan_sim_chart_ph.plotly_chart(fig1, use_container_width=True, key="idfan_fault_sim_f1n")
+                time.sleep(0.9)
+
+                idfan_sim_caption_ph.info("🛡️ Neither the 51 nor the 50A element crosses its trip threshold at the settings above. No trip.")
+                fig2 = _idfan_fault_sim_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_window_ms], y=[idfan_preload_current, idfan_preload_current, idfan_sim_current, idfan_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                idfan_sim_chart_ph.plotly_chart(fig2, use_container_width=True, key="idfan_fault_sim_f2n")
+
+                st.session_state[idfan_done_key] = {
+                    "kind": "no_trip", "status": idfan_sim_eval["status"], "window_ms": idfan_window_ms,
+                    "sim_current": idfan_sim_current, "preload_current": idfan_preload_current,
+                }
+        else:
+            idfan_last = st.session_state.get(idfan_done_key)
+            if idfan_last is None:
+                idfan_sim_caption_ph.caption("Click **Run Fault Simulation** to watch the fault current rise, the relay detect it, and the breaker clear it, step by step.")
+            elif idfan_last["kind"] in ("trip", "trip_51"):
+                idfan_unit = "cycles" if idfan_last["kind"] == "trip" else "s"
+                idfan_dur = f"{idfan_last['total_ms'] / idfan_cycle_ms:.1f} cycles" if idfan_last["kind"] == "trip" else f"{idfan_last['total_ms'] / 1000.0:.2f} s"
+                idfan_sim_caption_ph.success(f"Last run: {idfan_last['status']} — total clearing time {idfan_last['total_ms']:.0f} ms ({idfan_dur}).")
+                fig_last = _idfan_fault_sim_base_fig()
+                idfan_tail = idfan_last["total_ms"] + 40.0 if idfan_last["kind"] == "trip" else idfan_last["total_ms"] * 1.1 + 40.0
+                fig_last.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_last["total_ms"], idfan_last["total_ms"], idfan_tail],
+                    y=[idfan_last["preload_current"], idfan_last["preload_current"], idfan_last["sim_current"], idfan_last["sim_current"], 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig_last.add_vline(x=idfan_last["relay_ms"], line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                fig_last.add_vline(x=idfan_last["total_ms"], line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                if idfan_last.get("log_x"):
+                    fig_last.update_xaxes(type="log")
+                idfan_sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key="idfan_fault_sim_last_fig")
+            else:
+                idfan_sim_caption_ph.info(f"Last run: {idfan_last['status']} — no trip.")
+                fig_last = _idfan_fault_sim_base_fig()
+                fig_last.add_trace(go.Scatter(
+                    x=[-idfan_preload_ms, 0, 0, idfan_last["window_ms"]],
+                    y=[idfan_last["preload_current"], idfan_last["preload_current"], idfan_last["sim_current"], idfan_last["sim_current"]],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                idfan_sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key="idfan_fault_sim_last_fig")
 
 
     # ---------------------------------------------------------------------------
