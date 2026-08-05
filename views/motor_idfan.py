@@ -193,8 +193,30 @@ with outer_settings:
     )
     _pv_m = np.linspace(1.01, 20.0, 200)
     _pv_t = [_pv_probe.calculate_51_trip_time(m) for m in _pv_m]
+    _pv_y_lower = min(_pv_t) * 0.3
+    _pv_y_upper = max(_pv_t) * 2.5
     _pv_fig = go.Figure()
-    _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3)))
+    _pv_fig.add_trace(go.Scatter(
+        x=_pv_m, y=np.full_like(_pv_m, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+    ))
+    _pv_fig.add_trace(go.Scatter(
+        x=_pv_m, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3),
+        fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+    ))
+    _pv_fig.add_trace(go.Scatter(
+        x=_pv_m, y=np.full_like(_pv_m, _pv_y_upper), mode="lines", line=dict(width=0),
+        fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+    ))
+    _pv_fig.add_annotation(
+        text="TRIP REGION (OPERATED)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)",
+    )
+    _pv_fig.add_annotation(
+        text="SAFE REGION (NOT YET TRIPPED)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)",
+    )
     _pv_fig.update_layout(
         xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
         yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
