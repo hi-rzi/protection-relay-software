@@ -76,6 +76,13 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if not is_custom:
+    st.success(
+        "✓ **Data confidence:** Every real-preset value on this page, including the Fault "
+        "Current Analysis inputs, reproduces this transformer's own settings document worked "
+        "examples almost exactly."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

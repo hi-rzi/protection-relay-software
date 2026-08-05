@@ -76,6 +76,14 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if not is_custom:
+    st.warning(
+        "⚠ **Data confidence:** Differential settings (Bias/Min Operate/HOC/CT ratios/taps) are "
+        "verified against Transformer Diff Setting - UAT.pdf. The Fault Current Analysis inputs "
+        "(**Impedance Base, Z%, X/R Ratio**) are all generic, unconfirmed placeholders — review "
+        "them against the actual UAT nameplate/design data before relying on that tab's numbers."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

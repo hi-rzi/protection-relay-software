@@ -91,6 +91,13 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if not is_custom:
+    st.success(
+        "✓ **Data confidence:** This preset's differential characteristic and fault current "
+        "basis are verified against the plant's own Generator Diff Setting document and this "
+        "relay's instruction manual."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

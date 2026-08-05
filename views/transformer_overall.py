@@ -71,6 +71,12 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if not is_custom:
+    st.success(
+        "✓ **Data confidence:** Differential settings (Bias/Min Operate/HOC/CT ratios/taps for "
+        "all 3 windings) are verified against this backup zone's own settings document."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

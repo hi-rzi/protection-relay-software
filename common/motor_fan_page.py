@@ -252,6 +252,24 @@ def render_fan_motor_page(fan_type):
         st.toast(f"Reset to {selected_preset} defaults.")
         st.rerun()
 
+    if selected_preset != "Custom Profile":
+        if project_key == "pa_fan":
+            st.success(
+                "✓ **Data confidence:** SR469 overload curve, IFC66KD2A 50/50/51, and 87M "
+                "self-balancing differential settings are all verified against PAFAN MOTOR "
+                "PROTECTION.pdf's own worked examples."
+            )
+        else:
+            st.warning(
+                "⚠ **Data confidence:** The SR469 overload curve (Curve Multiplier) and 87M "
+                "differential are verified against FDFAN MOTOR PROTECTION.pdf. The "
+                "**Instantaneous Pickup** (9.7x CT) is NOT confirmed against this fan's own "
+                "document — the Primary Air Fan had this exact same carryover value corrected "
+                "to 6.5x after checking its own doc, but this specific setting hasn't been "
+                "cross-checked for the Forced Draft Fan yet. The separate IFC66KD2A/HFC22B2A "
+                "relay stack (present on PA Fan and ID Fan) also isn't modeled for this motor."
+            )
+
     # -------------------------------------------------------------------
     # CURRENT SETTINGS — every applied setting, editable in place, with a
     # live comment on whether an adjustment improves or weakens protection.

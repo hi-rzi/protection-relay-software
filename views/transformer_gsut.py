@@ -78,6 +78,14 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if not is_custom:
+    st.warning(
+        "⚠ **Data confidence:** Differential settings (Bias/Min Operate/HOC/CT ratios/taps) and "
+        "the Fault Current Analysis impedance/MVA base are verified against GSUT's own settings "
+        "document. The **X/R Ratio** is a generic, unconfirmed placeholder — no through-fault "
+        "worked example was found for GSUT specifically, unlike EXCT."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments

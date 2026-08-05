@@ -170,6 +170,13 @@ if st.sidebar.button(
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
 
+if selected_preset != "Custom Profile":
+    st.success(
+        "✓ **Data confidence:** 50/50/51, 87M self-balancing differential, and backup "
+        "instantaneous settings are all verified against Motor Protection Setting - IDFAN.pdf's "
+        "own worked examples."
+    )
+
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments
