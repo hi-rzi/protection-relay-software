@@ -172,30 +172,43 @@ p_data = PRESETS_WITH_PROJECT[selected_preset]
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
-    # Live preview of the 51 (Long Time Inverse) curve, right at the top so its shape is visible
-    # immediately without switching to Analysis & Tools. Reads Time Dial straight from
-    # session_state (falling back to the preset default) since the actual settings widget is
-    # drawn further down this same tab and hasn't run yet on this script pass. Uses a probe relay
-    # with tap_51=1.0 so the x-axis is directly "multiple of tap" without needing motor
-    # FLA/locked-rotor/CT values that also aren't gathered yet at this point on the page - reuses
-    # the real IAC Long Time Inverse formula rather than duplicating it inline.
+    # Live preview of the 51 (Long Time Inverse) curve PLUS the 87M differential pickup, right at
+    # the top so both are visible immediately without switching to Analysis & Tools. Reads every
+    # value straight from session_state (falling back to the preset default) since the actual
+    # settings widgets are drawn further down this same tab and haven't run yet on this script
+    # pass. Uses real CT/tap values (not dummy placeholders) so the x-axis can be plotted in
+    # actual primary Amps - the only unit the 51 curve and the 87M pickup (a completely separate,
+    # independent CT/relay) can both be shown on meaningfully.
+    _pv_ct_ratio = st.session_state.get("motor_ct_ratio", float(p_data["ct_ratio"]))
+    _pv_ct_sec = st.session_state.get("motor_ct_sec", p_data["ct_sec"])
+    _pv_tap_51 = st.session_state.get("motor_tap_51", p_data["tap_51"])
     _pv_time_dial = st.session_state.get("motor_time_dial", p_data["time_dial"])
     _pv_probe = MotorTimeOvercurrentRelay(
-        ct_ratio=1.0, ct_secondary_rating=1.0, tap_51=1.0, time_dial=_pv_time_dial,
+        ct_ratio=_pv_ct_ratio, ct_secondary_rating=_pv_ct_sec, tap_51=_pv_tap_51, time_dial=_pv_time_dial,
         pickup_50a=1e9, dropout_50b=1e9,
     )
-    st.markdown("#### Live Preview — 51 (Long Time Inverse) Curve")
+    _pv_diff87m_ct_ratio = st.session_state.get("motor_diff87m_ct_ratio", float(p_data["diff87m_ct_ratio"]))
+    _pv_diff87m_pickup_sec = st.session_state.get("motor_diff87m_pickup_sec", p_data["diff87m_pickup_sec"])
+    _pv_diff87m_pickup_primary = _pv_diff87m_pickup_sec * (_pv_diff87m_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_diff87m_ct_ratio)
+
+    st.markdown("#### Live Preview — 51 (Long Time Inverse) Curve + 87M Differential Pickup")
     st.caption(
-        "Reflects the Time Dial setting below as you adjust it. Starting/safe-stall overlay and "
-        "commissioning tools are in the TCC Curve tab under Analysis & Tools."
+        "Reflects the Time Dial and 87M settings below as you adjust them. The dashed line is the "
+        "87M's instantaneous pickup (it measures imbalance current on its own separate CT, not "
+        "phase current — shown here in equivalent primary Amps for reference, not as a curve, "
+        "since 87M has none). Starting/safe-stall overlay and commissioning tools are in the TCC "
+        "Curve tab under Analysis & Tools."
     )
     _pv_m = np.linspace(1.01, 20.0, 200)
-    _pv_t = [_pv_probe.calculate_51_trip_time(m) for m in _pv_m]
+    _pv_effective_ratio = _pv_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_ct_ratio
+    _pv_x_amps = _pv_m * _pv_tap_51 * _pv_effective_ratio
+    _pv_t = [_pv_probe.calculate_51_trip_time(m * _pv_tap_51) for m in _pv_m]
     _pv_fig = go.Figure()
-    _pv_fig.add_trace(go.Scatter(x=_pv_m, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3)))
+    _pv_fig.add_trace(go.Scatter(x=_pv_x_amps, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3)))
+    _pv_fig.add_vline(x=_pv_diff87m_pickup_primary, line=dict(color="#DC2626", width=2, dash="dash"), annotation_text="87M Pickup")
     _pv_fig.update_layout(
-        xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
-        yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+        xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
+        xaxis_type="log", yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
     )
     st.plotly_chart(_pv_fig, use_container_width=True, key="idfan_settings_preview_fig")
     st.markdown("---")
