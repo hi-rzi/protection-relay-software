@@ -942,6 +942,53 @@ def render_fan_motor_page(fan_type):
                 fs_sim_current = relay.inst_pickup_amps * 1.5
             fs_sim_eval = relay.evaluate_protection(fs_sim_current)
 
+            st.markdown("---")
+            st.markdown("#### CT Saturation Check")
+            st.caption(
+                "Estimates the secondary voltage this CT needs to develop to drive the fault current "
+                "above through its own winding resistance, lead wiring, and the relay's input burden "
+                "— and compares that against a knee-point/saturation voltage. This is NOT the CT's "
+                "actual tested excitation curve (this app has no manufacturer excitation-curve data "
+                "for any CT at this plant) — burden and knee-point values below are typical "
+                "placeholders, not confirmed for this specific CT. Unlike the generator/transformer "
+                "pages, this current isn't from an impedance-based fault study — it's the same "
+                "illustrative current used for the simulation below (locked rotor current, or 1.5x "
+                "the instantaneous pickup), so treat this as a rough gut-check, not a substitute for "
+                "a real upstream fault study."
+            )
+            fs_ctsat1, fs_ctsat2 = st.columns(2)
+            with fs_ctsat1:
+                fs_ct_burden_ohms = st.number_input(
+                    "Total Secondary Burden (Ω)", min_value=0.1, value=2.0, step=0.1,
+                    key=f"{project_key}__ct_burden_ohms",
+                    help="CT winding resistance + lead wire resistance (both directions) + relay input burden. Typical range 0.5-4Ω — not confirmed for this specific CT/cable run."
+                )
+                fs_ct_knee_v = st.number_input(
+                    "CT Saturation / Knee-Point Voltage (V)", min_value=10.0, value=200.0, step=10.0,
+                    key=f"{project_key}__ct_knee_v",
+                    help="The secondary voltage above which the CT core saturates and its output distorts. Read this off the CT's own excitation curve or C-class rating (e.g. a 'C200' CT is rated for 200V) — not confirmed for this CT."
+                )
+            fs_relay_sec_at_fault = relay.relay_current(fs_sim_current)
+            fs_v_required = fs_relay_sec_at_fault * fs_ct_burden_ohms
+            with fs_ctsat2:
+                st.metric("Relay Secondary at This Fault", f"{fs_relay_sec_at_fault:.2f} A")
+                st.metric("Voltage Required", f"{fs_v_required:.0f} V")
+                if fs_v_required <= fs_ct_knee_v:
+                    st.success(f"Within the {fs_ct_knee_v:.0f} V knee-point.")
+                else:
+                    st.warning(f"EXCEEDS the {fs_ct_knee_v:.0f} V knee-point — likely to saturate for this fault.")
+            fs_ctsat_fig = go.Figure()
+            fs_ctsat_fig.add_trace(go.Bar(
+                x=[fs_v_required], y=["Voltage Required"], orientation="h",
+                marker_color="#DC2626" if fs_v_required > fs_ct_knee_v else "#16A34A", width=0.5, showlegend=False,
+            ))
+            fs_ctsat_fig.add_vline(x=fs_ct_knee_v, line=dict(color="#F59E0B", width=2, dash="dash"), annotation_text="Knee-Point Voltage")
+            fs_ctsat_fig.update_layout(
+                xaxis_title="Secondary Voltage (V)", template="plotly_white", height=170, margin=dict(t=20, b=40, l=10, r=10),
+            )
+            st.plotly_chart(fs_ctsat_fig, use_container_width=True, key=f"{project_key}__ct_sat_fig")
+
+            st.markdown("---")
             fs_run_sim = st.button(
                 "▶ Run Fault Simulation", key=f"{project_key}__run_fault_sim",
                 help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
