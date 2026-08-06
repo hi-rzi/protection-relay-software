@@ -13,6 +13,7 @@ from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct,
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
+from common.profile_io import export_profile_button, restore_profile_uploader
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
@@ -70,6 +71,8 @@ if st.sidebar.button(
         del st.session_state[_k]
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
+
+restore_profile_uploader(st.sidebar, "overall", f"{selected_preset}__", "overall")
 
 if not is_custom:
     st.success(
@@ -870,3 +873,16 @@ with outer_analysis:
             ("Restraint Standard", convention),
             ("CT Polarity Reference", ct_polarity),
         ], key_prefix="Overall")
+
+        st.markdown("---")
+        st.markdown("#### Save Profile")
+        st.caption(
+            "Name and download every setting currently active under the selected preset above — "
+            "most useful after entering your own values under Custom Profile, so you can pick this "
+            "file back up next time instead of re-typing everything. Use the loader in the sidebar "
+            "to restore it later."
+        )
+        export_profile_button(
+            st, "overall", f"{selected_preset}__",
+            default_name="Overall GSUT-GEN Profile", button_key="overall",
+        )

@@ -30,6 +30,7 @@ from common.sld import motor_overcurrent_svg
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
+from common.profile_io import export_profile_button, restore_profile_uploader
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
@@ -252,6 +253,8 @@ def render_fan_motor_page(fan_type):
                 st.session_state[f"{project_key}__{_suffix}"] = p_data[_preset_key]
         st.toast(f"Reset to {selected_preset} defaults.")
         st.rerun()
+
+    restore_profile_uploader(st.sidebar, project_key, f"{project_key}__", project_key)
 
     if selected_preset != "Custom Profile":
         if project_key == "pa_fan":
@@ -1306,30 +1309,16 @@ def render_fan_motor_page(fan_type):
                 key=f"{project_key}__approval_pdf_dl",
             )
 
-            settings_export = {
-                "format": "Electrical Equipment Protection Suite settings",
-                "version": 1,
-                "equipment": project_key,
-                "fan_type": fan_type,
-                "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
-                "settings": {
-                    "motor_fla": motor_fla, "ct_ratio": ct_ratio, "ct_sec": ct_secondary_rating,
-                    "ground_ct_ratio": ground_ct_ratio,
-                    "overload_pickup_pct": overload_pickup_pct, "curve_multiplier": curve_multiplier,
-                    "inst_pickup_multiple_of_ct": inst_pickup_multiple_of_ct, "inst_delay_ms": inst_delay_ms,
-                    "gf_pickup_frac": gf_pickup_frac, "gf_delay_ms": gf_delay_ms,
-                    "unbal_alarm_pct": unbal_alarm_pct, "unbal_alarm_delay_s": unbal_alarm_delay_s,
-                    "unbal_trip_pct": unbal_trip_pct, "unbal_trip_delay_s": unbal_trip_delay_s,
-                    "mech_jam_pct": mech_jam_pct, "mech_jam_delay_s": mech_jam_delay_s,
-                    "accel_timer_s": accel_timer_s, "overload_alarm_delay_s": overload_alarm_delay_s,
-                },
-            }
-            st.download_button(
-                label="Save Settings (.json)",
-                data=json.dumps(settings_export, indent=2),
-                file_name=f"{project_key}_Settings_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                mime="application/json",
-                key=f"{project_key}__settings_json_dl",
-                help="Download the active settings for later reload in this app.",
+            st.markdown("---")
+            st.markdown("#### Save Profile")
+            st.caption(
+                "Name and download every setting currently active on this page — most useful after "
+                "entering your own values under Custom Profile, so you can pick this file back up "
+                "next time instead of re-typing everything. Use the loader in the sidebar to restore "
+                "it later."
+            )
+            export_profile_button(
+                st, project_key, f"{project_key}__",
+                default_name=f"{fan_type} Profile", button_key=project_key,
             )
 

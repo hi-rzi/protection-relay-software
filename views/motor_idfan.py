@@ -16,6 +16,7 @@ from common.settings_advisor import suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
+from common.profile_io import safe_filename
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
 
@@ -117,12 +118,13 @@ def restore_motor_settings(uploaded_file):
             st.session_state[f"{key}__number"] = settings[key]
 
     st.session_state["motor_loaded_file_hash"] = file_hash
+    st.toast(f"Loaded profile: {payload.get('profile_name', 'Untitled')}")
     st.rerun()
 
 
 st.sidebar.header("Settings File")
 uploaded_settings = st.sidebar.file_uploader(
-    "Load ID Fan settings (.json)", type=["json"], key="motor_settings_upload"
+    "Load a saved profile (.json)", type=["json"], key="motor_settings_upload"
 )
 if uploaded_settings is not None:
     restore_motor_settings(uploaded_settings)
@@ -1137,17 +1139,29 @@ with outer_analysis:
             mime="application/pdf",
         )
 
+        st.markdown("---")
+        st.markdown("#### Save Profile")
+        st.caption(
+            "Name and download the currently active settings — most useful after entering your own "
+            "values under Custom Profile, so you can pick this file back up next time instead of "
+            "re-typing everything. Use the loader in the sidebar to restore it later."
+        )
+        idfan_profile_name = st.text_input(
+            "Profile Name", value="ID Fan Profile", key="idfan_profile_name",
+            help="Used as the downloaded file's name, and shown when you reload it later.",
+        )
         settings_export = {
             "format": "Electrical Equipment Protection Suite settings",
             "version": 1,
             "equipment": "id_fan_motor",
+            "profile_name": idfan_profile_name,
             "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "settings": {key: st.session_state[key] for key in MOTOR_CONFIG_FIELDS},
         }
         st.download_button(
-            label="Save ID Fan Settings (.json)",
+            label="💾 Save Profile (.json)",
             data=json.dumps(settings_export, indent=2),
-            file_name=f"IDFan_Settings_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
+            file_name=f"{safe_filename(idfan_profile_name, 'IDFan_profile')}.json",
             mime="application/json",
             help="Download the active settings and document-control fields for later reload in this app.",
         )

@@ -14,6 +14,7 @@ from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
+from common.profile_io import export_profile_button, restore_profile_uploader
 from engines.generator import AdvancedDifferentialRelay
 from engines.fault_current import three_phase_fault_current, relay_secondary_at_fault
 
@@ -90,6 +91,8 @@ if st.sidebar.button(
         del st.session_state[_k]
     st.toast(f"Reset to {selected_preset} defaults.")
     st.rerun()
+
+restore_profile_uploader(st.sidebar, "generator", f"{current_mode}__{selected_preset}__", "generator")
 
 if not is_custom:
     st.success(
@@ -1216,3 +1219,16 @@ with outer_analysis:
             ("CT Polarity Reference", ct_polarity),
         ]
         render_settings_sheet(st, "GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows, key_prefix="Generator")
+
+        st.markdown("---")
+        st.markdown("#### Save Profile")
+        st.caption(
+            "Name and download every setting currently active under the selected preset above — "
+            "most useful after entering your own values under Custom Profile, so you can pick this "
+            "file back up next time instead of re-typing everything. Use the loader in the sidebar "
+            "to restore it later."
+        )
+        export_profile_button(
+            st, "generator", f"{current_mode}__{selected_preset}__",
+            default_name="Generator Profile", button_key="generator",
+        )

@@ -9,7 +9,7 @@ Every equipment page follows the same 6-step sequence — once you know it on on
 on all nine:
 
 1. **Pick equipment from the sidebar** (Generator, Transformer, or Motor) and choose the specific relay.
-2. **Load a preset** at the top of the sidebar — a real POMI relay, or *Custom Profile* to enter your own ratings and CT specs. Not happy with what you've changed? The **↺ Reset to preset defaults** button below it puts every field back to the preset's stock values.
+2. **Load a preset** at the top of the sidebar — a real POMI relay, or *Custom Profile* to enter your own ratings and CT specs. Not happy with what you've changed? The **↺ Reset to preset defaults** button below it puts every field back to the preset's stock values. Want to keep what you've entered? **💾 Save Profile** (bottom of Settings Summary & Approval) downloads it under a name you choose — reload it later with the loader further down the sidebar.
 3. **Review "Current Settings"** — every applied setting, editable in place, with a live comment on whether it clears the recommended margin (🟢), needs a second look (🟠), or is informational only (⚪). A banner near the top shows whether this preset's values are ✓ verified against the real settings document or ⚠ only partially confirmed. Click **📊 Show Live Preview** at the top of the tab any time to see the characteristic curve reflect the settings below it.
 4. **Work through "Analysis & Tools" in order** — the tabs are always in this sequence:
    - **Theory** — how this protection scheme actually works, with the protection zone diagram.
