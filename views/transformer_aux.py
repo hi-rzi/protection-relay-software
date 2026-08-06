@@ -44,6 +44,7 @@ PRESETS = {
         # (self-cooled, lowest) rating of 60MVA, per "60/80/100/112MVA OA/FA/FA/FA" - the
         # convention nameplate impedance is stated on, matching EXCT's and GSUT's own pages.
         "fault_mva_base": 60.0, "z_pct": 8.47, "x_over_r": 38.9, "ct_withstand_a": 60.0,
+        "fault_kv_hv": 23.0,  # actual HV nameplate voltage - NOT the 22.425kV tap-adjusted kv_hv above
     },
     "Custom Profile": {
         "mva": 10.0,
@@ -53,6 +54,7 @@ PRESETS = {
         "tap_hv": 1.0, "tap_lv": 1.0,
         "bias": 25, "min_operate": 20, "hoc": 8,
         "fault_mva_base": 10.0, "z_pct": 8.0, "x_over_r": 15.0, "ct_withstand_a": 40.0,
+        "fault_kv_hv": 11.0,
     },
 }
 
@@ -787,13 +789,6 @@ with outer_analysis:
             "impedance allows, using the same method as EXCT's own settings document worked example "
             "— not just the relay's own characteristic curve in isolation."
         )
-        st.warning(
-            "Unlike EXCT (which has its own worked through-fault example) or GSUT (whose impedance "
-            "is confirmed from the Overall GSUT-GEN settings doc), this transformer's impedance and "
-            "X/R ratio below are NOT confirmed against a UAT-specific document — they're generic "
-            "placeholders. Confirm both against the actual UAT nameplate/design data before relying "
-            "on any number in this tab."
-        )
         st.caption(
             "A transformer isn't a fault current source the way a generator is — its own impedance "
             "instead LIMITS the maximum through-fault current for a fault at or beyond its "
@@ -823,6 +818,14 @@ with outer_analysis:
                 "Check CT On", ["HV", "LV"], horizontal=True, key=f"{selected_preset}__fault_side",
                 help="Which winding's CT to check."
             )
+            fault_kv_hv = st.number_input(
+                "HV Nameplate Voltage (kV, for fault base)", min_value=0.1, value=p_data.get("fault_kv_hv", 23.0), step=0.1,
+                key=f"{selected_preset}__fault_kv_hv",
+                help="The transformer's actual HV nameplate voltage (23kV) - deliberately separate "
+                     "from the HV Rated Voltage in Current Settings above (22.425kV, Tap Position 3), "
+                     "which is tap-adjusted for the differential relay's own CT-matching calculation "
+                     "and would understate the fault current base if reused here."
+            )
             asym_basis = st.radio(
                 "Asymmetry Basis", ["Actual X/R", "Worst-case (1.73× flat)"], horizontal=True,
                 key=f"{selected_preset}__asym_basis",
@@ -833,7 +836,7 @@ with outer_analysis:
                      "is always >= the Actual X/R result."
             )
 
-        fault_kv = kv_hv if fault_side == "HV" else kv_lv
+        fault_kv = fault_kv_hv if fault_side == "HV" else kv_lv
         fault_ct = ct_hv if fault_side == "HV" else ct_lv
         fault_calc = transformer_through_fault_current(
             fault_mva_base, fault_kv, z_pct / 100.0, x_over_r,

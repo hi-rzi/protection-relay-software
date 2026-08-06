@@ -41,6 +41,7 @@ PRESETS = {
         # transformer's own design data (no worked through-fault example found for
         # GSUT specifically, unlike EXCT) - flagged as an editable placeholder.
         "fault_mva_base": 468.0, "z_pct": 10.0, "x_over_r": 20.0, "ct_withstand_a": 60.0,
+        "fault_kv_hv": 525.0,  # actual HV nameplate voltage - NOT the 538.125kV tap-adjusted kv_hv above
     },
     "Custom Profile": {
         "mva": 10.0,
@@ -50,6 +51,7 @@ PRESETS = {
         "tap_hv": 1.0, "tap_lv": 1.0,
         "bias": 25, "min_operate": 20, "hoc": 8,
         "fault_mva_base": 10.0, "z_pct": 10.0, "x_over_r": 20.0, "ct_withstand_a": 40.0,
+        "fault_kv_hv": 11.0,
     },
 }
 
@@ -809,6 +811,15 @@ with outer_analysis:
                 "Check CT On", ["HV", "LV"], horizontal=True, key=f"{selected_preset}__fault_side",
                 help="Which winding's CT to check."
             )
+            fault_kv_hv = st.number_input(
+                "HV Nameplate Voltage (kV, for fault base)", min_value=0.1, value=p_data.get("fault_kv_hv", 525.0), step=1.0,
+                key=f"{selected_preset}__fault_kv_hv",
+                help="The transformer's actual HV nameplate voltage (525kV) - deliberately separate "
+                     "from the HV Rated Voltage in Current Settings above (538.125kV, center-of-range "
+                     "tap), which is tap-adjusted for the differential relay's own CT-matching "
+                     "calculation and would overstate the impedance base (understating fault current) "
+                     "if reused here."
+            )
             asym_basis = st.radio(
                 "Asymmetry Basis", ["Actual X/R", "Worst-case (1.73× flat)"], horizontal=True,
                 key=f"{selected_preset}__asym_basis",
@@ -819,7 +830,7 @@ with outer_analysis:
                      "is always >= the Actual X/R result."
             )
 
-        fault_kv = kv_hv if fault_side == "HV" else kv_lv
+        fault_kv = fault_kv_hv if fault_side == "HV" else kv_lv
         fault_ct = ct_hv if fault_side == "HV" else ct_lv
         fault_calc = transformer_through_fault_current(
             fault_mva_base, fault_kv, z_pct / 100.0, x_over_r,
