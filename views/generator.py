@@ -17,8 +17,8 @@ from common.relay_settings_sheet import render_settings_sheet
 from engines.generator import AdvancedDifferentialRelay
 from engines.fault_current import three_phase_fault_current, relay_secondary_at_fault
 
-st.title("Enterprise Generator Differential Protection (87G) Suite")
-st.caption("Active Phase Vector Analysis, GE G60 Dual-Breakpoint Curve Engine & Secondary Injection Testing")
+st.title("Generator Differential Protection (87G)")
+st.caption("Differential protection for the generator stator zone — GE G60 numerical or GE CFD22B4A legacy relay.")
 
 st.markdown("### Generator Relay Type Select")
 mode_selection = st.radio(
