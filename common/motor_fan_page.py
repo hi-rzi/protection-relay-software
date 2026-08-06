@@ -379,9 +379,14 @@ def render_fan_motor_page(fan_type):
             st.markdown("**Overload (Thermal Model)**")
             ovc1, ovc2 = st.columns(2)
             with ovc1:
-                overload_pickup_pct = st.number_input("Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, value=p_data["overload_pickup_pct"], step=1.0, key=f"{project_key}__ovl_pct")
-                if overload_pickup_pct > 100.0:
-                    st.success(f"Pickup set at {overload_pickup_pct:.0f}% FLA — above 100%, so a healthy full-load current won't nuisance-trip.")
+                overload_pickup_pct = st.number_input(
+                    "Overload Pickup (% FLA)", min_value=100.0, max_value=125.0, value=p_data["overload_pickup_pct"], step=1.0, key=f"{project_key}__ovl_pct",
+                    help="Typical range is 110-115% FLA — rides through minor overload/voltage fluctuation while still protecting per the thermal damage curve.",
+                )
+                if 110.0 <= overload_pickup_pct <= 115.0:
+                    st.success(f"Pickup set at {overload_pickup_pct:.0f}% FLA — within the typical 110-115% range.")
+                elif overload_pickup_pct > 100.0:
+                    st.info(f"Pickup set at {overload_pickup_pct:.0f}% FLA — above 100% so a healthy full-load current won't nuisance-trip, though outside the typical 110-115% range.")
                 else:
                     st.warning(f"Pickup set at {overload_pickup_pct:.0f}% FLA — at or below 100% FLA, review overload coordination.")
             with ovc2:
