@@ -855,47 +855,6 @@ with outer_analysis:
             st.warning(f"Through-fault relay secondary current ({relay_sec_fault:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio, impedance base, or relay burden.")
 
         st.markdown("---")
-        st.markdown("#### CT Saturation Check")
-        st.caption(
-            "Estimates the secondary voltage this CT needs to develop to drive the through-fault "
-            "current above through its own winding resistance, lead wiring, and the relay's input "
-            "burden — and compares that against a knee-point/saturation voltage. This is NOT the "
-            "CT's actual tested excitation curve (this app has no manufacturer excitation-curve "
-            "data for any CT at this plant) — burden and knee-point values below are typical "
-            "placeholders, not confirmed for this specific CT. Get the real excitation curve or "
-            "C-class rating off the CT nameplate/test report before relying on this check."
-        )
-        ctsat1, ctsat2 = st.columns(2)
-        with ctsat1:
-            ct_burden_ohms = st.number_input(
-                "Total Secondary Burden (Ω)", min_value=0.1, value=2.0, step=0.1,
-                key=f"{selected_preset}__ct_burden_ohms",
-                help="CT winding resistance + lead wire resistance (both directions) + relay input burden. Typical range 0.5-4Ω — not confirmed for this specific CT/cable run."
-            )
-            ct_knee_v = st.number_input(
-                "CT Saturation / Knee-Point Voltage (V)", min_value=10.0, value=200.0, step=10.0,
-                key=f"{selected_preset}__ct_knee_v",
-                help="The secondary voltage above which the CT core saturates and its output distorts. Read this off the CT's own excitation curve or C-class rating (e.g. a 'C200' CT is rated for 200V) — not confirmed for this CT."
-            )
-        v_required = relay_sec_fault * ct_burden_ohms
-        with ctsat2:
-            st.metric("Voltage Required at Max Fault", f"{v_required:.0f} V")
-            if v_required <= ct_knee_v:
-                st.success(f"Within the {ct_knee_v:.0f} V knee-point — the CT should stay in its linear region for this fault.")
-            else:
-                st.warning(f"EXCEEDS the {ct_knee_v:.0f} V knee-point — this CT is likely to saturate for this fault, distorting the current the relay sees. Review CT ratio, burden, or knee-point rating.")
-        ctsat_fig = go.Figure()
-        ctsat_fig.add_trace(go.Bar(
-            x=[v_required], y=["Voltage Required"], orientation="h",
-            marker_color="#DC2626" if v_required > ct_knee_v else "#16A34A", width=0.5, showlegend=False,
-        ))
-        ctsat_fig.add_vline(x=ct_knee_v, line=dict(color="#F59E0B", width=2, dash="dash"), annotation_text="Knee-Point Voltage")
-        ctsat_fig.update_layout(
-            xaxis_title="Secondary Voltage (V)", template="plotly_white", height=170, margin=dict(t=20, b=40, l=10, r=10),
-        )
-        st.plotly_chart(ctsat_fig, use_container_width=True, key=f"{selected_preset}__ct_sat_fig")
-
-        st.markdown("---")
         st.markdown("#### Actual Fault Current Waveform")
         st.caption(
             "The Asymmetrical Through-Fault Current above is an RMS figure — this shows what the "

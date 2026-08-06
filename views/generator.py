@@ -952,61 +952,6 @@ with outer_analysis:
                 st.warning(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
 
         st.markdown("---")
-        st.markdown("#### CT Saturation Check")
-        st.caption(
-            "Estimates the secondary voltage this CT needs to develop to drive the fault current "
-            "above through its own winding resistance, lead wiring, and the relay's input burden — "
-            "and compares that against a knee-point/saturation voltage. This is NOT the CT's actual "
-            "tested excitation curve (this app has no manufacturer excitation-curve data for any CT "
-            "at this plant) — burden and knee-point values below are typical placeholders, not "
-            "confirmed for this specific CT. Get the real excitation curve or C-class rating off the "
-            "CT nameplate/test report before relying on this check."
-        )
-        ctsat1, ctsat2 = st.columns(2)
-        with ctsat1:
-            ct_burden_ohms = st.number_input(
-                "Total Secondary Burden (Ω)", min_value=0.1, value=2.0, step=0.1,
-                key=f"{current_mode}__{selected_preset}__ct_burden_ohms",
-                help="CT winding resistance + lead wire resistance (both directions) + relay input burden. Typical range 0.5-4Ω — not confirmed for this specific CT/cable run."
-            )
-            ct_knee_v = st.number_input(
-                "CT Saturation / Knee-Point Voltage (V)", min_value=10.0, value=200.0, step=10.0,
-                key=f"{current_mode}__{selected_preset}__ct_knee_v",
-                help="The secondary voltage above which the CT core saturates and its output distorts. Read this off the CT's own excitation curve or C-class rating (e.g. a 'C200' CT is rated for 200V) — not confirmed for this CT."
-            )
-        v_required_internal = relay_sec_internal * ct_burden_ohms
-        v_required_external = relay_sec_external * ct_burden_ohms if relay_sec_external is not None else None
-        with ctsat2:
-            st.metric("Voltage Required — Internal Fault", f"{v_required_internal:.0f} V")
-            if v_required_internal <= ct_knee_v:
-                st.success(f"Within the {ct_knee_v:.0f} V knee-point.")
-            else:
-                st.warning(f"EXCEEDS the {ct_knee_v:.0f} V knee-point — likely to saturate for this fault.")
-            if v_required_external is not None:
-                st.metric("Voltage Required — External Through-Fault", f"{v_required_external:.0f} V")
-                if v_required_external <= ct_knee_v:
-                    st.success(f"Within the {ct_knee_v:.0f} V knee-point.")
-                else:
-                    st.warning(f"EXCEEDS the {ct_knee_v:.0f} V knee-point — likely to saturate for this fault.")
-        ctsat_bars_y = ["Internal Fault"]
-        ctsat_bars_x = [v_required_internal]
-        ctsat_bars_color = ["#DC2626" if v_required_internal > ct_knee_v else "#16A34A"]
-        if v_required_external is not None:
-            ctsat_bars_y.append("External Through-Fault")
-            ctsat_bars_x.append(v_required_external)
-            ctsat_bars_color.append("#DC2626" if v_required_external > ct_knee_v else "#16A34A")
-        ctsat_fig = go.Figure()
-        ctsat_fig.add_trace(go.Bar(
-            x=ctsat_bars_x, y=ctsat_bars_y, orientation="h",
-            marker_color=ctsat_bars_color, width=0.5, showlegend=False,
-        ))
-        ctsat_fig.add_vline(x=ct_knee_v, line=dict(color="#F59E0B", width=2, dash="dash"), annotation_text="Knee-Point Voltage")
-        ctsat_fig.update_layout(
-            xaxis_title="Secondary Voltage (V)", template="plotly_white", height=170, margin=dict(t=20, b=40, l=10, r=10),
-        )
-        st.plotly_chart(ctsat_fig, use_container_width=True, key=f"{current_mode}__{selected_preset}__ct_sat_fig")
-
-        st.markdown("---")
         st.markdown("#### Actual Fault Current Waveform")
         st.caption(
             "The Asymmetrical Fault Current above is an RMS figure — this shows what the actual "
