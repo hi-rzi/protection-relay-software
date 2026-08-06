@@ -106,78 +106,6 @@ if not is_custom:
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
-    # Live preview of the differential characteristic curve, right at the top so its shape is
-    # visible immediately without switching to Analysis & Tools. Reads straight from
-    # session_state (falling back to the preset default) since the actual settings widgets are
-    # drawn further down this same tab and haven't run yet on this script pass - this preview
-    # reflects whatever was set on the PREVIOUS interaction, and updates on the next rerun same
-    # as everything else on the page. Deliberately theoretical only (no operating points, no
-    # unrestrained high-set line) - the full picture with live test inputs is still the Live
-    # Vector Simulation tab in Analysis & Tools.
-    _pv_key = f"{current_mode}__{selected_preset}__"
-    _pv_mva = st.session_state.get(_pv_key + "mva", p_data["mva"])
-    _pv_kv = st.session_state.get(_pv_key + "kv", p_data["kv"])
-    _pv_ct_n = st.session_state.get(_pv_key + "ct_n", p_data["ct_n"])
-    _pv_ct_t = st.session_state.get(_pv_key + "ct_t", p_data["ct_t"])
-    _pv_ct_sec = st.session_state.get(_pv_key + "ct_sec", 5.0)
-    if current_mode == "GENERATOR_LEGACY":
-        _pv_relay = AdvancedDifferentialRelay(
-            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
-            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
-            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
-            target_amps=st.session_state.get(_pv_key + "target_amps", p_data["target_amps"]),
-        )
-        _pv_max_x = 6.0
-    else:
-        _pv_break_2 = st.session_state.get(_pv_key + "break2", p_data["break_2"])
-        _pv_relay = AdvancedDifferentialRelay(
-            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
-            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
-            i_pickup=st.session_state.get(_pv_key + "pickup", p_data["pickup"]),
-            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
-            slope_2=st.session_state.get(_pv_key + "slope2", p_data["s2"]),
-            break_1=st.session_state.get(_pv_key + "break1", p_data["break_1"]),
-            break_2=_pv_break_2,
-        )
-        _pv_max_x = max(6.0, _pv_break_2 + 1.0)
-    st.markdown("#### Live Preview — Differential Characteristic Curve")
-    st.caption(
-        "Reflects the settings below as you adjust them. Operating-point testing and the "
-        "unrestrained high-set line (if enabled) are in the Live Vector Simulation tab under "
-        "Analysis & Tools."
-    )
-    _pv_x = np.linspace(0, _pv_max_x, 200)
-    _pv_y = [_pv_relay.calculate_trip_threshold(x) for x in _pv_x]
-    _pv_y_upper = max(_pv_y) * 1.3 + 0.1
-    _pv_fig = go.Figure()
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
-        fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
-        fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_annotation(
-        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.add_annotation(
-        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.update_layout(
-        xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
-        template="plotly_white", height=320, margin=dict(t=20, b=40),
-    )
-    st.plotly_chart(_pv_fig, use_container_width=True, key="generator_settings_preview_fig")
-    st.markdown("---")
-
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -369,6 +297,49 @@ relay = AdvancedDifferentialRelay(
     convention=convention, ct_polarity=ct_polarity,
     target_amps=target_amps
 )
+
+# Reopens the same tab container to add one more section at the bottom, after every
+# Current Settings field above has been gathered and `relay` built from them - lets the
+# preview use the real relay object directly instead of re-reading session_state early.
+with outer_settings:
+    st.markdown("---")
+    show_preview = st.toggle(
+        "📊 Show Live Preview — Differential Characteristic Curve",
+        key=f"{current_mode}__{selected_preset}__show_preview",
+        help="Reflects the settings configured above. Operating-point testing and the unrestrained high-set line (if enabled) are in the Live Vector Simulation tab under Analysis & Tools.",
+    )
+    if show_preview:
+        _pv_max_x = max(6.0, break_2 + 1.0) if current_mode != "GENERATOR_LEGACY" else 6.0
+        _pv_x = np.linspace(0, _pv_max_x, 200)
+        _pv_y = [relay.calculate_trip_threshold(x) for x in _pv_x]
+        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
+            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_annotation(
+            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.add_annotation(
+            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.update_layout(
+            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key="generator_settings_preview_fig")
 
 with outer_analysis:
     st.caption(

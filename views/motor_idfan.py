@@ -188,67 +188,6 @@ if selected_preset != "Custom Profile":
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
-    # Live preview of the 51 (Long Time Inverse) curve, right at the top so its shape is visible
-    # immediately without switching to Analysis & Tools. Reads CT Ratio, Tap, and Time Dial
-    # straight from session_state (falling back to the preset default) since the actual settings
-    # widgets are drawn further down this same tab and haven't run yet on this script pass. The
-    # probe relay itself still uses dummy ct_ratio=1.0/tap_51=1.0 (the curve's SHAPE in "x tap"
-    # terms doesn't depend on their absolute values) - the real values are applied only when
-    # scaling the x-axis to absolute primary Amps, so changing CT Ratio or Tap visibly shifts the
-    # curve instead of silently doing nothing. The 87M element has no time-current curve
-    # (instantaneous, single pickup), so it isn't part of this chart - its pickup value is shown in
-    # its own settings card further down instead.
-    _pv_ct_ratio = st.session_state.get("motor_ct_ratio", float(p_data["ct_ratio"]))
-    _pv_ct_sec = st.session_state.get("motor_ct_sec", p_data["ct_sec"])
-    _pv_tap_51 = st.session_state.get("motor_tap_51", p_data["tap_51"])
-    _pv_time_dial = st.session_state.get("motor_time_dial", p_data["time_dial"])
-    _pv_probe = MotorTimeOvercurrentRelay(
-        ct_ratio=1.0, ct_secondary_rating=1.0, tap_51=1.0, time_dial=_pv_time_dial,
-        pickup_50a=1e9, dropout_50b=1e9,
-    )
-    st.markdown("#### Live Preview — 51 (Long Time Inverse) Curve")
-    st.caption(
-        "Reflects the CT Ratio, 51 Tap, and Time Dial settings below as you adjust them. "
-        "Starting/safe-stall overlay and commissioning tools are in the TCC Curve tab under "
-        "Analysis & Tools."
-    )
-    _pv_m = np.linspace(1.01, 20.0, 200)
-    _pv_effective_ratio = _pv_ct_ratio / _pv_ct_sec if _pv_ct_sec > 0 else _pv_ct_ratio
-    _pv_x_amps = _pv_m * _pv_tap_51 * _pv_effective_ratio
-    _pv_t = [_pv_probe.calculate_51_trip_time(m) for m in _pv_m]
-    _pv_y_lower = min(_pv_t) * 0.3
-    _pv_y_upper = max(_pv_t) * 2.5
-    _pv_fig = go.Figure()
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x_amps, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3),
-        fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_upper), mode="lines", line=dict(width=0),
-        fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_annotation(
-        text="TRIP REGION (OPERATED)", xref="paper", yref="paper", x=0.98, y=0.95,
-        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.add_annotation(
-        text="SAFE REGION (NOT YET TRIPPED)", xref="paper", yref="paper", x=0.02, y=0.05,
-        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.update_layout(
-        xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
-        yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
-    )
-    st.plotly_chart(_pv_fig, use_container_width=True, key="idfan_settings_preview_fig")
-    st.markdown("---")
-
-    st.markdown("---")
-
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -454,6 +393,53 @@ with outer_settings:
         st.success("Overall status: all settings shown clear their recommended margins. Engineering approval is still required before issue.")
     else:
         st.warning("Overall status: one or more settings above need review before this is applied.")
+
+    # Preview added at the bottom, after every field above (and the real `relay` object) is
+    # already set - uses `relay` directly instead of a probe re-reading session_state early.
+    # The x-axis is scaled to absolute primary Amps using the real CT Ratio/Tap, so changing
+    # either visibly shifts the curve. The 87M element has no time-current curve (instantaneous,
+    # single pickup), so it isn't part of this chart - its pickup value is shown in its own
+    # settings card above instead.
+    st.markdown("---")
+    show_preview = st.toggle(
+        "📊 Show Live Preview — 51 (Long Time Inverse) Curve",
+        key="idfan_show_preview",
+        help="Reflects the CT Ratio, 51 Tap, and Time Dial settings configured above. Starting/safe-stall overlay and commissioning tools are in the TCC Curve & Test Points tab under Analysis & Tools.",
+    )
+    if show_preview:
+        _pv_m = np.linspace(1.01, 20.0, 200)
+        _pv_effective_ratio = relay.effective_ratio
+        _pv_x_amps = _pv_m * tap_51 * _pv_effective_ratio
+        _pv_t = [relay.calculate_51_trip_time(m * tap_51) for m in _pv_m]
+        _pv_y_lower = min(_pv_t) * 0.3
+        _pv_y_upper = max(_pv_t) * 2.5
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_lower), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x_amps, y=_pv_t, mode="lines", name="51", line=dict(color="#2563EB", width=3),
+            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x_amps, y=np.full_like(_pv_x_amps, _pv_y_upper), mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_annotation(
+            text="TRIP REGION (OPERATED)", xref="paper", yref="paper", x=0.98, y=0.95,
+            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.add_annotation(
+            text="SAFE REGION (NOT YET TRIPPED)", xref="paper", yref="paper", x=0.02, y=0.05,
+            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.update_layout(
+            xaxis_title="Current (A primary)", yaxis_title="Trip Time (s)",
+            yaxis_type="log", template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key="idfan_settings_preview_fig")
 
 
 record_equipment_settings("motor", {

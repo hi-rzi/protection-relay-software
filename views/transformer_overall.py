@@ -89,52 +89,6 @@ if not is_custom:
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
-    # Live preview of the differential characteristic curve, right at the top so its shape is
-    # visible immediately without switching to Analysis & Tools. Reads straight from
-    # session_state (falling back to the preset default) since the actual settings widgets are
-    # drawn further down this same tab and haven't run yet on this script pass. The curve only
-    # depends on Bias/Minimum Operate (see engines/transformer.py's calculate_trip_threshold) -
-    # CT ratios and taps don't affect its shape, only where operating points land on it, so no
-    # relay object is needed here at all.
-    _pv_bias = st.session_state.get(f"{selected_preset}__bias", p_data["bias"]) / 100.0
-    _pv_min_op = st.session_state.get(f"{selected_preset}__min_operate", p_data["min_operate"]) / 100.0
-    st.markdown("#### Live Preview — Differential Bias Characteristic Curve")
-    st.caption(
-        "Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and "
-        "operating-point testing are in the Live Vector Simulation tab under Analysis & Tools."
-    )
-    _pv_max_x = 6.0
-    _pv_x = np.linspace(0, _pv_max_x, 200)
-    _pv_y = [max(_pv_min_op, _pv_bias * x) for x in _pv_x]
-    _pv_y_upper = max(_pv_y) * 1.3 + 0.1
-    _pv_fig = go.Figure()
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
-        fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
-    ))
-    _pv_fig.add_trace(go.Scatter(
-        x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
-        fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
-    ))
-    _pv_fig.add_annotation(
-        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.add_annotation(
-        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-        bgcolor="rgba(255,255,255,0.75)",
-    )
-    _pv_fig.update_layout(
-        xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
-        template="plotly_white", height=320, margin=dict(t=20, b=40),
-    )
-    st.plotly_chart(_pv_fig, use_container_width=True, key="overall_settings_preview_fig")
-    st.markdown("---")
 
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
@@ -363,6 +317,53 @@ relay = TransformerDifferentialRelay(
 phases = ["Phase A", "Phase B", "Phase C"]
 winding_names = ["HV (525kV)", "Generator (23kV)", "UAT (23kV)"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
+
+# Reopens the same tab container to add one more section at the bottom, after Bias/Minimum
+# Operate above have been set - lets the preview use the real values directly instead of
+# re-reading session_state early. The curve only depends on Bias/Minimum Operate (see
+# engines/transformer.py's calculate_trip_threshold) - CT ratios and taps don't affect its
+# shape, so no relay object is needed here at all.
+with outer_settings:
+    st.markdown("---")
+    show_preview = st.toggle(
+        "📊 Show Live Preview — Differential Bias Characteristic Curve",
+        key=f"{selected_preset}__show_preview",
+        help="Reflects the Bias/Minimum Operate settings configured above. The HOC line and operating-point testing are in the Live Vector Simulation tab under Analysis & Tools.",
+    )
+    if show_preview:
+        _pv_bias = bias_pct / 100.0
+        _pv_min_op = min_operate_pct / 100.0
+        _pv_max_x = 6.0
+        _pv_x = np.linspace(0, _pv_max_x, 200)
+        _pv_y = [max(_pv_min_op, _pv_bias * x) for x in _pv_x]
+        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
+            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_annotation(
+            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.add_annotation(
+            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.update_layout(
+            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key="overall_settings_preview_fig")
 
 
 with outer_analysis:
