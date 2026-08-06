@@ -809,10 +809,22 @@ with outer_analysis:
                 "Check CT On", ["HV", "LV"], horizontal=True, key=f"{selected_preset}__fault_side",
                 help="Which winding's CT to check."
             )
+            asym_basis = st.radio(
+                "Asymmetry Basis", ["Actual X/R", "Worst-case (1.73× flat)"], horizontal=True,
+                key=f"{selected_preset}__asym_basis",
+                help="Actual X/R: computes how much the DC offset has decayed by 0.5 cycle, using "
+                     "this transformer's real X/R above. Worst-case: skips that decay and uses the "
+                     "flat sqrt(3)=1.73 ceiling instead (X/R -> infinity) - what some settings "
+                     "documents state directly rather than computing from the actual X/R. Worst-case "
+                     "is always >= the Actual X/R result."
+            )
 
         fault_kv = kv_hv if fault_side == "HV" else kv_lv
         fault_ct = ct_hv if fault_side == "HV" else ct_lv
-        fault_calc = transformer_through_fault_current(fault_mva_base, fault_kv, z_pct / 100.0, x_over_r)
+        fault_calc = transformer_through_fault_current(
+            fault_mva_base, fault_kv, z_pct / 100.0, x_over_r,
+            use_worst_case_asym=(asym_basis == "Worst-case (1.73× flat)"),
+        )
         relay_sec_fault = relay_secondary_at_fault(fault_calc["i_asym_amps"], fault_ct, ct_secondary_rating)
 
         with fmc2:

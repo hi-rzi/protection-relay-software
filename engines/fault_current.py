@@ -75,10 +75,20 @@ def relay_secondary_at_fault(i_fault_amps, ct_ratio, ct_secondary_rating=5.0):
 #    no network reduction). This is the standard "infinite bus" simplifying
 #    assumption for a transformer's own through-fault withstand check.
 # =====================================================================
-def transformer_through_fault_current(mva_base, kv_base, z_pu, x_over_r=None, freq_hz=60.0, cycles=0.5):
+def transformer_through_fault_current(mva_base, kv_base, z_pu, x_over_r=None, freq_hz=60.0, cycles=0.5, use_worst_case_asym=False):
+    """
+    use_worst_case_asym=True skips the X/R-based decay calculation and uses the flat
+    sqrt(3)=1.73 asymmetry factor instead - the theoretical ceiling as X/R -> infinity (zero
+    resistive decay of the DC offset at all). Some settings documents state this flat figure
+    directly ("assuming high X/R") rather than computing the decay from the transformer's own
+    X/R - it's always >= the X/R-based result, so it's a valid, more conservative alternative,
+    just not specific to this transformer's actual X/R.
+    """
     i_base = (mva_base * 1000.0) / (1.7320508 * kv_base) if kv_base > 0 else 0.0
     i_sym = (i_base / z_pu) if z_pu > 0 else 0.0
-    if x_over_r is not None and x_over_r > 0:
+    if use_worst_case_asym:
+        asym_factor = 1.7320508
+    elif x_over_r is not None and x_over_r > 0:
         t = cycles / freq_hz
         r_over_x = 1.0 / x_over_r
         exponent = -4.0 * math.pi * freq_hz * t * r_over_x
