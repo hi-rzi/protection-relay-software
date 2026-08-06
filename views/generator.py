@@ -952,6 +952,100 @@ with outer_analysis:
                 st.warning(f"External through-fault relay secondary current ({relay_sec_external:.1f} A) EXCEEDS the {ct_withstand_a:.0f} A withstand limit — review CT ratio or relay burden.")
 
         st.markdown("---")
+        st.markdown("#### CT Saturation Check")
+        st.caption(
+            "Estimates the secondary voltage this CT needs to develop to drive the fault current "
+            "above through its own winding resistance, lead wiring, and the relay's input burden — "
+            "and compares that against a knee-point/saturation voltage. This is NOT the CT's actual "
+            "tested excitation curve (this app has no manufacturer excitation-curve data for any CT "
+            "at this plant) — burden and knee-point values below are typical placeholders, not "
+            "confirmed for this specific CT. Get the real excitation curve or C-class rating off the "
+            "CT nameplate/test report before relying on this check."
+        )
+        ctsat1, ctsat2 = st.columns(2)
+        with ctsat1:
+            ct_burden_ohms = st.number_input(
+                "Total Secondary Burden (Ω)", min_value=0.1, value=2.0, step=0.1,
+                key=f"{current_mode}__{selected_preset}__ct_burden_ohms",
+                help="CT winding resistance + lead wire resistance (both directions) + relay input burden. Typical range 0.5-4Ω — not confirmed for this specific CT/cable run."
+            )
+            ct_knee_v = st.number_input(
+                "CT Saturation / Knee-Point Voltage (V)", min_value=10.0, value=200.0, step=10.0,
+                key=f"{current_mode}__{selected_preset}__ct_knee_v",
+                help="The secondary voltage above which the CT core saturates and its output distorts. Read this off the CT's own excitation curve or C-class rating (e.g. a 'C200' CT is rated for 200V) — not confirmed for this CT."
+            )
+        v_required_internal = relay_sec_internal * ct_burden_ohms
+        v_required_external = relay_sec_external * ct_burden_ohms if relay_sec_external is not None else None
+        with ctsat2:
+            st.metric("Voltage Required — Internal Fault", f"{v_required_internal:.0f} V")
+            if v_required_internal <= ct_knee_v:
+                st.success(f"Within the {ct_knee_v:.0f} V knee-point.")
+            else:
+                st.warning(f"EXCEEDS the {ct_knee_v:.0f} V knee-point — likely to saturate for this fault.")
+            if v_required_external is not None:
+                st.metric("Voltage Required — External Through-Fault", f"{v_required_external:.0f} V")
+                if v_required_external <= ct_knee_v:
+                    st.success(f"Within the {ct_knee_v:.0f} V knee-point.")
+                else:
+                    st.warning(f"EXCEEDS the {ct_knee_v:.0f} V knee-point — likely to saturate for this fault.")
+        ctsat_bars_y = ["Internal Fault"]
+        ctsat_bars_x = [v_required_internal]
+        ctsat_bars_color = ["#DC2626" if v_required_internal > ct_knee_v else "#16A34A"]
+        if v_required_external is not None:
+            ctsat_bars_y.append("External Through-Fault")
+            ctsat_bars_x.append(v_required_external)
+            ctsat_bars_color.append("#DC2626" if v_required_external > ct_knee_v else "#16A34A")
+        ctsat_fig = go.Figure()
+        ctsat_fig.add_trace(go.Bar(
+            x=ctsat_bars_x, y=ctsat_bars_y, orientation="h",
+            marker_color=ctsat_bars_color, width=0.5, showlegend=False,
+        ))
+        ctsat_fig.add_vline(x=ct_knee_v, line=dict(color="#F59E0B", width=2, dash="dash"), annotation_text="Knee-Point Voltage")
+        ctsat_fig.update_layout(
+            xaxis_title="Secondary Voltage (V)", template="plotly_white", height=170, margin=dict(t=20, b=40, l=10, r=10),
+        )
+        st.plotly_chart(ctsat_fig, use_container_width=True, key=f"{current_mode}__{selected_preset}__ct_sat_fig")
+
+        st.markdown("---")
+        st.markdown("#### Actual Fault Current Waveform")
+        st.caption(
+            "The Asymmetrical Fault Current above is an RMS figure — this shows what the actual "
+            "instantaneous AC current looks like: a decaying DC offset riding on top of the "
+            "steady-state sine wave, worst case (fault at a voltage zero-crossing). Generator fault "
+            "current here uses a flat, editable Asymmetry Factor rather than a real X/R ratio (unlike "
+            "the transformer pages), so the decay rate shown is BACK-CALCULATED from that factor "
+            "(inverting the same X/R-based formula the transformer pages use directly) purely to draw "
+            "a physically plausible waveform — treat the shape as illustrative, not a value confirmed "
+            "against this generator's own X/R."
+        )
+        _wf_asym_ceiling = 1.7320508
+        if asym_factor >= _wf_asym_ceiling - 1e-6:
+            _wf_x_over_r = 5000.0
+        else:
+            _wf_ratio_sq = max((asym_factor ** 2 - 1.0) / 2.0, 1e-9)
+            _wf_r_over_x = -np.log(_wf_ratio_sq) / (2 * np.pi)
+            _wf_x_over_r = (1.0 / _wf_r_over_x) if _wf_r_over_x > 1e-9 else 5000.0
+        _wf_cycles = 5
+        _wf_f = 60.0
+        _wf_w = 2 * np.pi * _wf_f
+        _wf_t = np.linspace(0, _wf_cycles / _wf_f, 800)
+        _wf_i_peak_sym = np.sqrt(2) * fault_calc["i_fault_sym_amps"]
+        _wf_decay_rate = _wf_w / _wf_x_over_r
+        _wf_i = _wf_i_peak_sym * (np.exp(-_wf_t * _wf_decay_rate) - np.cos(_wf_w * _wf_t))
+        _wf_fig = go.Figure()
+        _wf_fig.add_trace(go.Scatter(
+            x=_wf_t * 1000.0, y=_wf_i, mode="lines", name="Instantaneous Current",
+            line=dict(color="#DC2626", width=2),
+        ))
+        _wf_fig.add_hline(y=_wf_i_peak_sym, line=dict(color="#94A3B8", width=1, dash="dot"), annotation_text="Steady-state peak")
+        _wf_fig.add_hline(y=-_wf_i_peak_sym, line=dict(color="#94A3B8", width=1, dash="dot"))
+        _wf_fig.update_layout(
+            xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Instantaneous Current (A)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_wf_fig, use_container_width=True, key=f"{current_mode}__{selected_preset}__fault_waveform_fig")
+
+        st.markdown("---")
         st.markdown("#### Fault Clearing Time Simulation")
         st.caption(
             "Feeds the fault current above through the same trip logic as the Live Vector Simulation "
