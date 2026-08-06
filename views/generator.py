@@ -106,6 +106,78 @@ if not is_custom:
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
+    # Live preview, click to reveal, at the top of the tab. Reads straight from session_state
+    # (falling back to the preset default) since the actual settings widgets are drawn further
+    # down this same tab and haven't run yet on this script pass - reflects whatever was set on
+    # the PREVIOUS interaction, and updates on the next rerun same as everything else on the
+    # page. Deliberately theoretical only (no operating points, no unrestrained high-set line) -
+    # the full picture with live test inputs is still the Live Simulation tab in Analysis & Tools.
+    _pv_key = f"{current_mode}__{selected_preset}__"
+    _pv_mva = st.session_state.get(_pv_key + "mva", p_data["mva"])
+    _pv_kv = st.session_state.get(_pv_key + "kv", p_data["kv"])
+    _pv_ct_n = st.session_state.get(_pv_key + "ct_n", p_data["ct_n"])
+    _pv_ct_t = st.session_state.get(_pv_key + "ct_t", p_data["ct_t"])
+    _pv_ct_sec = st.session_state.get(_pv_key + "ct_sec", 5.0)
+    if current_mode == "GENERATOR_LEGACY":
+        _pv_relay = AdvancedDifferentialRelay(
+            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
+            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
+            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
+            target_amps=st.session_state.get(_pv_key + "target_amps", p_data["target_amps"]),
+        )
+        _pv_max_x = 6.0
+    else:
+        _pv_break_2 = st.session_state.get(_pv_key + "break2", p_data["break_2"])
+        _pv_relay = AdvancedDifferentialRelay(
+            mode=current_mode, mva_rated=_pv_mva, kv_rated=_pv_kv,
+            ct_ratio_N=_pv_ct_n, ct_ratio_T=_pv_ct_t, ct_secondary_rating=_pv_ct_sec,
+            i_pickup=st.session_state.get(_pv_key + "pickup", p_data["pickup"]),
+            slope_1=st.session_state.get(_pv_key + "slope1", p_data["s1"]),
+            slope_2=st.session_state.get(_pv_key + "slope2", p_data["s2"]),
+            break_1=st.session_state.get(_pv_key + "break1", p_data["break_1"]),
+            break_2=_pv_break_2,
+        )
+        _pv_max_x = max(6.0, _pv_break_2 + 1.0)
+
+    if st.button(
+        "📊 Show Live Preview — Differential Characteristic Curve",
+        key=f"{_pv_key}show_preview_btn",
+        help="Reflects the settings below as you adjust them. Operating-point testing and the unrestrained high-set line (if enabled) are in the Live Simulation tab under Analysis & Tools.",
+    ):
+        st.session_state[f"{_pv_key}preview_shown"] = True
+    if st.session_state.get(f"{_pv_key}preview_shown", False):
+        _pv_x = np.linspace(0, _pv_max_x, 200)
+        _pv_y = [_pv_relay.calculate_trip_threshold(x) for x in _pv_x]
+        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
+            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_annotation(
+            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.add_annotation(
+            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.update_layout(
+            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key="generator_settings_preview_fig")
+    st.markdown("---")
+
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -238,33 +310,6 @@ with outer_settings:
                 # informational only, not a pass/fail claim.
                 st.caption("Higher = more secure against inrush/CT saturation misoperation, but needs a larger internal fault to trip instantaneously. Confirm this element and its setting against the actual G60 configuration before relying on it.")
 
-    with st.container(border=True):
-        st.markdown("**Wiring & Convention**")
-        st.caption("Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen comment applies here.")
-        col_conv, col_pol = st.columns(2)
-        with col_conv:
-            convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
-        with col_pol:
-            def _on_polarity_change():
-                # Keep each phase's Terminal Side angle box in sync with the newly selected
-                # polarity, instead of leaving it at whatever value was set under the
-                # previously selected polarity — otherwise switching this radio silently
-                # pairs stale angle values with a different vec_op formula (+ vs -), which
-                # looks like the SAME/OPPOSITE results have "swapped".
-                new_polarity = st.session_state["ct_polarity_widget"]
-                for _idx, _phase in enumerate(["Phase A", "Phase B", "Phase C"]):
-                    _def_ang_N = -120.0 * _idx
-                    # vec_op = vec_T - vec_N for OPPOSITE (needs matching angles to cancel),
-                    # vec_op = vec_T + vec_N for SAME (needs 180 deg apart to cancel).
-                    _def_ang_T = _def_ang_N if new_polarity == "OPPOSITE" else _def_ang_N + 180.0
-                    st.session_state[f"T_a_{_phase}"] = _def_ang_T
-
-            ct_polarity = st.radio(
-                "Polarity Reference", ["OPPOSITE", "SAME"], index=1,
-                key="ct_polarity_widget", on_change=_on_polarity_change,
-                help="OPPOSITE: standard facing inwards. SAME: facing identical directions."
-            )
-
     if current_mode == "GENERATOR_LEGACY":
         all_clear = calc_mismatch is not None and calc_mismatch < 0.5 and target_amps >= 0.1
     else:
@@ -288,6 +333,12 @@ else:
     _generator_project_settings.update({"pickup": i_pickup, "s1": slope_1, "break_1": break_1, "s2": slope_2, "break_2": break_2})
 record_equipment_settings("generator", _generator_project_settings)
 
+# Placeholder Wiring & Convention values, used only to build the relay object needed by the
+# Theory tab's SLD diagram below (which runs before the Live Simulation tab in script order).
+# The real Restraint Standard / Polarity Reference selection lives on the Live Simulation tab
+# now, which rebuilds this object with the user's actual choice before anything that needs the
+# real value (test evaluation, the settings sheet) runs.
+convention, ct_polarity = "IEEE", "SAME"
 relay = AdvancedDifferentialRelay(
     mode=current_mode, mva_rated=mva, kv_rated=kv,
     ct_ratio_N=ct_ratio_N, ct_ratio_T=ct_ratio_T, ct_secondary_rating=ct_secondary_rating,
@@ -297,49 +348,6 @@ relay = AdvancedDifferentialRelay(
     convention=convention, ct_polarity=ct_polarity,
     target_amps=target_amps
 )
-
-# Reopens the same tab container to add one more section at the bottom, after every
-# Current Settings field above has been gathered and `relay` built from them - lets the
-# preview use the real relay object directly instead of re-reading session_state early.
-with outer_settings:
-    st.markdown("---")
-    show_preview = st.toggle(
-        "📊 Show Live Preview — Differential Characteristic Curve",
-        key=f"{current_mode}__{selected_preset}__show_preview",
-        help="Reflects the settings configured above. Operating-point testing and the unrestrained high-set line (if enabled) are in the Live Vector Simulation tab under Analysis & Tools.",
-    )
-    if show_preview:
-        _pv_max_x = max(6.0, break_2 + 1.0) if current_mode != "GENERATOR_LEGACY" else 6.0
-        _pv_x = np.linspace(0, _pv_max_x, 200)
-        _pv_y = [relay.calculate_trip_threshold(x) for x in _pv_x]
-        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
-        _pv_fig = go.Figure()
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
-        ))
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
-            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
-        ))
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
-        ))
-        _pv_fig.add_annotation(
-            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-            bgcolor="rgba(255,255,255,0.75)",
-        )
-        _pv_fig.add_annotation(
-            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.75)",
-        )
-        _pv_fig.update_layout(
-            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
-            template="plotly_white", height=320, margin=dict(t=20, b=40),
-        )
-        st.plotly_chart(_pv_fig, use_container_width=True, key="generator_settings_preview_fig")
 
 with outer_analysis:
     st.caption(
@@ -373,6 +381,48 @@ with outer_analysis:
         )
 
     with tab1:
+        with st.container(border=True):
+            st.markdown("**Wiring & Convention**")
+            st.caption("Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen comment applies here.")
+            col_conv, col_pol = st.columns(2)
+            with col_conv:
+                convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
+            with col_pol:
+                def _on_polarity_change():
+                    # Keep each phase's Terminal Side angle box in sync with the newly selected
+                    # polarity, instead of leaving it at whatever value was set under the
+                    # previously selected polarity — otherwise switching this radio silently
+                    # pairs stale angle values with a different vec_op formula (+ vs -), which
+                    # looks like the SAME/OPPOSITE results have "swapped".
+                    new_polarity = st.session_state["ct_polarity_widget"]
+                    for _idx, _phase in enumerate(["Phase A", "Phase B", "Phase C"]):
+                        _def_ang_N = -120.0 * _idx
+                        # vec_op = vec_T - vec_N for OPPOSITE (needs matching angles to cancel),
+                        # vec_op = vec_T + vec_N for SAME (needs 180 deg apart to cancel).
+                        _def_ang_T = _def_ang_N if new_polarity == "OPPOSITE" else _def_ang_N + 180.0
+                        st.session_state[f"T_a_{_phase}"] = _def_ang_T
+
+                ct_polarity = st.radio(
+                    "Polarity Reference", ["OPPOSITE", "SAME"], index=1,
+                    key="ct_polarity_widget", on_change=_on_polarity_change,
+                    help="OPPOSITE: standard facing inwards. SAME: facing identical directions."
+                )
+
+        # Rebuilds `relay` with the real Wiring & Convention selection above, replacing the
+        # placeholder built earlier (before this tab ran) for the Theory tab's SLD. Every tab
+        # after this one in script order (Commissioning, TCC Curve, Fault Current Analysis,
+        # Settings Summary & Approval) sees this rebuilt object too - Streamlit executes every
+        # tab's body on each rerun regardless of which tab is visually selected.
+        relay = AdvancedDifferentialRelay(
+            mode=current_mode, mva_rated=mva, kv_rated=kv,
+            ct_ratio_N=ct_ratio_N, ct_ratio_T=ct_ratio_T, ct_secondary_rating=ct_secondary_rating,
+            i_pickup=i_pickup, slope_1=slope_1, slope_2=slope_2,
+            break_1=break_1, break_2=break_2,
+            i_unrestrained=i_unrestrained_value,
+            convention=convention, ct_polarity=ct_polarity,
+            target_amps=target_amps
+        )
+
         col_inputs, col_results = st.columns([1.2, 1.0])
 
         with col_inputs:

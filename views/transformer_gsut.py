@@ -98,6 +98,53 @@ if not is_custom:
 # ---------------------------------------------------------------------------
 outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
 with outer_settings:
+    # Live preview, click to reveal, at the top of the tab. Reads straight from session_state
+    # (falling back to the preset default) since the actual settings widgets are drawn further
+    # down this same tab and haven't run yet on this script pass. The curve only depends on
+    # Bias/Minimum Operate (see engines/transformer.py's calculate_trip_threshold) - CT ratios
+    # and taps don't affect its shape, so no relay object is needed here at all.
+    _pv_bias = st.session_state.get(f"{selected_preset}__bias", p_data["bias"]) / 100.0
+    _pv_min_op = st.session_state.get(f"{selected_preset}__min_operate", p_data["min_operate"]) / 100.0
+    if st.button(
+        "📊 Show Live Preview — Differential Bias Characteristic Curve",
+        key=f"{selected_preset}__show_preview_btn",
+        help="Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and operating-point testing are in the Live Simulation tab under Analysis & Tools.",
+    ):
+        st.session_state[f"{selected_preset}__preview_shown"] = True
+    if st.session_state.get(f"{selected_preset}__preview_shown", False):
+        _pv_max_x = 6.0
+        _pv_x = np.linspace(0, _pv_max_x, 200)
+        _pv_y = [max(_pv_min_op, _pv_bias * x) for x in _pv_x]
+        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
+        _pv_fig = go.Figure()
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
+            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
+        ))
+        _pv_fig.add_trace(go.Scatter(
+            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
+            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
+        ))
+        _pv_fig.add_annotation(
+            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.add_annotation(
+            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+            bgcolor="rgba(255,255,255,0.75)",
+        )
+        _pv_fig.update_layout(
+            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
+            template="plotly_white", height=320, margin=dict(t=20, b=40),
+        )
+        st.plotly_chart(_pv_fig, use_container_width=True, key="gsut_settings_preview_fig")
+    st.markdown("---")
+
     st.markdown("## Current Settings")
     st.caption("Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.")
 
@@ -225,45 +272,6 @@ with outer_settings:
             else:
                 st.info("Higher setting — more secure against inrush/CT saturation misoperation, but needs a larger internal fault to trip instantaneously.")
 
-    with st.container(border=True):
-        st.markdown("**Wiring & Convention**")
-        st.caption(
-            "Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen "
-            "comment applies here. Delta-connected CTs get an automatic √3 magnitude step-up and a +30° "
-            "phase shift (see engines/transformer.py) — the standard compensation for a Wye/Delta power "
-            "transformer so healthy through-load doesn't read as a fault."
-        )
-        col_conv, col_pol = st.columns(2)
-        with col_conv:
-            convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
-        with col_pol:
-            def _on_polarity_change():
-                # Streamlit widgets stop re-reading their value= argument once
-                # created, so recomputing the healthy default inline on every
-                # rerun (below, for Phase A) only ever applies on first page
-                # load - switching this radio afterwards needs to explicitly
-                # overwrite session_state here, or the LV angle goes stale and
-                # a healthy through-load starts reading as a phantom trip.
-                new_polarity = st.session_state["gsut_ct_polarity_widget"]
-                windings_tmp = [
-                    {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
-                    {"name": "LV", "kv": kv_lv, "ct_ratio": ct_lv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_lv, "ct_connection": ct_conn_lv},
-                ]
-                relay_tmp = TransformerDifferentialRelay(
-                    mva_rated=mva, windings=windings_tmp,
-                    bias_pct=30, min_operate_pct=30, hoc_multiple=5,
-                    convention="IEEE", ct_polarity=new_polarity,
-                )
-                hv_rated = relay_tmp.windings[0]["i_rated_pri"]
-                st.session_state["gsut_lv_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
-
-            ct_polarity = st.radio(
-                "Polarity Reference", ["OPPOSITE", "SAME"], index=0,
-                key="gsut_ct_polarity_widget", on_change=_on_polarity_change,
-                help="OPPOSITE is standard for a 2-winding transformer differential (currents flow "
-                     "into the zone on one side, out on the other)."
-            )
-
     all_clear = (
         calc_mismatch is not None
         and calc_mismatch < 5.0
@@ -291,6 +299,12 @@ record_equipment_settings("gsut", {
     "calc_mismatch_pct": calc_mismatch,
 })
 
+# Placeholder Wiring & Convention values, used only to build the relay object needed by the
+# Theory tab's SLD diagram below (which runs before the Live Simulation tab in script order).
+# The real Restraint Standard / Polarity Reference selection lives on the Live Simulation tab
+# now, which rebuilds this object with the user's actual choice before anything that needs the
+# real value (test evaluation, the settings sheet) runs.
+convention, ct_polarity = "IEEE", "OPPOSITE"
 relay = TransformerDifferentialRelay(
     mva_rated=mva, windings=windings,
     bias_pct=bias_pct, min_operate_pct=min_operate_pct, hoc_multiple=hoc_multiple,
@@ -299,53 +313,6 @@ relay = TransformerDifferentialRelay(
 
 phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
-
-# Reopens the same tab container to add one more section at the bottom, after Bias/Minimum
-# Operate above have been set - lets the preview use the real values directly instead of
-# re-reading session_state early. The curve only depends on Bias/Minimum Operate (see
-# engines/transformer.py's calculate_trip_threshold) - CT ratios and taps don't affect its
-# shape, so no relay object is needed here at all.
-with outer_settings:
-    st.markdown("---")
-    show_preview = st.toggle(
-        "📊 Show Live Preview — Differential Bias Characteristic Curve",
-        key=f"{selected_preset}__show_preview",
-        help="Reflects the Bias/Minimum Operate settings configured above. The HOC line and operating-point testing are in the Live Vector Simulation tab under Analysis & Tools.",
-    )
-    if show_preview:
-        _pv_bias = bias_pct / 100.0
-        _pv_min_op = min_operate_pct / 100.0
-        _pv_max_x = 6.0
-        _pv_x = np.linspace(0, _pv_max_x, 200)
-        _pv_y = [max(_pv_min_op, _pv_bias * x) for x in _pv_x]
-        _pv_y_upper = max(_pv_y) * 1.3 + 0.1
-        _pv_fig = go.Figure()
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=np.zeros_like(_pv_x), mode="lines", line=dict(width=0), showlegend=False, hoverinfo="skip",
-        ))
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=_pv_y, mode="lines", name="CAL.", line=dict(color="#2563EB", width=3),
-            fill="tonexty", fillcolor="rgba(22,163,74,0.10)",
-        ))
-        _pv_fig.add_trace(go.Scatter(
-            x=_pv_x, y=np.full_like(_pv_x, _pv_y_upper), mode="lines", line=dict(width=0),
-            fill="tonexty", fillcolor="rgba(220,38,38,0.08)", showlegend=False, hoverinfo="skip",
-        ))
-        _pv_fig.add_annotation(
-            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-            bgcolor="rgba(255,255,255,0.75)",
-        )
-        _pv_fig.add_annotation(
-            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.75)",
-        )
-        _pv_fig.update_layout(
-            xaxis_title="Restraint Current (pu)", yaxis_title="Differential/Operating Current (pu)",
-            template="plotly_white", height=320, margin=dict(t=20, b=40),
-        )
-        st.plotly_chart(_pv_fig, use_container_width=True, key="gsut_settings_preview_fig")
 
 with outer_analysis:
     st.caption(
@@ -384,6 +351,55 @@ with outer_analysis:
     # TAB 1 — Live Simulation
     # ---------------------------------------------------------------------------
     with tab1:
+        with st.container(border=True):
+            st.markdown("**Wiring & Convention**")
+            st.caption(
+                "Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen "
+                "comment applies here. Delta-connected CTs get an automatic √3 magnitude step-up and a +30° "
+                "phase shift (see engines/transformer.py) — the standard compensation for a Wye/Delta power "
+                "transformer so healthy through-load doesn't read as a fault."
+            )
+            col_conv, col_pol = st.columns(2)
+            with col_conv:
+                convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.")
+            with col_pol:
+                def _on_polarity_change():
+                    # Streamlit widgets stop re-reading their value= argument once
+                    # created, so recomputing the healthy default inline on every
+                    # rerun (below, for Phase A) only ever applies on first page
+                    # load - switching this radio afterwards needs to explicitly
+                    # overwrite session_state here, or the LV angle goes stale and
+                    # a healthy through-load starts reading as a phantom trip.
+                    new_polarity = st.session_state["gsut_ct_polarity_widget"]
+                    windings_tmp = [
+                        {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
+                        {"name": "LV", "kv": kv_lv, "ct_ratio": ct_lv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_lv, "ct_connection": ct_conn_lv},
+                    ]
+                    relay_tmp = TransformerDifferentialRelay(
+                        mva_rated=mva, windings=windings_tmp,
+                        bias_pct=30, min_operate_pct=30, hoc_multiple=5,
+                        convention="IEEE", ct_polarity=new_polarity,
+                    )
+                    hv_rated = relay_tmp.windings[0]["i_rated_pri"]
+                    st.session_state["gsut_lv_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
+
+                ct_polarity = st.radio(
+                    "Polarity Reference", ["OPPOSITE", "SAME"], index=0,
+                    key="gsut_ct_polarity_widget", on_change=_on_polarity_change,
+                    help="OPPOSITE is standard for a 2-winding transformer differential (currents flow "
+                         "into the zone on one side, out on the other)."
+                )
+
+        # Rebuilds `relay` with the real Wiring & Convention selection above, replacing the
+        # placeholder built earlier (before this tab ran) for the Theory tab's SLD. Every tab
+        # after this one in script order (Commissioning, TCC Curve, Fault Current Analysis,
+        # Settings Summary & Approval) sees this rebuilt object too.
+        relay = TransformerDifferentialRelay(
+            mva_rated=mva, windings=windings,
+            bias_pct=bias_pct, min_operate_pct=min_operate_pct, hoc_multiple=hoc_multiple,
+            convention=convention, ct_polarity=ct_polarity,
+        )
+
         col_inputs, col_results = st.columns([1.2, 1.0])
 
         with col_inputs:
