@@ -14,6 +14,7 @@ from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.profile_io import export_profile_button, restore_profile_uploader
+from common.test_point_input import TEST_POINT_SOURCE_OPTIONS, TEST_POINT_SOURCE_HELP, raw_current_inputs
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
 
 st.title("Overall GSUT-GEN Differential Protection")
@@ -672,31 +673,45 @@ with outer_analysis:
         if "ov_manual_test_points" not in st.session_state:
             st.session_state.ov_manual_test_points = []
 
+        tp_source = st.radio(
+            "How was this measured?", TEST_POINT_SOURCE_OPTIONS, horizontal=True,
+            key="ov_tp_source", help=TEST_POINT_SOURCE_HELP,
+        )
         with st.form("ov_add_test_point_form", clear_on_submit=True):
-            tp_unit = st.radio(
-                "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_entry_unit"
-            )
-            tc1, tc2, tc3, tc4 = st.columns([1, 1, 1, 1.4])
-            restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
-            diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
-            restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
-            diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
-            restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
-            diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
-            with tc1:
-                tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"], key="ov_tp_phase")
-            with tc2:
-                tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step, key="ov_tp_restraint")
-            with tc3:
-                tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step, key="ov_tp_diff")
-            with tc4:
-                tp_label = st.text_input("Label (optional)", value="", key="ov_tp_label")
+            tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"], key="ov_tp_phase")
+            if tp_source.startswith("Restraint"):
+                tp_unit = st.radio(
+                    "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_entry_unit"
+                )
+                tc2, tc3 = st.columns(2)
+                restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
+                diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
+                restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
+                diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
+                restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
+                diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
+                with tc2:
+                    tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step, key="ov_tp_restraint")
+                with tc3:
+                    tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step, key="ov_tp_diff")
+            else:
+                st.caption("Enter the actual primary Amps and phase angle measured/injected at each winding's CT.")
+                raw_inputs = raw_current_inputs(
+                    ["HV", "Gen", "UAT"], "ov_tp_raw",
+                    default_primary_amps=[w["i_rated_pri"] for w in relay.windings],
+                )
+            tp_label = st.text_input("Label (optional)", value="", key="ov_tp_label")
             submitted = st.form_submit_button("Add Test Point")
             if submitted:
-                if tp_unit.startswith("Secondary"):
-                    restraint_amps, diff_amps = tp_restraint, tp_diff
+                if tp_source.startswith("Restraint"):
+                    if tp_unit.startswith("Secondary"):
+                        restraint_amps, diff_amps = tp_restraint, tp_diff
+                    else:
+                        restraint_amps, diff_amps = tp_restraint * amps_base, tp_diff * amps_base
                 else:
-                    restraint_amps, diff_amps = tp_restraint * amps_base, tp_diff * amps_base
+                    raw_eval = relay.evaluate_protection(raw_inputs)
+                    restraint_amps = raw_eval["i_rest_pu"] * amps_base
+                    diff_amps = raw_eval["i_op_pu"] * amps_base
                 st.session_state.ov_manual_test_points.append({
                     "Phase": tp_phase,
                     "Restraint (A)": round(restraint_amps, 3),

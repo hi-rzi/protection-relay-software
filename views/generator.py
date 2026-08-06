@@ -15,6 +15,7 @@ from common.project_state import with_restored_preset, get_restorable_preset, re
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.profile_io import export_profile_button, restore_profile_uploader
+from common.test_point_input import TEST_POINT_SOURCE_OPTIONS, TEST_POINT_SOURCE_HELP, raw_current_inputs
 from engines.generator import AdvancedDifferentialRelay
 from engines.fault_current import three_phase_fault_current, relay_secondary_at_fault
 
@@ -681,36 +682,52 @@ with outer_analysis:
         if "manual_test_points" not in st.session_state:
             st.session_state.manual_test_points = []
 
+        tp_source = st.radio(
+            "How was this measured?", TEST_POINT_SOURCE_OPTIONS, horizontal=True,
+            key="tp_source", help=TEST_POINT_SOURCE_HELP,
+        )
         with st.form("add_test_point_form", clear_on_submit=True):
-            tp_unit = st.radio(
-                "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
-                key="tp_entry_unit",
-                help="pu is converted to Amps using the Neutral-side rated secondary current "
-                     "(same base used everywhere else in this app) before it's stored."
-            )
-            tc1, tc2, tc3, tc4 = st.columns([1, 1, 1, 1.4])
-            restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
-            diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
-            restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
-            diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
-            restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
-            diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
-            with tc1:
-                tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"])
-            with tc2:
-                tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step)
-            with tc3:
-                tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
-            with tc4:
-                tp_label = st.text_input("Label (optional)", value="")
+            tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"])
+            if tp_source.startswith("Restraint"):
+                tp_unit = st.radio(
+                    "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True,
+                    key="tp_entry_unit",
+                    help="pu is converted to Amps using the Neutral-side rated secondary current "
+                         "(same base used everywhere else in this app) before it's stored."
+                )
+                tc2, tc3 = st.columns(2)
+                restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
+                diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
+                restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
+                diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
+                restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
+                diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
+                with tc2:
+                    tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step)
+                with tc3:
+                    tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step)
+            else:
+                st.caption("Enter the actual primary Amps and phase angle measured/injected at each CT (Neutral side, Terminal side).")
+                raw_inputs = raw_current_inputs(
+                    ["Neutral (N)", "Terminal (T)"], "gen_tp_raw",
+                    default_primary_amps=[relay.i_rated_pri, relay.i_rated_pri],
+                )
+            tp_label = st.text_input("Label (optional)", value="")
             submitted = st.form_submit_button("Add Test Point")
             if submitted:
-                if tp_unit.startswith("Secondary"):
-                    restraint_amps = tp_restraint
-                    diff_amps = tp_diff
+                if tp_source.startswith("Restraint"):
+                    if tp_unit.startswith("Secondary"):
+                        restraint_amps = tp_restraint
+                        diff_amps = tp_diff
+                    else:
+                        restraint_amps = tp_restraint * amps_base
+                        diff_amps = tp_diff * amps_base
                 else:
-                    restraint_amps = tp_restraint * amps_base
-                    diff_amps = tp_diff * amps_base
+                    raw_eval = relay.evaluate_protection(
+                        raw_inputs[0][0], raw_inputs[0][1], raw_inputs[1][0], raw_inputs[1][1]
+                    )
+                    restraint_amps = raw_eval["i_rest_pu"] * amps_base
+                    diff_amps = raw_eval["i_op_pu"] * amps_base
                 st.session_state.manual_test_points.append({
                     "Phase": tp_phase,
                     "Restraint (A)": round(restraint_amps, 3),
