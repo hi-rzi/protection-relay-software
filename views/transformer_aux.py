@@ -35,10 +35,15 @@ PRESETS = {
         "ct_conn_hv": "WYE", "ct_conn_lv": "DELTA",
         "tap_hv": 1.02, "tap_lv": 0.48,
         "bias": 20, "min_operate": 20, "hoc": 5,
-        # Through-fault basis - NOT confirmed against a UAT-specific worked example (unlike
-        # EXCT's own doc). Impedance/X-R are generic unconfirmed placeholders - review against
-        # the actual UAT nameplate/design data before relying on this tab's numbers.
-        "fault_mva_base": 112.0, "z_pct": 8.0, "x_over_r": 15.0, "ct_withstand_a": 60.0,
+        # Through-fault basis - now confirmed against the UAT's own settings document
+        # (Mitsubishi CAC1-10-M3, Instruction Book L9036 Ref. 4.27): Design Impedance 8.5%,
+        # Minimum Impedance 8.47% and X/R=38.9 (both Appendix A). Uses the MINIMUM impedance
+        # (not the design/nameplate value) paired with Appendix A's own X/R, since a lower
+        # impedance gives the worst-case (higher) maximum through-fault current - the figure
+        # this tab is meant to check CTs against. Impedance base uses the transformer's OA
+        # (self-cooled, lowest) rating of 60MVA, per "60/80/100/112MVA OA/FA/FA/FA" - the
+        # convention nameplate impedance is stated on, matching EXCT's and GSUT's own pages.
+        "fault_mva_base": 60.0, "z_pct": 8.47, "x_over_r": 38.9, "ct_withstand_a": 60.0,
     },
     "Custom Profile": {
         "mva": 10.0,
@@ -77,11 +82,11 @@ if st.sidebar.button(
     st.rerun()
 
 if not is_custom:
-    st.warning(
-        "⚠ **Data confidence:** Differential settings (Bias/Min Operate/HOC/CT ratios/taps) are "
-        "verified against Transformer Diff Setting - UAT.pdf. The Fault Current Analysis inputs "
-        "(**Impedance Base, Z%, X/R Ratio**) are all generic, unconfirmed placeholders — review "
-        "them against the actual UAT nameplate/design data before relying on that tab's numbers."
+    st.success(
+        "✓ **Data confidence:** Differential settings (Bias/Min Operate/HOC/CT ratios/taps) and "
+        "the Fault Current Analysis basis (Minimum Impedance 8.47%, X/R 38.9, both from Appendix A) "
+        "are all verified against Transformer Diff Setting - UAT.pdf and this relay's instruction "
+        "book (Mitsubishi CAC1-10-M3, L9036)."
     )
 
 # ---------------------------------------------------------------------------
@@ -805,14 +810,14 @@ with outer_analysis:
                 help="The MVA rating the nameplate impedance % is stated on."
             )
             z_pct = st.number_input(
-                "Transformer Impedance, Z (%)", min_value=0.5, value=p_data.get("z_pct", 8.0), step=0.1,
+                "Transformer Impedance, Z (%)", min_value=0.5, value=p_data.get("z_pct", 8.47), step=0.1,
                 key=f"{selected_preset}__z_pct",
-                help="From the transformer nameplate or design data — NOT confirmed for this UAT, review before relying on this."
+                help="Minimum Impedance (8.47%, Appendix A) from this UAT's own instruction book — used instead of the 8.5% design/nameplate value since the lower figure gives the worst-case maximum through-fault current."
             )
             x_over_r = st.number_input(
-                "X/R Ratio", min_value=1.0, value=p_data.get("x_over_r", 15.0), step=0.5,
+                "X/R Ratio", min_value=1.0, value=p_data.get("x_over_r", 38.9), step=0.5,
                 key=f"{selected_preset}__x_over_r",
-                help="From the transformer nameplate/design data — NOT confirmed for this UAT, review before relying on this."
+                help="From this UAT's own instruction book, Appendix A (X/R=38.9)."
             )
             fault_side = st.radio(
                 "Check CT On", ["HV", "LV"], horizontal=True, key=f"{selected_preset}__fault_side",
