@@ -13,10 +13,10 @@ on all nine:
 3. **Review "Current Settings"** — every applied setting, editable in place, with a live comment on whether it clears the recommended margin (🟢), needs a second look (🟠), or is informational only (⚪). A banner near the top shows whether this preset's values are ✓ verified against the real settings document or ⚠ only partially confirmed. Click **📊 Show Live Preview** at the top of the tab any time to see the characteristic curve reflect the settings below it.
 4. **Work through "Analysis & Tools" in order** — the tabs are always in this sequence:
    - **Theory** — how this protection scheme actually works, with the protection zone diagram.
-   - **Live Simulation** — test a current/fault scenario against the relay's real trip logic. On the generator and transformer pages, this is also where **Wiring & Convention** (Restraint Standard, CT Polarity) lives — it only affects this evaluation, so it's set here rather than in Current Settings.
+   - **Live Simulation** — test a current/fault scenario against the relay's real trip logic.
    - **Commissioning & Injection Tool** — the exact secondary Amps to inject at the test set for a target result.
-   - **Curve & Test Points** — the relay's own characteristic curve (a time-current curve for the motor pages' overcurrent elements, a bias/restraint curve for the generator and transformer differential relays), plus logging real test results against it. On the motor pages this is also where the fault-clearing simulation lives (see below) — motors don't have a separate impedance-based fault study, so there's no standalone Fault Current Analysis tab for them.
-   - **Fault Current Analysis** *(generator and transformer pages)* — checks the CTs against a real fault current: the actual asymmetrical current waveform and a step-by-step fault-clearing simulation. The motor pages have a lighter version of the latter (no waveform — there's no real X/R data for a motor short-circuit contribution) inside Curve & Test Points instead.
+   - **Curve & Test Points** — the relay's own characteristic curve, plus logging real test results against it.
+   - **Fault Current Analysis** *(generator and transformer pages)* — checks the CTs against a real fault current, including a step-by-step fault-clearing simulation.
    - **Settings Summary & Approval** — document control (source doc, revision, prepared/reviewed by, approval status), the relay-ready settings sheet, and a certified PDF audit report — the last step before sign-off.
 5. **Check cross-equipment consistency and export everything together** on the **Project** page (sidebar) — settings status across all equipment, a coordination check, motor curve comparisons, and one bundled save/load.
 
@@ -27,3 +27,11 @@ almost always telling you an *input* is wrong — a CT ratio, tap, or connection
 setting genuinely needs to be that high. Check the inputs first.
 """
 )
+
+with st.expander("Notes on a few equipment-specific differences"):
+    st.markdown(
+        """
+- **Wiring & Convention** (Restraint Standard, CT Polarity) is on the **Live Simulation** tab for the generator and transformer pages, not Current Settings — it only affects that evaluation.
+- **Motor pages** don't have a separate Fault Current Analysis tab. Their fault-clearing simulation lives inside **Curve & Test Points** instead, and skips the current waveform (no real X/R data exists for a motor short-circuit contribution).
+"""
+    )
