@@ -353,13 +353,13 @@ with outer_analysis:
     st.caption(
         "Everything below reads the settings from the Current Settings tab — adjust them there. "
         "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
-        "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+        "Commissioning & Injection Tool → Differential Curve & Test Points → Fault Current Analysis "
         "(where present) → Settings Summary & Approval. Full guide on the Home page."
     )
 
     tab_theory, tab1, tab2, tab3, tab_fault, tab_approval = st.tabs([
         "Theory", "Live Simulation",
-        "Commissioning & Injection Tool", "TCC Curve & Test Points",
+        "Commissioning & Injection Tool", "Differential Curve & Test Points",
         "Fault Current Analysis", "Settings Summary & Approval",
     ])
 

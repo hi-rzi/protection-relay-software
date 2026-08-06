@@ -15,7 +15,7 @@ on all nine:
    - **Theory** — how this protection scheme actually works, with the protection zone diagram.
    - **Live Simulation** — test a current/fault scenario against the relay's real trip logic.
    - **Commissioning & Injection Tool** — the exact secondary Amps to inject at the test set for a target result.
-   - **TCC Curve & Test Points** — the full trip-time curve, plus logging real test results against it.
+   - **Curve & Test Points** — the relay's own characteristic curve (a time-current curve for the motor pages' overcurrent elements, a bias/restraint curve for the generator and transformer differential relays), plus logging real test results against it.
    - **Fault Current Analysis** *(where this equipment has one)* — checks the CTs against a real fault current, including a CT saturation check and a step-by-step fault-clearing simulation.
    - **Settings Summary & Approval** — document control (source doc, revision, prepared/reviewed by, approval status), the relay-ready settings sheet, and a certified PDF audit report — the last step before sign-off.
 5. **Check cross-equipment consistency and export everything together** on the **Project** page (sidebar) — settings status across all equipment, a coordination check, motor curve comparisons, and one bundled save/load.
