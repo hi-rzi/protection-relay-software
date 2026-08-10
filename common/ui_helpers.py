@@ -1,5 +1,59 @@
 import streamlit as st
 
+
+def sidebar_section_nav(section_names, key_prefix, pin_first=False):
+    """Replaces a page's outer/inner st.tabs() with a sidebar-driven section
+    switcher, styled as nav pills to match the rest of the app's theme.
+
+    Every section gets its own st.container(key=...) and ALL of them are
+    created (and their bodies executed) every rerun, exactly like st.tabs()
+    already does under the hood - Streamlit's own tabs run every tab body's
+    code every rerun and just CSS-toggle which one is visible. This function
+    does the same thing manually: only the DOM visibility is driven by our
+    own CSS instead of Streamlit's tab CSS, so any later section (e.g.
+    "Simulate & Test") can safely read Python variables/objects built inside
+    an earlier section (e.g. "Current Settings") in the same script run,
+    same as it could when they were tabs.
+
+    If pin_first, a "Pin Current Settings" sidebar checkbox lets the user
+    choose whether section_names[0] stays permanently visible above whichever
+    other section is selected (pinned=True), or behaves as just one more
+    selectable section like the rest (pinned=False) - both are real, ongoing
+    behaviors, not a one-off toggle.
+
+    Returns (selected, containers, pinned_container):
+      - selected: the name of the currently sidebar-selected section
+      - containers: dict of section name -> st.container to render into,
+        replacing `with tab_x:` with `with containers["X"]:`
+      - pinned_container: containers[section_names[0]] if pinned is active,
+        else None - render it above the selected section's content.
+    """
+    pinned = False
+    if pin_first:
+        pinned = st.sidebar.checkbox(
+            "Pin Current Settings", value=True, key=f"{key_prefix}_pin",
+            help="Keep Current Settings visible above whichever section you're viewing.",
+        )
+
+    nav_options = section_names[1:] if (pin_first and pinned) else section_names
+    selected = st.sidebar.radio(
+        "Section", nav_options, key=f"{key_prefix}_nav", label_visibility="collapsed",
+    )
+
+    containers = {name: st.container(key=f"{key_prefix}_c_{i}") for i, name in enumerate(section_names)}
+
+    pinned_container = containers[section_names[0]] if (pin_first and pinned) else None
+
+    hide_rules = []
+    for i, name in enumerate(section_names):
+        stays_visible = (name == selected) or (pin_first and pinned and name == section_names[0])
+        if not stays_visible:
+            hide_rules.append(f'div[class*="st-key-{key_prefix}_c_{i}"] {{ display: none; }}')
+    if hide_rules:
+        st.markdown(f"<style>{''.join(hide_rules)}</style>", unsafe_allow_html=True)
+
+    return selected, containers, pinned_container
+
 # Standard ANSI multi-ratio bushing CT tap sets (10-tap, X1-X5 terminal block
 # style). The 600:5 set is well-documented industry-wide; the 2000:5 and
 # 3000:5 sets follow the same proportional tap spacing scaled to those CTs'

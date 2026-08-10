@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, sidebar_section_nav
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -91,8 +91,10 @@ if not is_custom:
 # JOINTLY to minimize the actual 3-way mismatch, not to each independently
 # match their own T_E, so the mismatch metric below is the real signal.
 # ---------------------------------------------------------------------------
-outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
-with outer_settings:
+sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+selected, c, pinned = sidebar_section_nav(sections, key_prefix="overall", pin_first=True)
+
+with c["Current Settings"]:
     # Live preview, click to reveal, at the top of the tab. Reads straight from session_state
     # (falling back to the preset default) since the actual settings widgets are drawn further
     # down this same tab and haven't run yet on this script pass. The curve only depends on
@@ -103,7 +105,7 @@ with outer_settings:
     if st.button(
         "📊 Show Live Preview — Differential Bias Characteristic Curve",
         key=f"{selected_preset}__show_preview_btn",
-        help="Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and operating-point testing are in the Simulate & Test tab under Analysis & Tools.",
+        help="Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and operating-point testing are in the Simulate & Test section (sidebar).",
     ):
         st.session_state[f"{selected_preset}__preview_shown"] = True
     if st.session_state.get(f"{selected_preset}__preview_shown", False):
@@ -332,571 +334,556 @@ phases = ["Phase A", "Phase B", "Phase C"]
 winding_names = ["HV (525kV)", "Generator (23kV)", "UAT (23kV)"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
 
-
-with outer_analysis:
-    st.caption(
-        "Everything below reads the settings from the Current Settings tab — adjust them there. "
-        "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
-        "Commissioning & Injection Tool → Fault Current Analysis "
-        "(where present) → Settings Summary & Approval. Full guide on the Home page."
+with c["Theory"]:
+    render_theory_tab(
+        "transformer_3w",
+        purpose_text=(
+            "The 87O relay is a backup differential zone spanning the Generator, GSUT, and the "
+            "Unit Auxiliary Transformer tap-off together. It exists because the individual 87G "
+            "and 87GT zones don't cover everything — the short bus and leads connecting them, and "
+            "the point where UAT taps off, aren't uniquely protected by either dedicated relay. "
+            "87O catches a fault anywhere in that gap, or backs up the dedicated relays if "
+            "something in their own CTs or wiring fails, rather than depending entirely on remote/"
+            "upstream protection to eventually clear it."
+        ),
+        sld_image_name="overall.png",
+        sld_fallback_svg=overall_zone_svg(relay, ct_polarity, tag="87OA/87OB"),
     )
 
-    tab_theory, tab_sim, tab2, tab_approval = st.tabs([
-        "Theory", "Simulate & Test",
-        "Commissioning & Injection Tool",
-        "Settings Summary & Approval",
-    ])
-
-    with tab_theory:
-        render_theory_tab(
-            "transformer_3w",
-            purpose_text=(
-                "The 87O relay is a backup differential zone spanning the Generator, GSUT, and the "
-                "Unit Auxiliary Transformer tap-off together. It exists because the individual 87G "
-                "and 87GT zones don't cover everything — the short bus and leads connecting them, and "
-                "the point where UAT taps off, aren't uniquely protected by either dedicated relay. "
-                "87O catches a fault anywhere in that gap, or backs up the dedicated relays if "
-                "something in their own CTs or wiring fails, rather than depending entirely on remote/"
-                "upstream protection to eventually clear it."
-            ),
-            sld_image_name="overall.png",
-            sld_fallback_svg=overall_zone_svg(relay, ct_polarity, tag="87OA/87OB"),
+# ---------------------------------------------------------------------------
+# TAB — Simulate & Test
+# ---------------------------------------------------------------------------
+with c["Simulate & Test"]:
+    with st.container(border=True):
+        st.markdown("**Wiring & Convention**")
+        st.caption(
+            "Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen "
+            "comment applies here. Delta-connected CTs get an automatic √3 magnitude step-up and a +30° "
+            "phase shift (see engines/transformer.py) — the standard compensation for a Wye/Delta power "
+            "transformer so healthy through-load doesn't read as a fault."
         )
-
-    # ---------------------------------------------------------------------------
-    # TAB — Simulate & Test
-    # ---------------------------------------------------------------------------
-    with tab_sim:
-        with st.container(border=True):
-            st.markdown("**Wiring & Convention**")
-            st.caption(
-                "Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen "
-                "comment applies here. Delta-connected CTs get an automatic √3 magnitude step-up and a +30° "
-                "phase shift (see engines/transformer.py) — the standard compensation for a Wye/Delta power "
-                "transformer so healthy through-load doesn't read as a fault."
-            )
-            col_conv, col_pol = st.columns(2)
-            with col_conv:
-                convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.", key="ov_convention")
-            with col_pol:
-                def _on_polarity_change():
-                    # Streamlit widgets stop re-reading their value= argument once
-                    # created, so recomputing the healthy default inline on every
-                    # rerun (below, for Phase A) only ever applies on first page
-                    # load - switching this radio afterwards needs to explicitly
-                    # overwrite session_state here, or the Generator angle goes
-                    # stale and a healthy through-load starts reading as a phantom
-                    # trip. UAT stays at 0A by default regardless, so only the
-                    # Generator winding (vs. HV) needs solving here.
-                    new_polarity = st.session_state["ov_ct_polarity"]
-                    windings_tmp = [
-                        {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
-                        {"name": "Generator", "kv": kv_gen, "ct_ratio": ct_gen, "ct_secondary_rating": ct_secondary_rating, "tap": tap_gen, "ct_connection": ct_conn_gen},
-                        {"name": "UAT", "kv": kv_uat, "ct_ratio": ct_uat, "ct_secondary_rating": ct_secondary_rating, "tap": tap_uat, "ct_connection": ct_conn_uat},
-                    ]
-                    relay_tmp = TransformerDifferentialRelay(
-                        mva_rated=mva, windings=windings_tmp,
-                        bias_pct=30, min_operate_pct=30, hoc_multiple=5,
-                        convention="IEEE", ct_polarity=new_polarity,
-                    )
-                    hv_rated = relay_tmp.windings[0]["i_rated_pri"]
-                    st.session_state["ov_gen_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
-
-                ct_polarity = st.radio(
-                    "Polarity Reference", ["OPPOSITE", "SAME"], index=0, key="ov_ct_polarity",
-                    on_change=_on_polarity_change,
-                    help="OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped "
-                         "relative to it, as current flows into the zone from HV and out to the other two."
+        col_conv, col_pol = st.columns(2)
+        with col_conv:
+            convention = st.radio("Restraint Standard", ["IEEE", "IEC"], help="IEEE: Average current. IEC: Arithmetic sum.", key="ov_convention")
+        with col_pol:
+            def _on_polarity_change():
+                # Streamlit widgets stop re-reading their value= argument once
+                # created, so recomputing the healthy default inline on every
+                # rerun (below, for Phase A) only ever applies on first page
+                # load - switching this radio afterwards needs to explicitly
+                # overwrite session_state here, or the Generator angle goes
+                # stale and a healthy through-load starts reading as a phantom
+                # trip. UAT stays at 0A by default regardless, so only the
+                # Generator winding (vs. HV) needs solving here.
+                new_polarity = st.session_state["ov_ct_polarity"]
+                windings_tmp = [
+                    {"name": "HV", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
+                    {"name": "Generator", "kv": kv_gen, "ct_ratio": ct_gen, "ct_secondary_rating": ct_secondary_rating, "tap": tap_gen, "ct_connection": ct_conn_gen},
+                    {"name": "UAT", "kv": kv_uat, "ct_ratio": ct_uat, "ct_secondary_rating": ct_secondary_rating, "tap": tap_uat, "ct_connection": ct_conn_uat},
+                ]
+                relay_tmp = TransformerDifferentialRelay(
+                    mva_rated=mva, windings=windings_tmp,
+                    bias_pct=30, min_operate_pct=30, hoc_multiple=5,
+                    convention="IEEE", ct_polarity=new_polarity,
                 )
+                hv_rated = relay_tmp.windings[0]["i_rated_pri"]
+                st.session_state["ov_gen_a_Phase A"] = solve_healthy_target_angle(relay_tmp, 1, 0, hv_rated, 0.0)
 
-        # Rebuilds `relay` with the real Wiring & Convention selection above, replacing the
-        # placeholder built earlier (before this tab ran) for the Theory tab's SLD. Every tab
-        # after this one in script order (Commissioning, TCC Curve, Settings Summary & Approval)
-        # sees this rebuilt object too.
-        relay = TransformerDifferentialRelay(
-            mva_rated=mva, windings=windings,
-            bias_pct=bias_pct, min_operate_pct=min_operate_pct, hoc_multiple=hoc_multiple,
-            convention=convention, ct_polarity=ct_polarity,
-        )
-
-        col_inputs, col_results = st.columns([1.3, 1.0])
-
-        with col_inputs:
-            st.subheader("Winding Operating Phase Inputs")
-            st.caption(
-                "Enter the actual PRIMARY-side current in Amps for each of the three windings — "
-                "the app converts this through the CT ratio and matching tap automatically."
-            )
-            st.info(
-                f"HV Rated: **{relay.windings[0]['i_rated_pri']:.1f} A**  |  "
-                f"Generator Rated: **{relay.windings[1]['i_rated_pri']:.1f} A**  |  "
-                f"UAT Rated: **{relay.windings[2]['i_rated_pri']:.1f} A**"
+            ct_polarity = st.radio(
+                "Polarity Reference", ["OPPOSITE", "SAME"], index=0, key="ov_ct_polarity",
+                on_change=_on_polarity_change,
+                help="OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped "
+                     "relative to it, as current flows into the zone from HV and out to the other two."
             )
 
-            inputs = {}
-            for idx, phase in enumerate(phases):
-                with st.expander(f"{phase} Settings", expanded=(phase == "Phase A")):
-                    c1, c2, c3 = st.columns(3)
-                    def_ang_hv = -120.0 * idx
-                    # Same sign convention as the Phase A Generator solve below (harmless
-                    # here since magnitude is 0 for Phase B/C and for UAT always, but was
-                    # backwards - matches the Generator page's fixed bug: OPPOSITE needs
-                    # matching angles to cancel, SAME needs 180 deg apart).
-                    def_ang_other = def_ang_hv if ct_polarity == "OPPOSITE" else def_ang_hv + 180.0
-                    def_val_uat = 0.0  # UAT typically carries house-load current, not full rating, by default
-                    if phase == "Phase A":
-                        def_val_hv = relay.windings[0]["i_rated_pri"]
-                        def_val_gen = relay.windings[1]["i_rated_pri"]
-                        # Solve only the ANGLE that makes a healthy through-load (with
-                        # UAT off-load, i.e. 0A by default, so HV and Generator alone
-                        # must cancel) net to ~0 pu, accounting for HV's Delta CT
-                        # compensation - not just a naive +-180 degree guess. Magnitude
-                        # is left at Generator's own Nominal Rated Current (matching the
-                        # info box above) rather than solved-for, so a small residual is
-                        # expected and correct, not a bug.
-                        vec_hv_internal = winding_internal_vector(relay, 0, def_val_hv, def_ang_hv)
-                        target_gen_internal = vec_hv_internal if ct_polarity == "OPPOSITE" else -vec_hv_internal
-                        _, def_ang_gen = raw_input_for_internal_vector(relay, 1, target_gen_internal)
-                    else:
-                        def_val_hv = 0.0
-                        def_val_gen = 0.0
-                        def_ang_gen = def_ang_other
+    # Rebuilds `relay` with the real Wiring & Convention selection above, replacing the
+    # placeholder built earlier (before this tab ran) for the Theory tab's SLD. Every tab
+    # after this one in script order (Commissioning, TCC Curve, Settings Summary & Approval)
+    # sees this rebuilt object too.
+    relay = TransformerDifferentialRelay(
+        mva_rated=mva, windings=windings,
+        bias_pct=bias_pct, min_operate_pct=min_operate_pct, hoc_multiple=hoc_multiple,
+        convention=convention, ct_polarity=ct_polarity,
+    )
 
-                    with c1:
-                        st.markdown("**HV**")
-                        i_hv = st.number_input("Primary Amps [A]", value=def_val_hv, key=f"ov_hv_i_{phase}")
-                        a_hv = st.number_input("Angle (°)", value=def_ang_hv, key=f"ov_hv_a_{phase}")
-                    with c2:
-                        st.markdown("**Generator**")
-                        i_gen = st.number_input("Primary Amps [A]", value=def_val_gen, key=f"ov_gen_i_{phase}")
-                        a_gen = st.number_input("Angle (°)", value=def_ang_gen, key=f"ov_gen_a_{phase}")
-                    with c3:
-                        st.markdown("**UAT**")
-                        i_uat = st.number_input("Primary Amps [A]", value=def_val_uat, key=f"ov_uat_i_{phase}")
-                        a_uat = st.number_input("Angle (°)", value=def_ang_other, key=f"ov_uat_a_{phase}")
+    col_inputs, col_results = st.columns([1.3, 1.0])
 
-                    inputs[phase] = {"i_hv": i_hv, "a_hv": a_hv, "i_gen": i_gen, "a_gen": a_gen, "i_uat": i_uat, "a_uat": a_uat}
-
-            evals = {p: relay.evaluate_protection([
-                (inputs[p]["i_hv"], inputs[p]["a_hv"]),
-                (inputs[p]["i_gen"], inputs[p]["a_gen"]),
-                (inputs[p]["i_uat"], inputs[p]["a_uat"]),
-            ]) for p in phases}
-
-        with col_results:
-            st.subheader("Real-time Protection Verdict")
-
-            any_trip = any(res["is_trip"] for res in evals.values())
-            if any_trip:
-                st.error("PROTECTIVE RELAY TRIP INITIATED!")
-            else:
-                st.success("SYSTEM HEALTHY (Stability / Restraint Zone)")
-
-            table_rows = []
-            for p in phases:
-                e = evals[p]
-                table_rows.append({
-                    "Phase": p,
-                    "I_op [pu]": f"{e['i_op_pu']:.3f}",
-                    "I_rest [pu]": f"{e['i_rest_pu']:.3f}",
-                    "Threshold [pu]": f"{e['i_threshold_pu']:.3f}",
-                    "Action Verdict": e["status"]
-                })
-            st.table(table_rows)
-
-            with st.expander("Per-winding magnitudes (pu)"):
-                for p in phases:
-                    mags = evals[p]["winding_mags_pu"]
-                    st.caption(f"**{p}**: " + " | ".join(f"{n}: {m:.3f} pu" for n, m in zip(winding_names, mags)))
-            st.caption("The Relay-Ready Settings Sheet, settings export, and a certified audit report are in the Settings Summary & Approval tab.")
-            winding_currents = {p: [inputs[p]["i_hv"], inputs[p]["i_gen"], inputs[p]["i_uat"]] for p in phases}
-
-        st.subheader("Differential Bias Characteristic Curve")
-
-        chart_units = st.radio(
-            "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_live_chart_units",
-            help="pu base is the HV-side rated secondary current."
+    with col_inputs:
+        st.subheader("Winding Operating Phase Inputs")
+        st.caption(
+            "Enter the actual PRIMARY-side current in Amps for each of the three windings — "
+            "the app converts this through the CT ratio and matching tap automatically."
         )
-        use_amps = chart_units == "Secondary Amps (A)"
-
-        max_x_val = max(6.0, max(e["i_rest_pu"] for e in evals.values()) + 1.5, relay.hoc_pu + 1.0)
-        x_axis_line = np.linspace(0, max_x_val, 400)
-        y_axis_line = [relay.calculate_trip_threshold(x) for x in x_axis_line]
-
-        x_plot = x_axis_line * amps_base if use_amps else x_axis_line
-        y_plot = np.array(y_axis_line) * amps_base if use_amps else np.array(y_axis_line)
-        unit_label = "A" if use_amps else "pu"
-
-        y_upper_pu = max(relay.hoc_pu + 2.0, max(y_axis_line) + 1.0)
-        y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
-        x_upper = max_x_val * amps_base if use_amps else max_x_val
-
-        fig = go.Figure()
-
-        # Shaded Restraint Region (below the trip line, safe) and Operating Region
-        # (above it, trips) - the fill follows the CAL. line's actual shape exactly.
-        fig.add_trace(go.Scatter(x=x_plot, y=np.zeros_like(x_plot), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(
-            x=x_plot, y=y_plot, mode='lines', name='CAL.', line=dict(color='#2563EB', width=3),
-            fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
-        ))
-        fig.add_trace(go.Scatter(
-            x=x_plot, y=np.full_like(x_plot, y_upper), mode='lines', line=dict(width=0),
-            fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
-        ))
-        fig.add_annotation(
-            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-            showarrow=False, font=dict(size=13, color="#B91C1C"), xanchor="right", yanchor="top",
-            bgcolor="rgba(255,255,255,0.75)"
-        )
-        fig.add_annotation(
-            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-            showarrow=False, font=dict(size=13, color="#15803D"), xanchor="left", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.75)"
+        st.info(
+            f"HV Rated: **{relay.windings[0]['i_rated_pri']:.1f} A**  |  "
+            f"Generator Rated: **{relay.windings[1]['i_rated_pri']:.1f} A**  |  "
+            f"UAT Rated: **{relay.windings[2]['i_rated_pri']:.1f} A**"
         )
 
-        hoc_val = relay.hoc_pu * amps_base if use_amps else relay.hoc_pu
-        fig.add_trace(go.Scatter(
-            x=[0, max_x_val * amps_base if use_amps else max_x_val], y=[hoc_val, hoc_val],
-            mode='lines', name='HOC (Unrestrained)', line=dict(color='#DC2626', width=2, dash='dash')
-        ))
+        inputs = {}
+        for idx, phase in enumerate(phases):
+            with st.expander(f"{phase} Settings", expanded=(phase == "Phase A")):
+                c1, c2, c3 = st.columns(3)
+                def_ang_hv = -120.0 * idx
+                # Same sign convention as the Phase A Generator solve below (harmless
+                # here since magnitude is 0 for Phase B/C and for UAT always, but was
+                # backwards - matches the Generator page's fixed bug: OPPOSITE needs
+                # matching angles to cancel, SAME needs 180 deg apart).
+                def_ang_other = def_ang_hv if ct_polarity == "OPPOSITE" else def_ang_hv + 180.0
+                def_val_uat = 0.0  # UAT typically carries house-load current, not full rating, by default
+                if phase == "Phase A":
+                    def_val_hv = relay.windings[0]["i_rated_pri"]
+                    def_val_gen = relay.windings[1]["i_rated_pri"]
+                    # Solve only the ANGLE that makes a healthy through-load (with
+                    # UAT off-load, i.e. 0A by default, so HV and Generator alone
+                    # must cancel) net to ~0 pu, accounting for HV's Delta CT
+                    # compensation - not just a naive +-180 degree guess. Magnitude
+                    # is left at Generator's own Nominal Rated Current (matching the
+                    # info box above) rather than solved-for, so a small residual is
+                    # expected and correct, not a bug.
+                    vec_hv_internal = winding_internal_vector(relay, 0, def_val_hv, def_ang_hv)
+                    target_gen_internal = vec_hv_internal if ct_polarity == "OPPOSITE" else -vec_hv_internal
+                    _, def_ang_gen = raw_input_for_internal_vector(relay, 1, target_gen_internal)
+                else:
+                    def_val_hv = 0.0
+                    def_val_gen = 0.0
+                    def_ang_gen = def_ang_other
 
-        phase_colors = {"Phase A": "red", "Phase B": "green", "Phase C": "blue"}
+                with c1:
+                    st.markdown("**HV**")
+                    i_hv = st.number_input("Primary Amps [A]", value=def_val_hv, key=f"ov_hv_i_{phase}")
+                    a_hv = st.number_input("Angle (°)", value=def_ang_hv, key=f"ov_hv_a_{phase}")
+                with c2:
+                    st.markdown("**Generator**")
+                    i_gen = st.number_input("Primary Amps [A]", value=def_val_gen, key=f"ov_gen_i_{phase}")
+                    a_gen = st.number_input("Angle (°)", value=def_ang_gen, key=f"ov_gen_a_{phase}")
+                with c3:
+                    st.markdown("**UAT**")
+                    i_uat = st.number_input("Primary Amps [A]", value=def_val_uat, key=f"ov_uat_i_{phase}")
+                    a_uat = st.number_input("Angle (°)", value=def_ang_other, key=f"ov_uat_a_{phase}")
+
+                inputs[phase] = {"i_hv": i_hv, "a_hv": a_hv, "i_gen": i_gen, "a_gen": a_gen, "i_uat": i_uat, "a_uat": a_uat}
+
+        evals = {p: relay.evaluate_protection([
+            (inputs[p]["i_hv"], inputs[p]["a_hv"]),
+            (inputs[p]["i_gen"], inputs[p]["a_gen"]),
+            (inputs[p]["i_uat"], inputs[p]["a_uat"]),
+        ]) for p in phases}
+
+    with col_results:
+        st.subheader("Real-time Protection Verdict")
+
+        any_trip = any(res["is_trip"] for res in evals.values())
+        if any_trip:
+            st.error("PROTECTIVE RELAY TRIP INITIATED!")
+        else:
+            st.success("SYSTEM HEALTHY (Stability / Restraint Zone)")
+
+        table_rows = []
         for p in phases:
             e = evals[p]
-            px = e["i_rest_pu"] * amps_base if use_amps else e["i_rest_pu"]
-            py = e["i_op_pu"] * amps_base if use_amps else e["i_op_pu"]
-            fig.add_trace(go.Scatter(
-                x=[px], y=[py], mode='markers+text', name=f"{p}",
-                text=[f"{p}"], textposition="top center",
-                marker=dict(size=14, color=phase_colors[p], symbol='x' if e["is_trip"] else 'circle'),
-                hovertemplate=f"<b>{p}</b><br>I_rest: %{{x:.3f}} {unit_label}<br>I_op: %{{y:.3f}} {unit_label}<br>State: {e['status']}<extra></extra>"
-            ))
+            table_rows.append({
+                "Phase": p,
+                "I_op [pu]": f"{e['i_op_pu']:.3f}",
+                "I_rest [pu]": f"{e['i_rest_pu']:.3f}",
+                "Threshold [pu]": f"{e['i_threshold_pu']:.3f}",
+                "Action Verdict": e["status"]
+            })
+        st.table(table_rows)
 
-        fig.update_layout(
-            title="Overall GSUT-GEN Differential Bias Characteristic",
-            xaxis_title=f"Restraint Current I_rest ({unit_label})",
-            yaxis_title=f"Differential/Operating Current I_op ({unit_label})",
-            xaxis=dict(range=[0, x_upper]), yaxis=dict(range=[0, y_upper]),
-            template="plotly_white", height=500
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        with st.expander("Per-winding magnitudes (pu)"):
+            for p in phases:
+                mags = evals[p]["winding_mags_pu"]
+                st.caption(f"**{p}**: " + " | ".join(f"{n}: {m:.3f} pu" for n, m in zip(winding_names, mags)))
+        st.caption("The Relay-Ready Settings Sheet, settings export, and a certified audit report are in the Settings Summary & Approval tab.")
+        winding_currents = {p: [inputs[p]["i_hv"], inputs[p]["i_gen"], inputs[p]["i_uat"]] for p in phases}
 
-        st.markdown("---")
-        st.subheader("Log a Test Point")
+    st.subheader("Differential Bias Characteristic Curve")
 
-        st.subheader("Test Point Verification & Curve")
-        st.write("Enter measured test results and see them plotted against the calculated characteristic curve.")
+    chart_units = st.radio(
+        "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_live_chart_units",
+        help="pu base is the HV-side rated secondary current."
+    )
+    use_amps = chart_units == "Secondary Amps (A)"
 
-        if "ov_manual_test_points" not in st.session_state:
-            st.session_state.ov_manual_test_points = []
+    max_x_val = max(6.0, max(e["i_rest_pu"] for e in evals.values()) + 1.5, relay.hoc_pu + 1.0)
+    x_axis_line = np.linspace(0, max_x_val, 400)
+    y_axis_line = [relay.calculate_trip_threshold(x) for x in x_axis_line]
 
-        tp_source = st.radio(
-            "How was this measured?", TEST_POINT_SOURCE_OPTIONS, horizontal=True,
-            key="ov_tp_source", help=TEST_POINT_SOURCE_HELP,
-        )
-        with st.form("ov_add_test_point_form", clear_on_submit=True):
-            tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"], key="ov_tp_phase")
+    x_plot = x_axis_line * amps_base if use_amps else x_axis_line
+    y_plot = np.array(y_axis_line) * amps_base if use_amps else np.array(y_axis_line)
+    unit_label = "A" if use_amps else "pu"
+
+    y_upper_pu = max(relay.hoc_pu + 2.0, max(y_axis_line) + 1.0)
+    y_upper = y_upper_pu * amps_base if use_amps else y_upper_pu
+    x_upper = max_x_val * amps_base if use_amps else max_x_val
+
+    fig = go.Figure()
+
+    # Shaded Restraint Region (below the trip line, safe) and Operating Region
+    # (above it, trips) - the fill follows the CAL. line's actual shape exactly.
+    fig.add_trace(go.Scatter(x=x_plot, y=np.zeros_like(x_plot), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=y_plot, mode='lines', name='CAL.', line=dict(color='#2563EB', width=3),
+        fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_plot, y=np.full_like(x_plot, y_upper), mode='lines', line=dict(width=0),
+        fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
+    ))
+    fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=13, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=13, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+
+    hoc_val = relay.hoc_pu * amps_base if use_amps else relay.hoc_pu
+    fig.add_trace(go.Scatter(
+        x=[0, max_x_val * amps_base if use_amps else max_x_val], y=[hoc_val, hoc_val],
+        mode='lines', name='HOC (Unrestrained)', line=dict(color='#DC2626', width=2, dash='dash')
+    ))
+
+    phase_colors = {"Phase A": "red", "Phase B": "green", "Phase C": "blue"}
+    for p in phases:
+        e = evals[p]
+        px = e["i_rest_pu"] * amps_base if use_amps else e["i_rest_pu"]
+        py = e["i_op_pu"] * amps_base if use_amps else e["i_op_pu"]
+        fig.add_trace(go.Scatter(
+            x=[px], y=[py], mode='markers+text', name=f"{p}",
+            text=[f"{p}"], textposition="top center",
+            marker=dict(size=14, color=phase_colors[p], symbol='x' if e["is_trip"] else 'circle'),
+            hovertemplate=f"<b>{p}</b><br>I_rest: %{{x:.3f}} {unit_label}<br>I_op: %{{y:.3f}} {unit_label}<br>State: {e['status']}<extra></extra>"
+        ))
+
+    fig.update_layout(
+        title="Overall GSUT-GEN Differential Bias Characteristic",
+        xaxis_title=f"Restraint Current I_rest ({unit_label})",
+        yaxis_title=f"Differential/Operating Current I_op ({unit_label})",
+        xaxis=dict(range=[0, x_upper]), yaxis=dict(range=[0, y_upper]),
+        template="plotly_white", height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Log a Test Point")
+
+    st.subheader("Test Point Verification & Curve")
+    st.write("Enter measured test results and see them plotted against the calculated characteristic curve.")
+
+    if "ov_manual_test_points" not in st.session_state:
+        st.session_state.ov_manual_test_points = []
+
+    tp_source = st.radio(
+        "How was this measured?", TEST_POINT_SOURCE_OPTIONS, horizontal=True,
+        key="ov_tp_source", help=TEST_POINT_SOURCE_HELP,
+    )
+    with st.form("ov_add_test_point_form", clear_on_submit=True):
+        tp_phase = st.selectbox("Phase", ["Phase A", "Phase B", "Phase C", "Other"], key="ov_tp_phase")
+        if tp_source.startswith("Restraint"):
+            tp_unit = st.radio(
+                "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_entry_unit"
+            )
+            tc2, tc3 = st.columns(2)
+            restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
+            diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
+            restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
+            diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
+            restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
+            diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
+            with tc2:
+                tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step, key="ov_tp_restraint")
+            with tc3:
+                tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step, key="ov_tp_diff")
+        else:
+            st.caption("Enter the actual primary Amps and phase angle measured/injected at each winding's CT.")
+            raw_inputs = raw_current_inputs(
+                ["HV", "Gen", "UAT"], "ov_tp_raw",
+                default_primary_amps=[w["i_rated_pri"] for w in relay.windings],
+            )
+        tp_label = st.text_input("Label (optional)", value="", key="ov_tp_label")
+        submitted = st.form_submit_button("Add Test Point")
+        if submitted:
             if tp_source.startswith("Restraint"):
-                tp_unit = st.radio(
-                    "Entry units", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_entry_unit"
-                )
-                tc2, tc3 = st.columns(2)
-                restraint_label = "Restraint Current" if tp_unit.startswith("Secondary") else "Restraint Current (pu)"
-                diff_label = "Measured Diff. Current" if tp_unit.startswith("Secondary") else "Measured Diff. Current (pu)"
-                restraint_step = 0.1 if tp_unit.startswith("Secondary") else 0.05
-                diff_step = 0.05 if tp_unit.startswith("Secondary") else 0.01
-                restraint_default = 1.0 if tp_unit.startswith("Secondary") else 0.3
-                diff_default = 0.3 if tp_unit.startswith("Secondary") else 0.06
-                with tc2:
-                    tp_restraint = st.number_input(restraint_label, min_value=0.0, value=restraint_default, step=restraint_step, key="ov_tp_restraint")
-                with tc3:
-                    tp_diff = st.number_input(diff_label, min_value=0.0, value=diff_default, step=diff_step, key="ov_tp_diff")
-            else:
-                st.caption("Enter the actual primary Amps and phase angle measured/injected at each winding's CT.")
-                raw_inputs = raw_current_inputs(
-                    ["HV", "Gen", "UAT"], "ov_tp_raw",
-                    default_primary_amps=[w["i_rated_pri"] for w in relay.windings],
-                )
-            tp_label = st.text_input("Label (optional)", value="", key="ov_tp_label")
-            submitted = st.form_submit_button("Add Test Point")
-            if submitted:
-                if tp_source.startswith("Restraint"):
-                    if tp_unit.startswith("Secondary"):
-                        restraint_amps, diff_amps = tp_restraint, tp_diff
-                    else:
-                        restraint_amps, diff_amps = tp_restraint * amps_base, tp_diff * amps_base
+                if tp_unit.startswith("Secondary"):
+                    restraint_amps, diff_amps = tp_restraint, tp_diff
                 else:
-                    raw_eval = relay.evaluate_protection(raw_inputs)
-                    restraint_amps = raw_eval["i_rest_pu"] * amps_base
-                    diff_amps = raw_eval["i_op_pu"] * amps_base
-                st.session_state.ov_manual_test_points.append({
-                    "Phase": tp_phase,
-                    "Restraint (A)": round(restraint_amps, 3),
-                    "Measured Diff (A)": round(diff_amps, 3),
-                    "Label": tp_label
-                })
+                    restraint_amps, diff_amps = tp_restraint * amps_base, tp_diff * amps_base
+            else:
+                raw_eval = relay.evaluate_protection(raw_inputs)
+                restraint_amps = raw_eval["i_rest_pu"] * amps_base
+                diff_amps = raw_eval["i_op_pu"] * amps_base
+            st.session_state.ov_manual_test_points.append({
+                "Phase": tp_phase,
+                "Restraint (A)": round(restraint_amps, 3),
+                "Measured Diff (A)": round(diff_amps, 3),
+                "Label": tp_label
+            })
 
-        if st.session_state.ov_manual_test_points:
-            table_unit = st.radio("Display units for table", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_table_unit")
-            table_in_pu = table_unit.startswith("Per-Unit")
-            restraint_col = "Restraint (pu)" if table_in_pu else "Restraint (A)"
-            diff_col = "Measured Diff (pu)" if table_in_pu else "Measured Diff (A)"
+    if st.session_state.ov_manual_test_points:
+        table_unit = st.radio("Display units for table", ["Secondary Amps (A)", "Per-Unit (pu)"], horizontal=True, key="ov_tp_table_unit")
+        table_in_pu = table_unit.startswith("Per-Unit")
+        restraint_col = "Restraint (pu)" if table_in_pu else "Restraint (A)"
+        diff_col = "Measured Diff (pu)" if table_in_pu else "Measured Diff (A)"
 
-            tp_display_rows = []
-            for tp in st.session_state.ov_manual_test_points:
-                r_amps, d_amps = tp["Restraint (A)"], tp["Measured Diff (A)"]
-                tp_display_rows.append({
-                    "Phase": tp["Phase"],
-                    restraint_col: round(r_amps / amps_base, 3) if table_in_pu else round(r_amps, 3),
-                    diff_col: round(d_amps / amps_base, 3) if table_in_pu else round(d_amps, 3),
-                    "Label": tp["Label"]
-                })
-            st.dataframe(pd.DataFrame(tp_display_rows), use_container_width=True)
-
-            rc1, rc2 = st.columns(2)
-            with rc1:
-                remove_idx = st.number_input(
-                    "Row # to remove (0-indexed)", min_value=0,
-                    max_value=max(len(st.session_state.ov_manual_test_points) - 1, 0), value=0, step=1, key="ov_remove_idx"
-                )
-                if st.button("Remove Row", key="ov_remove_btn"):
-                    st.session_state.ov_manual_test_points.pop(int(remove_idx))
-                    st.rerun()
-            with rc2:
-                if st.button("Clear All Test Points", key="ov_clear_btn"):
-                    st.session_state.ov_manual_test_points = []
-                    st.rerun()
-        else:
-            st.info("No test points added yet — add some above to see them plotted below.")
-
-        st.markdown("---")
-        st.markdown("#### Differential Bias Characteristic Curve")
-
-        comm_chart_units = st.radio("Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_test_chart_units")
-        use_amps_comm = comm_chart_units == "Secondary Amps (A)"
-        unit_label_comm = "A" if use_amps_comm else "pu"
-
-        cal_source = st.radio(
-            "CAL. line source",
-            ["Connect my test points (commissioning report style)", "Theoretical relay characteristic"],
-            horizontal=True, key="ov_cal_line_source"
-        )
-
-        sweep_fig = go.Figure()
-        if cal_source.startswith("Connect") and len(st.session_state.ov_manual_test_points) >= 2:
-            sorted_pts = sorted(st.session_state.ov_manual_test_points, key=lambda tp: tp["Restraint (A)"])
-            cal_x_amps = [tp["Restraint (A)"] for tp in sorted_pts]
-            cal_y_amps = [tp["Measured Diff (A)"] for tp in sorted_pts]
-            curve_x = cal_x_amps if use_amps_comm else [x / amps_base for x in cal_x_amps]
-            curve_y = cal_y_amps if use_amps_comm else [y / amps_base for y in cal_y_amps]
-            sweep_fig.add_trace(go.Scatter(x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3)))
-        else:
-            if cal_source.startswith("Connect"):
-                st.info("Add at least 2 test points above to draw the CAL. line through them — showing the theoretical characteristic for now.")
-            manual_restraints_pu = [tp["Restraint (A)"] / amps_base for tp in st.session_state.ov_manual_test_points]
-            default_reach = relay.hoc_pu + 2.0
-            max_restraint = max(manual_restraints_pu + [default_reach]) if manual_restraints_pu else default_reach
-            curve_x_pu = np.linspace(0, max_restraint * 1.2 + 0.5, 300)
-            curve_y_pu = [relay.calculate_trip_threshold(x) for x in curve_x_pu]
-            curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
-            curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
-            # Shaded Restraint/Operating regions - only meaningful for the theoretical
-            # curve (a straight line through test points isn't the real characteristic).
-            sweep_fig.add_trace(go.Scatter(x=curve_x, y=np.zeros_like(curve_x), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
-            sweep_fig.add_trace(go.Scatter(
-                x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3),
-                fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
-            ))
-            sweep_fig.add_trace(go.Scatter(
-                x=curve_x, y=np.full_like(curve_x, max(curve_y) * 1.15 + 0.1), mode='lines', line=dict(width=0),
-                fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
-            ))
-
-        sweep_fig.add_annotation(
-            text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
-            showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
-            bgcolor="rgba(255,255,255,0.75)"
-        )
-        sweep_fig.add_annotation(
-            text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
-            showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.75)"
-        )
-
-        tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
-        tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}
+        tp_display_rows = []
         for tp in st.session_state.ov_manual_test_points:
             r_amps, d_amps = tp["Restraint (A)"], tp["Measured Diff (A)"]
-            px = r_amps if use_amps_comm else r_amps / amps_base
-            py = d_amps if use_amps_comm else d_amps / amps_base
-            trace_name = tp["Phase"] + (f' ({tp["Label"]})' if tp["Label"] else "")
-            sweep_fig.add_trace(go.Scatter(
-                x=[px], y=[py], mode="markers", name=trace_name,
-                marker=dict(size=13, color=tp_marker_colors.get(tp["Phase"], "#F59E0B"), symbol=tp_marker_symbols.get(tp["Phase"], "diamond")),
-                hovertemplate=f"<b>{tp['Phase']}</b><br>Restraint: %{{x:.3f}} {unit_label_comm}<br>Measured Diff: %{{y:.3f}} {unit_label_comm}<extra></extra>"
-            ))
+            tp_display_rows.append({
+                "Phase": tp["Phase"],
+                restraint_col: round(r_amps / amps_base, 3) if table_in_pu else round(r_amps, 3),
+                diff_col: round(d_amps / amps_base, 3) if table_in_pu else round(d_amps, 3),
+                "Label": tp["Label"]
+            })
+        st.dataframe(pd.DataFrame(tp_display_rows), use_container_width=True)
 
-        sweep_fig.update_layout(
-            title="Differential Bias Characteristic Curve",
-            xaxis_title=f"Restraint Current ({unit_label_comm})",
-            yaxis_title=f"Diff. Current ({unit_label_comm})",
-            template="plotly_white", height=450
-        )
-        png_filename = f"87OA_Differential_Bias_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
-        st.plotly_chart(sweep_fig, use_container_width=True, config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}})
-
-        st.markdown("---")
-        render_historian_overlay(st, "overall", reference_lines=[
-            ("HV Rated (A)", relay.windings[0]["i_rated_pri"]),
-            ("Generator Rated (A)", relay.windings[1]["i_rated_pri"]),
-            ("UAT Rated (A)", relay.windings[2]["i_rated_pri"]),
-        ])
-
-    # ---------------------------------------------------------------------------
-    # TAB 2 — Commissioning & Injection Tool
-    # ---------------------------------------------------------------------------
-    with tab2:
-        st.subheader("Commissioning & Secondary Current Injection Assistant")
-        st.write(
-            "With a 3-restraint relay there's no single unique way to split a target differential "
-            "across three currents, so this tool uses the standard commissioning method instead: "
-            "**energize one winding at a time** (the other two at zero) and read the resulting "
-            "I_op / I_rest / trip verdict straight from the relay engine — exactly how these "
-            "relays are normally verified in the field."
-        )
-
-        st.markdown("#### Single-Winding Injection Test")
-        inj_col1, inj_col2 = st.columns(2)
-        with inj_col1:
-            inj_winding_name = st.selectbox("Winding to energize", winding_names, key="ov_inj_winding")
-            inj_winding_idx = winding_names.index(inj_winding_name)
-        with inj_col2:
-            inj_current_pu = slider_with_exact_input(
-                st, "Test Current (pu of that winding's rated current)", 0.05, 20.0, 1.0, 0.05,
-                key=f"{selected_preset}__ov_inj_current"
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            remove_idx = st.number_input(
+                "Row # to remove (0-indexed)", min_value=0,
+                max_value=max(len(st.session_state.ov_manual_test_points) - 1, 0), value=0, step=1, key="ov_remove_idx"
             )
+            if st.button("Remove Row", key="ov_remove_btn"):
+                st.session_state.ov_manual_test_points.pop(int(remove_idx))
+                st.rerun()
+        with rc2:
+            if st.button("Clear All Test Points", key="ov_clear_btn"):
+                st.session_state.ov_manual_test_points = []
+                st.rerun()
+    else:
+        st.info("No test points added yet — add some above to see them plotted below.")
 
-        test_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
-        inj_primary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_pri"]
-        test_inputs[inj_winding_idx] = (inj_primary_amps, 0.0)
-        inj_result = relay.evaluate_protection(test_inputs)
+    st.markdown("---")
+    st.markdown("#### Differential Bias Characteristic Curve")
 
-        inj_secondary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_sec"]
+    comm_chart_units = st.radio("Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_test_chart_units")
+    use_amps_comm = comm_chart_units == "Secondary Amps (A)"
+    unit_label_comm = "A" if use_amps_comm else "pu"
 
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Inject (secondary A)", f"{inj_secondary_amps:.3f} A")
-        r2.metric("I_op", f"{inj_result['i_op_pu']:.3f} pu")
-        r3.metric("I_rest", f"{inj_result['i_rest_pu']:.3f} pu")
-        r4.metric("Threshold", f"{inj_result['i_threshold_pu']:.3f} pu")
-        if inj_result["is_trip"]:
-            st.error(f"Status: {inj_result['status']}")
+    cal_source = st.radio(
+        "CAL. line source",
+        ["Connect my test points (commissioning report style)", "Theoretical relay characteristic"],
+        horizontal=True, key="ov_cal_line_source"
+    )
+
+    sweep_fig = go.Figure()
+    if cal_source.startswith("Connect") and len(st.session_state.ov_manual_test_points) >= 2:
+        sorted_pts = sorted(st.session_state.ov_manual_test_points, key=lambda tp: tp["Restraint (A)"])
+        cal_x_amps = [tp["Restraint (A)"] for tp in sorted_pts]
+        cal_y_amps = [tp["Measured Diff (A)"] for tp in sorted_pts]
+        curve_x = cal_x_amps if use_amps_comm else [x / amps_base for x in cal_x_amps]
+        curve_y = cal_y_amps if use_amps_comm else [y / amps_base for y in cal_y_amps]
+        sweep_fig.add_trace(go.Scatter(x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3)))
+    else:
+        if cal_source.startswith("Connect"):
+            st.info("Add at least 2 test points above to draw the CAL. line through them — showing the theoretical characteristic for now.")
+        manual_restraints_pu = [tp["Restraint (A)"] / amps_base for tp in st.session_state.ov_manual_test_points]
+        default_reach = relay.hoc_pu + 2.0
+        max_restraint = max(manual_restraints_pu + [default_reach]) if manual_restraints_pu else default_reach
+        curve_x_pu = np.linspace(0, max_restraint * 1.2 + 0.5, 300)
+        curve_y_pu = [relay.calculate_trip_threshold(x) for x in curve_x_pu]
+        curve_x = curve_x_pu * amps_base if use_amps_comm else curve_x_pu
+        curve_y = np.array(curve_y_pu) * amps_base if use_amps_comm else np.array(curve_y_pu)
+        # Shaded Restraint/Operating regions - only meaningful for the theoretical
+        # curve (a straight line through test points isn't the real characteristic).
+        sweep_fig.add_trace(go.Scatter(x=curve_x, y=np.zeros_like(curve_x), mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=curve_y, mode="lines", name="CAL.", line=dict(color="#2E8B57", width=3),
+            fill='tonexty', fillcolor='rgba(22,163,74,0.10)'
+        ))
+        sweep_fig.add_trace(go.Scatter(
+            x=curve_x, y=np.full_like(curve_x, max(curve_y) * 1.15 + 0.1), mode='lines', line=dict(width=0),
+            fill='tonexty', fillcolor='rgba(220,38,38,0.08)', showlegend=False, hoverinfo='skip'
+        ))
+
+    sweep_fig.add_annotation(
+        text="OPERATING REGION (TRIP)", xref="paper", yref="paper", x=0.98, y=0.95,
+        showarrow=False, font=dict(size=12, color="#B91C1C"), xanchor="right", yanchor="top",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+    sweep_fig.add_annotation(
+        text="RESTRAINT REGION (SAFE)", xref="paper", yref="paper", x=0.02, y=0.05,
+        showarrow=False, font=dict(size=12, color="#15803D"), xanchor="left", yanchor="bottom",
+        bgcolor="rgba(255,255,255,0.75)"
+    )
+
+    tp_marker_colors = {"Phase A": "#D63384", "Phase B": "#6C757D", "Phase C": "#1E3A8A", "Other": "#F59E0B"}
+    tp_marker_symbols = {"Phase A": "square", "Phase B": "triangle-up", "Phase C": "square", "Other": "diamond"}
+    for tp in st.session_state.ov_manual_test_points:
+        r_amps, d_amps = tp["Restraint (A)"], tp["Measured Diff (A)"]
+        px = r_amps if use_amps_comm else r_amps / amps_base
+        py = d_amps if use_amps_comm else d_amps / amps_base
+        trace_name = tp["Phase"] + (f' ({tp["Label"]})' if tp["Label"] else "")
+        sweep_fig.add_trace(go.Scatter(
+            x=[px], y=[py], mode="markers", name=trace_name,
+            marker=dict(size=13, color=tp_marker_colors.get(tp["Phase"], "#F59E0B"), symbol=tp_marker_symbols.get(tp["Phase"], "diamond")),
+            hovertemplate=f"<b>{tp['Phase']}</b><br>Restraint: %{{x:.3f}} {unit_label_comm}<br>Measured Diff: %{{y:.3f}} {unit_label_comm}<extra></extra>"
+        ))
+
+    sweep_fig.update_layout(
+        title="Differential Bias Characteristic Curve",
+        xaxis_title=f"Restraint Current ({unit_label_comm})",
+        yaxis_title=f"Diff. Current ({unit_label_comm})",
+        template="plotly_white", height=450
+    )
+    png_filename = f"87OA_Differential_Bias_Curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
+    st.plotly_chart(sweep_fig, use_container_width=True, config={"toImageButtonOptions": {"format": "png", "filename": png_filename, "scale": 3}})
+
+    st.markdown("---")
+    render_historian_overlay(st, "overall", reference_lines=[
+        ("HV Rated (A)", relay.windings[0]["i_rated_pri"]),
+        ("Generator Rated (A)", relay.windings[1]["i_rated_pri"]),
+        ("UAT Rated (A)", relay.windings[2]["i_rated_pri"]),
+    ])
+
+# ---------------------------------------------------------------------------
+# TAB 2 — Commissioning & Injection Tool
+# ---------------------------------------------------------------------------
+with c["Commissioning & Injection Tool"]:
+    st.subheader("Commissioning & Secondary Current Injection Assistant")
+    st.write(
+        "With a 3-restraint relay there's no single unique way to split a target differential "
+        "across three currents, so this tool uses the standard commissioning method instead: "
+        "**energize one winding at a time** (the other two at zero) and read the resulting "
+        "I_op / I_rest / trip verdict straight from the relay engine — exactly how these "
+        "relays are normally verified in the field."
+    )
+
+    st.markdown("#### Single-Winding Injection Test")
+    inj_col1, inj_col2 = st.columns(2)
+    with inj_col1:
+        inj_winding_name = st.selectbox("Winding to energize", winding_names, key="ov_inj_winding")
+        inj_winding_idx = winding_names.index(inj_winding_name)
+    with inj_col2:
+        inj_current_pu = slider_with_exact_input(
+            st, "Test Current (pu of that winding's rated current)", 0.05, 20.0, 1.0, 0.05,
+            key=f"{selected_preset}__ov_inj_current"
+        )
+
+    test_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+    inj_primary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_pri"]
+    test_inputs[inj_winding_idx] = (inj_primary_amps, 0.0)
+    inj_result = relay.evaluate_protection(test_inputs)
+
+    inj_secondary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_sec"]
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Inject (secondary A)", f"{inj_secondary_amps:.3f} A")
+    r2.metric("I_op", f"{inj_result['i_op_pu']:.3f} pu")
+    r3.metric("I_rest", f"{inj_result['i_rest_pu']:.3f} pu")
+    r4.metric("Threshold", f"{inj_result['i_threshold_pu']:.3f} pu")
+    if inj_result["is_trip"]:
+        st.error(f"Status: {inj_result['status']}")
+    else:
+        st.success(f"Status: {inj_result['status']}")
+
+    st.markdown("---")
+    st.subheader("Auto-Sweep Single-Winding Test Table")
+    sw1, sw2, sw3 = st.columns(3)
+    with sw1:
+        sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1, key="ov_sweep_start")
+    with sw2:
+        sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, relay.hoc_pu + 1.0), step=0.5, key="ov_sweep_end")
+    with sw3:
+        sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1, key="ov_sweep_step")
+
+    if st.button("Generate Sweep Table", key="ov_sweep_btn"):
+        if sweep_end <= sweep_start or sweep_step <= 0:
+            st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
         else:
-            st.success(f"Status: {inj_result['status']}")
+            sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+            sweep_rows = []
+            for i_test in sweep_points:
+                t_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+                t_inputs[inj_winding_idx] = (i_test * relay.windings[inj_winding_idx]["i_rated_pri"], 0.0)
+                res = relay.evaluate_protection(t_inputs)
+                sweep_rows.append({
+                    "Test Current (pu)": round(float(i_test), 3),
+                    f"{inj_winding_name} Injection (A)": round(i_test * relay.windings[inj_winding_idx]["i_rated_sec"], 3),
+                    "I_op (pu)": round(res["i_op_pu"], 3),
+                    "I_rest (pu)": round(res["i_rest_pu"], 3),
+                    "Threshold (pu)": round(res["i_threshold_pu"], 3),
+                    "Status": res["status"],
+                })
+            st.session_state["ov_sweep_df"] = pd.DataFrame(sweep_rows)
 
-        st.markdown("---")
-        st.subheader("Auto-Sweep Single-Winding Test Table")
-        sw1, sw2, sw3 = st.columns(3)
-        with sw1:
-            sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1, key="ov_sweep_start")
-        with sw2:
-            sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, relay.hoc_pu + 1.0), step=0.5, key="ov_sweep_end")
-        with sw3:
-            sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1, key="ov_sweep_step")
-
-        if st.button("Generate Sweep Table", key="ov_sweep_btn"):
-            if sweep_end <= sweep_start or sweep_step <= 0:
-                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-            else:
-                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                sweep_rows = []
-                for i_test in sweep_points:
-                    t_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
-                    t_inputs[inj_winding_idx] = (i_test * relay.windings[inj_winding_idx]["i_rated_pri"], 0.0)
-                    res = relay.evaluate_protection(t_inputs)
-                    sweep_rows.append({
-                        "Test Current (pu)": round(float(i_test), 3),
-                        f"{inj_winding_name} Injection (A)": round(i_test * relay.windings[inj_winding_idx]["i_rated_sec"], 3),
-                        "I_op (pu)": round(res["i_op_pu"], 3),
-                        "I_rest (pu)": round(res["i_rest_pu"], 3),
-                        "Threshold (pu)": round(res["i_threshold_pu"], 3),
-                        "Status": res["status"],
-                    })
-                st.session_state["ov_sweep_df"] = pd.DataFrame(sweep_rows)
-
-        if "ov_sweep_df" in st.session_state:
-            st.dataframe(st.session_state["ov_sweep_df"], use_container_width=True)
-            csv_sweep = st.session_state["ov_sweep_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Sweep Table as CSV",
-                data=csv_sweep,
-                file_name=f"87OA_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-
-    # ---------------------------------------------------------------------------
-    # TAB — Settings Summary & Approval
-    # ---------------------------------------------------------------------------
-    with tab_approval:
-        st.subheader("Settings Summary & Approval Record")
-        st.caption(
-            "Record the settings basis and review status before exporting a controlled report. "
-            "This record supports engineering review; it does not replace the approved protection study."
-        )
-
-        st.session_state.setdefault("overall_source_document", "Transformer Diff Setting - Overall GSUT-GEN.pdf")
-        st.session_state.setdefault("overall_revision", "Rev. 0")
-        st.session_state.setdefault("overall_prepared_by", "")
-        st.session_state.setdefault("overall_reviewed_by", "")
-        st.session_state.setdefault("overall_approval_status", "Draft — engineering review required")
-        st.session_state.setdefault("overall_review_note", "")
-
-        source_document = st.text_input("Source document", key="overall_source_document")
-        col_doc_1, col_doc_2 = st.columns(2)
-        with col_doc_1:
-            revision = st.text_input("Document / settings revision", key="overall_revision")
-            prepared_by = st.text_input("Prepared by", key="overall_prepared_by")
-        with col_doc_2:
-            reviewed_by = st.text_input("Reviewed by", key="overall_reviewed_by")
-            approval_status = st.selectbox(
-                "Review status",
-                ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
-                key="overall_approval_status",
-            )
-        review_note = st.text_area("Review note / change description", key="overall_review_note")
-
-        st.markdown("---")
-        pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
+    if "ov_sweep_df" in st.session_state:
+        st.dataframe(st.session_state["ov_sweep_df"], use_container_width=True)
+        csv_sweep = st.session_state["ov_sweep_df"].to_csv(index=False).encode("utf-8")
         st.download_button(
-            label="Export Certified Protection Audit Report",
-            data=pdf_bytes,
-            file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
+            label="Download Sweep Table as CSV",
+            data=csv_sweep,
+            file_name=f"87OA_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv"
         )
 
-        render_settings_sheet(st, "CAC2-10-M3", [
-            ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
-            ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
-            ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
-            ("T1 (HV Tap)", f"{tap_hv:.3f}"),
-            ("T2 (Generator Tap)", f"{tap_gen:.3f}"),
-            ("T3 (UAT Tap)", f"{tap_uat:.3f}"),
-            ("Bias, τ (%)", f"{bias_pct:.0f}"),
-            ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
-            ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
-            ("Restraint Standard", convention),
-            ("CT Polarity Reference", ct_polarity),
-        ], key_prefix="Overall")
+# ---------------------------------------------------------------------------
+# TAB — Settings Summary & Approval
+# ---------------------------------------------------------------------------
+with c["Settings Summary & Approval"]:
+    st.subheader("Settings Summary & Approval Record")
+    st.caption(
+        "Record the settings basis and review status before exporting a controlled report. "
+        "This record supports engineering review; it does not replace the approved protection study."
+    )
 
-        st.markdown("---")
-        st.markdown("#### Save Profile")
-        st.caption(
-            "Name and download every setting currently active under the selected preset above — "
-            "most useful after entering your own values under Custom Profile, so you can pick this "
-            "file back up next time instead of re-typing everything. Use the loader in the sidebar "
-            "to restore it later."
+    st.session_state.setdefault("overall_source_document", "Transformer Diff Setting - Overall GSUT-GEN.pdf")
+    st.session_state.setdefault("overall_revision", "Rev. 0")
+    st.session_state.setdefault("overall_prepared_by", "")
+    st.session_state.setdefault("overall_reviewed_by", "")
+    st.session_state.setdefault("overall_approval_status", "Draft — engineering review required")
+    st.session_state.setdefault("overall_review_note", "")
+
+    source_document = st.text_input("Source document", key="overall_source_document")
+    col_doc_1, col_doc_2 = st.columns(2)
+    with col_doc_1:
+        revision = st.text_input("Document / settings revision", key="overall_revision")
+        prepared_by = st.text_input("Prepared by", key="overall_prepared_by")
+    with col_doc_2:
+        reviewed_by = st.text_input("Reviewed by", key="overall_reviewed_by")
+        approval_status = st.selectbox(
+            "Review status",
+            ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
+            key="overall_approval_status",
         )
-        export_profile_button(
-            st, "overall", f"{selected_preset}__",
-            default_name="Overall GSUT-GEN Profile", button_key="overall",
-        )
+    review_note = st.text_area("Review note / change description", key="overall_review_note")
+
+    st.markdown("---")
+    pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
+    st.download_button(
+        label="Export Certified Protection Audit Report",
+        data=pdf_bytes,
+        file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf"
+    )
+
+    render_settings_sheet(st, "CAC2-10-M3", [
+        ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
+        ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
+        ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
+        ("T1 (HV Tap)", f"{tap_hv:.3f}"),
+        ("T2 (Generator Tap)", f"{tap_gen:.3f}"),
+        ("T3 (UAT Tap)", f"{tap_uat:.3f}"),
+        ("Bias, τ (%)", f"{bias_pct:.0f}"),
+        ("Minimum Operate (%)", f"{min_operate_pct:.0f}"),
+        ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
+        ("Restraint Standard", convention),
+        ("CT Polarity Reference", ct_polarity),
+    ], key_prefix="Overall")
+
+    st.markdown("---")
+    st.markdown("#### Save Profile")
+    st.caption(
+        "Name and download every setting currently active under the selected preset above — "
+        "most useful after entering your own values under Custom Profile, so you can pick this "
+        "file back up next time instead of re-typing everything. Use the loader in the sidebar "
+        "to restore it later."
+    )
+    export_profile_button(
+        st, "overall", f"{selected_preset}__",
+        default_name="Overall GSUT-GEN Profile", button_key="overall",
+    )

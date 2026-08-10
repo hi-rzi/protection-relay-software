@@ -31,6 +31,7 @@ from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.profile_io import export_profile_button, restore_profile_uploader
+from common.ui_helpers import sidebar_section_nav
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
@@ -282,8 +283,10 @@ def render_fan_motor_page(fan_type):
     # Stall Margin Check") - no new engineering judgment invented, just
     # surfaced inline per field.
     # -------------------------------------------------------------------
-    outer_settings, outer_analysis = st.tabs(["Current Settings", "Analysis & Tools"])
-    with outer_settings:
+    sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+    selected, c, pinned = sidebar_section_nav(sections, key_prefix=project_key, pin_first=True)
+
+    with c["Current Settings"]:
         # Live preview, click to reveal, at the top of the tab. Reads Motor FLA and Curve
         # Multiplier straight from session_state (falling back to the preset default) since the
         # actual settings widgets are drawn further down this same tab and haven't run yet on
@@ -299,7 +302,7 @@ def render_fan_motor_page(fan_type):
         if st.button(
             "📊 Show Live Preview — Overload (51) Curve",
             key=f"{project_key}__show_preview_btn",
-            help="Reflects the Motor FLA and Curve Multiplier settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the Simulate & Test tab under Analysis & Tools.",
+            help="Reflects the Motor FLA and Curve Multiplier settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the Simulate & Test section (sidebar).",
         ):
             st.session_state[f"{project_key}__preview_shown"] = True
         if st.session_state.get(f"{project_key}__preview_shown", False):
@@ -640,682 +643,665 @@ def render_fan_motor_page(fan_type):
         accel_timer_s=accel_timer_s, overload_alarm_delay_s=overload_alarm_delay_s,
     )
 
-    with outer_analysis:
-        st.caption(
-            "Everything below reads the settings from the Current Settings tab — adjust them there. "
-            "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
-            "Commissioning & Injection Tool → Fault Current Analysis "
-            "(where present) → Settings Summary & Approval. Full guide on the Home page."
+    with c["Theory"]:
+        render_theory_tab(
+            "motor",
+            purpose_text=fan_data["purpose"],
+            sld_image_name="motor_idfan.png",
+            sld_fallback_svg=motor_overcurrent_svg(
+                ct_ratio, ct_secondary_rating, tag="SR469 MPR",
+                bus_label="6.9kV Switchgear Bus", motor_label=fan_data["motor_tag"],
+            ),
+            include_thermal_replica=True,
         )
 
-        tab_names = [
-            "Theory",
-            "Simulate & Test",
-            "Commissioning & Injection Tool",
-            "Settings Summary & Approval",
-        ]
-        all_tabs = st.tabs(tab_names)
-        tab_theory, tab1, tab2, tab4 = all_tabs[:4]
+    # -----------------------------------------------------------------------
+    # TAB 1 — Simulate & Test
+    # -----------------------------------------------------------------------
+    with c["Simulate & Test"]:
+        col_inputs, col_results = st.columns([1.0, 1.2])
 
-        with tab_theory:
-            render_theory_tab(
-                "motor",
-                purpose_text=fan_data["purpose"],
-                sld_image_name="motor_idfan.png",
-                sld_fallback_svg=motor_overcurrent_svg(
-                    ct_ratio, ct_secondary_rating, tag="SR469 MPR",
-                    bus_label="6.9kV Switchgear Bus", motor_label=fan_data["motor_tag"],
-                ),
-                include_thermal_replica=True,
+        with col_inputs:
+            st.subheader("Operating Current Input")
+            st.caption("Enter the actual PRIMARY-side current in Amps — the app converts through the CT ratio automatically.")
+            st.info(f"Motor FLA: **{motor_fla:.0f} A**  |  Instantaneous Pickup: **{relay.inst_pickup_amps:.0f} A primary**")
+
+            test_current = st.number_input(
+                "Phase Current (Primary A)", min_value=0.0, value=float(motor_fla), step=10.0, key=f"{project_key}__test_current",
+                help="Try the motor FLA (should be SAFE) or the Instantaneous Pickup value to see each element respond."
+            )
+            ground_current = st.number_input(
+                "Ground Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key=f"{project_key}__ground_current",
+                help="Zero-sequence current at the ground CT's primary."
+            )
+            unbalance_input = st.number_input(
+                "Current Unbalance (%, I2/I1)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"{project_key}__unbalance_input"
+            )
+            diff87m_test_imbalance = st.number_input(
+                "87M Imbalance Test Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key=f"{project_key}__diff87m_test_imbalance",
+                help="The NET (line minus neutral) current through the self-balancing CT — zero for a healthy motor. Try the pickup primary current to see it trip."
             )
 
-        # -----------------------------------------------------------------------
-        # TAB 1 — Simulate & Test
-        # -----------------------------------------------------------------------
-        with tab1:
-            col_inputs, col_results = st.columns([1.0, 1.2])
+        eval_result = relay.evaluate_protection(test_current)
+        gf_eval = relay.evaluate_ground_fault(ground_current)
+        unbal_eval = relay.evaluate_unbalance(unbalance_input)
+        diff87m_result = diff87m_relay.evaluate_protection(diff87m_test_imbalance)
+        any_trip = eval_result["is_trip"] or gf_eval["is_trip"] or unbal_eval["is_trip"] or diff87m_result["is_trip"]
 
-            with col_inputs:
-                st.subheader("Operating Current Input")
-                st.caption("Enter the actual PRIMARY-side current in Amps — the app converts through the CT ratio automatically.")
-                st.info(f"Motor FLA: **{motor_fla:.0f} A**  |  Instantaneous Pickup: **{relay.inst_pickup_amps:.0f} A primary**")
+        with col_results:
+            st.subheader("Real-time Protection Verdict")
+            if any_trip:
+                st.error("PROTECTIVE RELAY TRIP INITIATED!")
+            else:
+                st.success("SYSTEM HEALTHY")
+            st.table([
+                {"Function": "Overload (51) / Instantaneous (50)", "Multiple": f"{eval_result['multiple_of_fla']:.2f}x FLA", "Status": eval_result["status"]},
+                {"Function": "Ground Fault (50G/51G)", "Multiple": f"{ground_current:.1f} A", "Status": gf_eval["status"]},
+                {"Function": "Current Unbalance (46)", "Multiple": f"{unbalance_input:.1f} %", "Status": unbal_eval["status"]},
+                {"Function": "87M (Self-Balancing Differential)", "Multiple": f"{diff87m_test_imbalance:.1f} A", "Status": diff87m_result["status"]},
+            ])
 
-                test_current = st.number_input(
-                    "Phase Current (Primary A)", min_value=0.0, value=float(motor_fla), step=10.0, key=f"{project_key}__test_current",
-                    help="Try the motor FLA (should be SAFE) or the Instantaneous Pickup value to see each element respond."
-                )
-                ground_current = st.number_input(
-                    "Ground Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key=f"{project_key}__ground_current",
-                    help="Zero-sequence current at the ground CT's primary."
-                )
-                unbalance_input = st.number_input(
-                    "Current Unbalance (%, I2/I1)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"{project_key}__unbalance_input"
-                )
-                diff87m_test_imbalance = st.number_input(
-                    "87M Imbalance Test Current (Primary A)", min_value=0.0, value=0.0, step=1.0, key=f"{project_key}__diff87m_test_imbalance",
-                    help="The NET (line minus neutral) current through the self-balancing CT — zero for a healthy motor. Try the pickup primary current to see it trip."
-                )
+            pdf_bytes = generate_fan_motor_pdf_report(
+                f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
+                test_current, ground_current, unbalance_input,
+            )
+            st.download_button(
+                label="Export Certified Protection Audit Report",
+                data=pdf_bytes,
+                file_name=f"{project_key}_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+            )
 
-            eval_result = relay.evaluate_protection(test_current)
-            gf_eval = relay.evaluate_ground_fault(ground_current)
-            unbal_eval = relay.evaluate_unbalance(unbalance_input)
-            diff87m_result = diff87m_relay.evaluate_protection(diff87m_test_imbalance)
-            any_trip = eval_result["is_trip"] or gf_eval["is_trip"] or unbal_eval["is_trip"] or diff87m_result["is_trip"]
+            render_settings_sheet(st, "Multilin SR469", [
+                ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("Ground CT Ratio", f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("Overload Pickup (% FLA)", f"{overload_pickup_pct:.0f}"),
+                ("Curve Multiplier (CM)", f"{curve_multiplier:.1f}"),
+                ("Instantaneous Pickup (x CT sec.)", f"{inst_pickup_multiple_of_ct:.1f}"),
+                ("Instantaneous Delay (ms)", f"{inst_delay_ms:.0f}"),
+                ("Ground Fault Pickup (x Ground CT)", f"{gf_pickup_frac:.2f}"),
+                ("Ground Fault Delay (ms)", f"{gf_delay_ms:.0f}"),
+                ("Unbalance Alarm/Trip (%)", f"{unbal_alarm_pct:.0f} / {unbal_trip_pct:.0f}"),
+                ("Mechanical Jam Pickup (% FLA)", f"{mech_jam_pct:.0f}"),
+            ], key_prefix=project_key.upper())
 
-            with col_results:
-                st.subheader("Real-time Protection Verdict")
-                if any_trip:
-                    st.error("PROTECTIVE RELAY TRIP INITIATED!")
-                else:
-                    st.success("SYSTEM HEALTHY")
-                st.table([
-                    {"Function": "Overload (51) / Instantaneous (50)", "Multiple": f"{eval_result['multiple_of_fla']:.2f}x FLA", "Status": eval_result["status"]},
-                    {"Function": "Ground Fault (50G/51G)", "Multiple": f"{ground_current:.1f} A", "Status": gf_eval["status"]},
-                    {"Function": "Current Unbalance (46)", "Multiple": f"{unbalance_input:.1f} %", "Status": unbal_eval["status"]},
-                    {"Function": "87M (Self-Balancing Differential)", "Multiple": f"{diff87m_test_imbalance:.1f} A", "Status": diff87m_result["status"]},
-                ])
+            render_settings_sheet(st, "GE HFC23C1A", [
+                ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
+                ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
+            ], key_prefix=f"{project_key.upper()}_87M")
 
-                pdf_bytes = generate_fan_motor_pdf_report(
-                    f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
-                    test_current, ground_current, unbalance_input,
-                )
-                st.download_button(
-                    label="Export Certified Protection Audit Report",
-                    data=pdf_bytes,
-                    file_name=f"{project_key}_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                    mime="application/pdf",
-                )
+        st.markdown("---")
 
-                render_settings_sheet(st, "Multilin SR469", [
-                    ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
-                    ("Ground CT Ratio", f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
-                    ("Overload Pickup (% FLA)", f"{overload_pickup_pct:.0f}"),
-                    ("Curve Multiplier (CM)", f"{curve_multiplier:.1f}"),
-                    ("Instantaneous Pickup (x CT sec.)", f"{inst_pickup_multiple_of_ct:.1f}"),
-                    ("Instantaneous Delay (ms)", f"{inst_delay_ms:.0f}"),
-                    ("Ground Fault Pickup (x Ground CT)", f"{gf_pickup_frac:.2f}"),
-                    ("Ground Fault Delay (ms)", f"{gf_delay_ms:.0f}"),
-                    ("Unbalance Alarm/Trip (%)", f"{unbal_alarm_pct:.0f} / {unbal_trip_pct:.0f}"),
-                    ("Mechanical Jam Pickup (% FLA)", f"{mech_jam_pct:.0f}"),
-                ], key_prefix=project_key.upper())
+        st.markdown("#### Overload (51) Time-Current Characteristic")
+        has_stall_data = locked_rotor_amps_100 is not None
+        max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
+        if has_stall_data:
+            max_mult = max(max_mult, (locked_rotor_amps_100 / motor_fla) + 1.0)
+        mult_line = np.linspace(1.01, max_mult, 300)
+        t_line = [relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=mult_line, y=t_line, mode="lines", name=f"Curve X{curve_multiplier:g}", line=dict(color="#2563EB", width=3)))
+        if eval_result["t51"] is not None:
+            fig.add_trace(go.Scatter(
+                x=[eval_result["multiple_of_fla"]], y=[eval_result["t51"]], mode="markers", name="Operating Point",
+                marker=dict(size=14, color="red", symbol="x")
+            ))
 
-                render_settings_sheet(st, "GE HFC23C1A", [
-                    ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
-                    ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
-                    ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
-                ], key_prefix=f"{project_key.upper()}_87M")
+        t_at_lrc_100 = t_at_lrc_80 = None
+        if has_stall_data:
+            lrc_100_x = locked_rotor_amps_100 / motor_fla
+            lrc_80_x = locked_rotor_amps_80 / motor_fla
+            t_at_lrc_100 = relay.calculate_overload_trip_time(locked_rotor_amps_100)
+            t_at_lrc_80 = relay.calculate_overload_trip_time(locked_rotor_amps_80)
+            fig.add_trace(go.Scatter(
+                x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
+                text=["Start @ 100%V"], textposition="top center",
+                marker=dict(size=13, color="green", symbol="triangle-up")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
+                text=["Start @ 80%V"], textposition="top center",
+                marker=dict(size=13, color="darkgreen", symbol="triangle-up")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
+                text=["Safe Stall @ 100%V"], textposition="bottom center",
+                marker=dict(size=13, color="black", symbol="x")
+            ))
+            fig.add_trace(go.Scatter(
+                x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
+                text=["Safe Stall @ 80%V"], textposition="bottom center",
+                marker=dict(size=13, color="gray", symbol="x")
+            ))
 
+        fig.update_layout(
+            title="SR469 Overload Trip Time vs. Multiple of FLA",
+            xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
+            yaxis_type="log", template="plotly_white", height=450,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "GE Multilin 'Standard' thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)² + "
+            "0.050547581x(M-1)), M = current as a multiple of motor FLA."
+        )
+
+        if has_stall_data:
             st.markdown("---")
-
-            st.markdown("#### Overload (51) Time-Current Characteristic")
-            has_stall_data = locked_rotor_amps_100 is not None
-            max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
-            if has_stall_data:
-                max_mult = max(max_mult, (locked_rotor_amps_100 / motor_fla) + 1.0)
-            mult_line = np.linspace(1.01, max_mult, 300)
-            t_line = [relay.calculate_overload_trip_time(m * motor_fla) for m in mult_line]
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=mult_line, y=t_line, mode="lines", name=f"Curve X{curve_multiplier:g}", line=dict(color="#2563EB", width=3)))
-            if eval_result["t51"] is not None:
-                fig.add_trace(go.Scatter(
-                    x=[eval_result["multiple_of_fla"]], y=[eval_result["t51"]], mode="markers", name="Operating Point",
-                    marker=dict(size=14, color="red", symbol="x")
-                ))
-
-            t_at_lrc_100 = t_at_lrc_80 = None
-            if has_stall_data:
-                lrc_100_x = locked_rotor_amps_100 / motor_fla
-                lrc_80_x = locked_rotor_amps_80 / motor_fla
-                t_at_lrc_100 = relay.calculate_overload_trip_time(locked_rotor_amps_100)
-                t_at_lrc_80 = relay.calculate_overload_trip_time(locked_rotor_amps_80)
-                fig.add_trace(go.Scatter(
-                    x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
-                    text=["Start @ 100%V"], textposition="top center",
-                    marker=dict(size=13, color="green", symbol="triangle-up")
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
-                    text=["Start @ 80%V"], textposition="top center",
-                    marker=dict(size=13, color="darkgreen", symbol="triangle-up")
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
-                    text=["Safe Stall @ 100%V"], textposition="bottom center",
-                    marker=dict(size=13, color="black", symbol="x")
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
-                    text=["Safe Stall @ 80%V"], textposition="bottom center",
-                    marker=dict(size=13, color="gray", symbol="x")
-                ))
-
-            fig.update_layout(
-                title="SR469 Overload Trip Time vs. Multiple of FLA",
-                xaxis_title="Current (x Motor FLA)", yaxis_title="Trip Time (s)",
-                yaxis_type="log", template="plotly_white", height=450,
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("**Starting/Stall Margin Check**")
             st.caption(
-                "GE Multilin 'Standard' thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)² + "
-                "0.050547581x(M-1)), M = current as a multiple of motor FLA."
+                "The overload curve should pass BELOW both Safe Stall markers (X) and ABOVE both "
+                "Start markers (▲) — i.e. the relay must not trip during a normal start, but must "
+                "trip before the motor's insulation is thermally damaged on a stall."
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
+                st.write(f"**100% V:** trips in {t_at_lrc_100:.1f}s at LRC" if t_at_lrc_100 else "**100% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
+                st.success("Margin OK") if ok_100 else st.error("Check margin")
+            with c2:
+                ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
+                st.write(f"**80% V:** trips in {t_at_lrc_80:.1f}s at LRC" if t_at_lrc_80 else "**80% V:** No trip at LRC")
+                st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
+                st.success("Margin OK") if ok_80 else st.error("Check margin")
+        else:
+            st.caption(
+                "No Locked Rotor Current / Safe Stall Time data is on record for this equipment, "
+                "so the starting/stall margin overlay shown on the Induced Draft Fan's TCC Curve "
+                "isn't available here yet."
             )
 
-            if has_stall_data:
-                st.markdown("---")
-                st.markdown("**Starting/Stall Margin Check**")
+        st.markdown("---")
+        render_historian_overlay(st, project_key, reference_lines=[
+            ("Motor FLA (A)", motor_fla),
+            ("Instantaneous Pickup (A primary)", relay.inst_pickup_amps),
+        ])
+
+        st.markdown("---")
+        st.markdown("#### Other SR469 Functions — Settings Reference (not live-simulated)")
+        st.dataframe(pd.DataFrame([
+            {"Function": "Overload Alarm", "Setting": f"{overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
+            {"Function": "Mechanical Jam Trip", "Setting": f"{mech_jam_pct:.0f}% FLA, {mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
+            {"Function": "Acceleration Timer", "Setting": f"{accel_timer_s:.0f}s", "Note": "Trips if current stays above Overload Pickup past this time after start"},
+            {"Function": "Phase Differential (87)", "Setting": f"{phase_diff_pickup_frac:.2f}x CT, {phase_diff_delay_ms:.0f}ms delay", "Note": "Separate zero-sequence differential CTs"},
+            {"Function": "Stator RTD Alarm/Trip", "Setting": f"{p_data['rtd_stator_c']}°C", "Note": "No bearing RTDs fitted on this motor"},
+            {"Function": "Overvoltage (59)", "Setting": f"{p_data['ov_pickup_pu']:.2f} x rated, {p_data['ov_delay_s']:.0f}s delay", "Note": "Alarm only"},
+            {"Function": "Over/Underfrequency (81)", "Setting": f"{p_data['of_hz']:.1f}Hz / {p_data['uf_hz']:.1f}Hz", "Note": "Alarm only"},
+            {"Function": "Underpower (37)", "Setting": f"{p_data['underpower_kw']:.0f}kW, {p_data['underpower_delay_s']:.0f}s delay", "Note": "Detects lost/broken shaft coupling"},
+            {"Function": "Jogging Block (66)", "Setting": f"{p_data['starts_per_hour']:.0f} starts/hour, {p_data['time_between_starts_min']:.0f} min between starts", "Note": ""},
+            {"Function": "Phase Reversal", "Setting": "Enabled", "Note": ""},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("#### Fault Clearing Time Simulation")
+        st.caption(
+            "Feeds a fault current through the same evaluate_protection() logic used above, "
+            "then adds a typical breaker operating time to show how long the "
+            "current actually flows before it's cleared. The 51 element's trip time comes "
+            "straight from the curve above; the 50 instantaneous element's operate time uses "
+            "the real Instantaneous Delay setting from Current Settings."
+        )
+
+        _fs_scenario_options = ["Short-Circuit Fault"]
+        if has_stall_data:
+            _fs_scenario_options = ["Locked Rotor / Stall", "Short-Circuit Fault"]
+        else:
+            st.caption("No Locked Rotor Current is on record for this equipment, so only the Short-Circuit Fault scenario is available.")
+        fs_scenario = st.radio(
+            "Fault Scenario", _fs_scenario_options, key=f"{project_key}__fault_sim_scenario", horizontal=True,
+            help=(
+                "Locked Rotor / Stall: uses this motor's own Locked Rotor Current @ 100% V — "
+                "normally only enough to exercise the 51 overload curve, not the instantaneous "
+                "element. Short-Circuit Fault: a current above the Instantaneous Pickup, to show "
+                "that element operating instead."
+            ),
+        )
+        fs_breaker_cycles = st.number_input(
+            "Breaker Interrupting Time (cycles)", min_value=1.0, max_value=15.0, value=5.0, step=0.5,
+            key=f"{project_key}__fault_sim_breaker_cycles",
+            help="Time from trip coil energization to fault current interruption — typical motor breakers/contactors are 3-5 cycles. Not confirmed against this plant's own breaker nameplate."
+        )
+
+        fs_cycle_ms = 1000.0 / 60.0
+        fs_preload_ms = 40.0
+        fs_preload_current = motor_fla
+        if fs_scenario.startswith("Locked"):
+            fs_sim_current = locked_rotor_amps_100
+        else:
+            fs_sim_current = relay.inst_pickup_amps * 1.5
+        fs_sim_eval = relay.evaluate_protection(fs_sim_current)
+
+        fs_run_sim = st.button(
+            "▶ Run Fault Simulation", key=f"{project_key}__run_fault_sim",
+            help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
+        )
+        fs_caption_ph = st.empty()
+        fs_chart_ph = st.empty()
+        fs_done_key = f"{project_key}__fault_sim_last"
+
+        def _fs_base_fig():
+            fig = go.Figure()
+            fig.update_layout(
+                xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
+                template="plotly_white", height=340, margin=dict(t=20, b=40),
+            )
+            return fig
+
+        if fs_run_sim:
+            if fs_sim_eval["trip_50"]:
+                fs_relay_ms = relay.inst_delay_ms
+                fs_total_ms = fs_relay_ms + fs_breaker_cycles * fs_cycle_ms
+
+                fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current spikes to {fs_sim_current:,.0f} A primary.")
+                fig1 = _fs_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1")
+                time.sleep(0.9)
+
+                fs_caption_ph.warning(f"🔍 The 50 instantaneous element detects the fault and issues a trip signal at t={fs_relay_ms:.0f} ms — {fs_sim_eval['status']}.")
+                fig2 = _fs_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_relay_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig2.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50 Trips")
+                fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2")
+                time.sleep(0.9)
+
+                fs_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={fs_total_ms:.0f} ms. Total clearing time: {fs_total_ms:.0f} ms ({fs_total_ms / fs_cycle_ms:.1f} cycles).")
+                fig3 = _fs_base_fig()
+                fig3.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_total_ms, fs_total_ms, fs_total_ms + 40.0],
+                    y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current, 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig3.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50 Trips")
+                fig3.add_vline(x=fs_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                fs_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{project_key}__fault_sim_f3")
+
+                st.session_state[fs_done_key] = {
+                    "kind": "trip", "status": fs_sim_eval["status"], "relay_ms": fs_relay_ms, "total_ms": fs_total_ms,
+                    "sim_current": fs_sim_current, "preload_current": fs_preload_current, "log_x": False,
+                }
+            elif fs_sim_eval["trip_51"]:
+                fs_relay_ms = fs_sim_eval["t51"] * 1000.0
+                fs_total_ms = fs_relay_ms + fs_breaker_cycles * fs_cycle_ms
+
+                fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {fs_sim_current:,.0f} A primary (locked rotor).")
+                fig1 = _fs_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig1.update_xaxes(type="log")
+                fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1t")
+                time.sleep(0.9)
+
+                fs_caption_ph.warning(f"🔍 The 51 overload element times out and issues a trip signal at t={fs_relay_ms:.0f} ms ({fs_sim_eval['t51']:.2f}s) — {fs_sim_eval['status']}.")
+                fig2 = _fs_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_relay_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig2.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
+                fig2.update_xaxes(type="log")
+                fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2t")
+                time.sleep(0.9)
+
+                fs_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={fs_total_ms:.0f} ms. Total clearing time: {fs_total_ms / 1000.0:.2f} s.")
+                fig3 = _fs_base_fig()
+                fig3.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_total_ms, fs_total_ms, fs_total_ms * 1.1 + 40.0],
+                    y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current, 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig3.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
+                fig3.add_vline(x=fs_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                fig3.update_xaxes(type="log")
+                fs_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{project_key}__fault_sim_f3t")
+
+                st.session_state[fs_done_key] = {
+                    "kind": "trip_51", "status": fs_sim_eval["status"], "relay_ms": fs_relay_ms, "total_ms": fs_total_ms,
+                    "sim_current": fs_sim_current, "preload_current": fs_preload_current, "log_x": True,
+                }
+            else:
+                fs_window_ms = 200.0
+                fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {fs_sim_current:,.0f} A primary.")
+                fig1 = _fs_base_fig()
+                fig1.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1n")
+                time.sleep(0.9)
+
+                fs_caption_ph.info("🛡️ Neither the 51 nor the instantaneous element crosses its trip threshold at the settings above. No trip.")
+                fig2 = _fs_base_fig()
+                fig2.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_window_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2n")
+
+                st.session_state[fs_done_key] = {
+                    "kind": "no_trip", "status": fs_sim_eval["status"], "window_ms": fs_window_ms,
+                    "sim_current": fs_sim_current, "preload_current": fs_preload_current,
+                }
+        else:
+            fs_last = st.session_state.get(fs_done_key)
+            if fs_last is None:
+                fs_caption_ph.caption("Click **Run Fault Simulation** to watch the fault current rise, the relay detect it, and the breaker clear it, step by step.")
+            elif fs_last["kind"] in ("trip", "trip_51"):
+                fs_dur = f"{fs_last['total_ms'] / fs_cycle_ms:.1f} cycles" if fs_last["kind"] == "trip" else f"{fs_last['total_ms'] / 1000.0:.2f} s"
+                fs_caption_ph.success(f"Last run: {fs_last['status']} — total clearing time {fs_last['total_ms']:.0f} ms ({fs_dur}).")
+                fig_last = _fs_base_fig()
+                fs_tail = fs_last["total_ms"] + 40.0 if fs_last["kind"] == "trip" else fs_last["total_ms"] * 1.1 + 40.0
+                fig_last.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_last["total_ms"], fs_last["total_ms"], fs_tail],
+                    y=[fs_last["preload_current"], fs_last["preload_current"], fs_last["sim_current"], fs_last["sim_current"], 0.0, 0.0],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fig_last.add_vline(x=fs_last["relay_ms"], line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
+                fig_last.add_vline(x=fs_last["total_ms"], line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
+                if fs_last.get("log_x"):
+                    fig_last.update_xaxes(type="log")
+                fs_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{project_key}__fault_sim_last_fig")
+            else:
+                fs_caption_ph.info(f"Last run: {fs_last['status']} — no trip.")
+                fig_last = _fs_base_fig()
+                fig_last.add_trace(go.Scatter(
+                    x=[-fs_preload_ms, 0, 0, fs_last["window_ms"]],
+                    y=[fs_last["preload_current"], fs_last["preload_current"], fs_last["sim_current"], fs_last["sim_current"]],
+                    mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
+                ))
+                fs_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{project_key}__fault_sim_last_fig")
+
+        if project_key == "pa_fan":
+            with st.expander("GE IFC66KD2A 50/50/51 (separate discrete relay)", expanded=False):
+                st.subheader("Electromechanical 50/50/51 Relay (IFC66KD2A)")
                 st.caption(
-                    "The overload curve should pass BELOW both Safe Stall markers (X) and ABOVE both "
-                    "Start markers (▲) — i.e. the relay must not trip during a normal start, but must "
-                    "trip before the motor's insulation is thermally damaged on a stall."
+                    "This motor's own settings document specifies a separate, discrete GE IFC66KD2A "
+                    "50/50/51 electromechanical relay and a GE HFC22B2A backup instantaneous relay, "
+                    "in addition to the SR469 MPR modeled on the other tabs — the same relay stack "
+                    "architecture as the Induced Draft Fan."
                 )
+
+                ifc_eval = ifc_relay.evaluate_protection(test_current)
+                ifc_backup_eval = ifc_backup_relay.evaluate_protection(test_current) if ifc_backup_relay else None
+
+                st.info(f"Test current (set above): **{test_current:.1f} A primary**")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Relay Secondary", f"{ifc_eval['i_relay_sec']:.3f} A")
+                m2.metric("Multiple of 51 Pickup", f"{ifc_eval['multiple_of_pickup_51']:.2f}x")
+                m3.metric("51 Trip Time", f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "No Trip")
+
+                if ifc_eval["is_trip"]:
+                    st.error(ifc_eval["status"])
+                elif ifc_eval["alarm_50b"]:
+                    st.warning(ifc_eval["status"])
+                else:
+                    st.success("SYSTEM HEALTHY (Below Pickup)")
+
+                elem_rows = [
+                    {"Element": "51 (Long Time Inverse)", "State": "TRIP" if ifc_eval["trip_51"] else "Below Pickup",
+                     "Detail": f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "—"},
+                    {"Element": "50A (Instantaneous)", "State": "TRIP" if ifc_eval["trip_50a"] else "Below Pickup",
+                     "Detail": f"Pickup {ifc_relay.pickup_50a:.1f}A sec."},
+                    {"Element": "50B (Overload Alarm)", "State": "ALARM" if ifc_eval["alarm_50b"] else "Normal",
+                     "Detail": f"Est. pickup {ifc_relay.pickup_50b:.2f}A sec. / dropout {ifc_relay.dropout_50b:.2f}A sec."},
+                ]
+                if ifc_backup_eval is not None:
+                    elem_rows.append({
+                        "Element": "50 (Backup, HFC22B2A)",
+                        "State": "TRIP" if ifc_backup_eval["is_trip"] else "Below Pickup",
+                        "Detail": f"Pickup {ifc_backup_relay.pickup_amps:.1f}A sec. (higher-ratio CT, won't saturate)",
+                    })
+                st.table(elem_rows)
+
+                st.markdown("---")
+                st.markdown("**Starting/Stall Margin Check (51 element)**")
+                t_ifc_lrc_100 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_100)) if locked_rotor_amps_100 else None
+                t_ifc_lrc_80 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_80)) if locked_rotor_amps_80 else None
                 c1, c2 = st.columns(2)
                 with c1:
-                    ok_100 = t_at_lrc_100 is not None and accel_time_100 < t_at_lrc_100 < safe_stall_100
-                    st.write(f"**100% V:** trips in {t_at_lrc_100:.1f}s at LRC" if t_at_lrc_100 else "**100% V:** No trip at LRC")
+                    ok_100 = t_ifc_lrc_100 is not None and accel_time_100 < t_ifc_lrc_100 < safe_stall_100
+                    st.write(f"**100% V:** 51 trips in {t_ifc_lrc_100:.1f}s at LRC" if t_ifc_lrc_100 else "**100% V:** No trip at LRC")
                     st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
                     st.success("Margin OK") if ok_100 else st.error("Check margin")
                 with c2:
-                    ok_80 = t_at_lrc_80 is not None and accel_time_80 < t_at_lrc_80 < safe_stall_80
-                    st.write(f"**80% V:** trips in {t_at_lrc_80:.1f}s at LRC" if t_at_lrc_80 else "**80% V:** No trip at LRC")
+                    ok_80 = t_ifc_lrc_80 is not None and accel_time_80 < t_ifc_lrc_80 < safe_stall_80
+                    st.write(f"**80% V:** 51 trips in {t_ifc_lrc_80:.1f}s at LRC" if t_ifc_lrc_80 else "**80% V:** No trip at LRC")
                     st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
                     st.success("Margin OK") if ok_80 else st.error("Check margin")
-            else:
                 st.caption(
-                    "No Locked Rotor Current / Safe Stall Time data is on record for this equipment, "
-                    "so the starting/stall margin overlay shown on the Induced Draft Fan's TCC Curve "
-                    "isn't available here yet."
+                    "Per the settings document's own discussion: at the default Time Dial (4.0), the "
+                    "100% voltage trip time (~16.8s) exceeds the 14.2s safe stall time - accepted in "
+                    "the doc because the SR469 MPR's own cooldown timers already prevent back-to-back "
+                    "hot starts, so the IFC66 is unlikely to see a start from a fully hot motor."
                 )
 
-            st.markdown("---")
-            render_historian_overlay(st, project_key, reference_lines=[
-                ("Motor FLA (A)", motor_fla),
-                ("Instantaneous Pickup (A primary)", relay.inst_pickup_amps),
-            ])
+                st.markdown("---")
+                st.subheader("Time-Current Characteristic (TCC) Curve")
+                m_range_ifc = np.linspace(1.01, 20.0, 400)
+                t_range_ifc = [ifc_relay.calculate_51_trip_time(m * ifc_relay.tap_51) for m in m_range_ifc]
+                fig_ifc = go.Figure()
+                fig_ifc.add_trace(go.Scatter(x=m_range_ifc, y=t_range_ifc, mode="lines", name="51 (Long Time Inverse)", line=dict(color="#2563EB", width=3)))
 
-            st.markdown("---")
-            st.markdown("#### Other SR469 Functions — Settings Reference (not live-simulated)")
-            st.dataframe(pd.DataFrame([
-                {"Function": "Overload Alarm", "Setting": f"{overload_alarm_delay_s:.1f}s delay at Overload Pickup", "Note": "Early warning before the 51 trip"},
-                {"Function": "Mechanical Jam Trip", "Setting": f"{mech_jam_pct:.0f}% FLA, {mech_jam_delay_s:.1f}s delay", "Note": "Disabled until after motor start"},
-                {"Function": "Acceleration Timer", "Setting": f"{accel_timer_s:.0f}s", "Note": "Trips if current stays above Overload Pickup past this time after start"},
-                {"Function": "Phase Differential (87)", "Setting": f"{phase_diff_pickup_frac:.2f}x CT, {phase_diff_delay_ms:.0f}ms delay", "Note": "Separate zero-sequence differential CTs"},
-                {"Function": "Stator RTD Alarm/Trip", "Setting": f"{p_data['rtd_stator_c']}°C", "Note": "No bearing RTDs fitted on this motor"},
-                {"Function": "Overvoltage (59)", "Setting": f"{p_data['ov_pickup_pu']:.2f} x rated, {p_data['ov_delay_s']:.0f}s delay", "Note": "Alarm only"},
-                {"Function": "Over/Underfrequency (81)", "Setting": f"{p_data['of_hz']:.1f}Hz / {p_data['uf_hz']:.1f}Hz", "Note": "Alarm only"},
-                {"Function": "Underpower (37)", "Setting": f"{p_data['underpower_kw']:.0f}kW, {p_data['underpower_delay_s']:.0f}s delay", "Note": "Detects lost/broken shaft coupling"},
-                {"Function": "Jogging Block (66)", "Setting": f"{p_data['starts_per_hour']:.0f} starts/hour, {p_data['time_between_starts_min']:.0f} min between starts", "Note": ""},
-                {"Function": "Phase Reversal", "Setting": "Enabled", "Note": ""},
-            ]), use_container_width=True, hide_index=True)
+                x_50a = ifc_relay.pickup_50a / ifc_relay.tap_51
+                fig_ifc.add_vline(x=x_50a, line=dict(color="#DC2626", width=2, dash="dash"), annotation_text="50A Pickup")
+                x_50b = ifc_relay.pickup_50b / ifc_relay.tap_51
+                fig_ifc.add_vline(x=x_50b, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50B Alarm")
+                if ifc_backup_relay is not None:
+                    x_backup = (ifc_backup_relay.pickup_amps * ifc_backup_relay.effective_ratio) / ifc_relay.tap_51 / ifc_relay.effective_ratio
+                    fig_ifc.add_vline(x=x_backup, line=dict(color="#7C3AED", width=2, dash="dashdot"), annotation_text="Backup 50")
 
-            st.markdown("---")
-            st.markdown("#### Fault Clearing Time Simulation")
-            st.caption(
-                "Feeds a fault current through the same evaluate_protection() logic used above, "
-                "then adds a typical breaker operating time to show how long the "
-                "current actually flows before it's cleared. The 51 element's trip time comes "
-                "straight from the curve above; the 50 instantaneous element's operate time uses "
-                "the real Instantaneous Delay setting from Current Settings."
-            )
+                if locked_rotor_amps_100 is not None:
+                    lrc_100_x = ifc_relay.relay_current(locked_rotor_amps_100) / ifc_relay.tap_51
+                    lrc_80_x = ifc_relay.relay_current(locked_rotor_amps_80) / ifc_relay.tap_51
+                    fig_ifc.add_trace(go.Scatter(
+                        x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
+                        text=["Start @ 100%V"], textposition="top center", marker=dict(size=13, color="green", symbol="triangle-up")
+                    ))
+                    fig_ifc.add_trace(go.Scatter(
+                        x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
+                        text=["Start @ 80%V"], textposition="top center", marker=dict(size=13, color="darkgreen", symbol="triangle-up")
+                    ))
+                    fig_ifc.add_trace(go.Scatter(
+                        x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
+                        text=["Safe Stall @ 100%V"], textposition="bottom center", marker=dict(size=13, color="black", symbol="x")
+                    ))
+                    fig_ifc.add_trace(go.Scatter(
+                        x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
+                        text=["Safe Stall @ 80%V"], textposition="bottom center", marker=dict(size=13, color="gray", symbol="x")
+                    ))
 
-            _fs_scenario_options = ["Short-Circuit Fault"]
-            if has_stall_data:
-                _fs_scenario_options = ["Locked Rotor / Stall", "Short-Circuit Fault"]
-            else:
-                st.caption("No Locked Rotor Current is on record for this equipment, so only the Short-Circuit Fault scenario is available.")
-            fs_scenario = st.radio(
-                "Fault Scenario", _fs_scenario_options, key=f"{project_key}__fault_sim_scenario", horizontal=True,
-                help=(
-                    "Locked Rotor / Stall: uses this motor's own Locked Rotor Current @ 100% V — "
-                    "normally only enough to exercise the 51 overload curve, not the instantaneous "
-                    "element. Short-Circuit Fault: a current above the Instantaneous Pickup, to show "
-                    "that element operating instead."
-                ),
-            )
-            fs_breaker_cycles = st.number_input(
-                "Breaker Interrupting Time (cycles)", min_value=1.0, max_value=15.0, value=5.0, step=0.5,
-                key=f"{project_key}__fault_sim_breaker_cycles",
-                help="Time from trip coil energization to fault current interruption — typical motor breakers/contactors are 3-5 cycles. Not confirmed against this plant's own breaker nameplate."
-            )
-
-            fs_cycle_ms = 1000.0 / 60.0
-            fs_preload_ms = 40.0
-            fs_preload_current = motor_fla
-            if fs_scenario.startswith("Locked"):
-                fs_sim_current = locked_rotor_amps_100
-            else:
-                fs_sim_current = relay.inst_pickup_amps * 1.5
-            fs_sim_eval = relay.evaluate_protection(fs_sim_current)
-
-            fs_run_sim = st.button(
-                "▶ Run Fault Simulation", key=f"{project_key}__run_fault_sim",
-                help="Plays back the fault step by step: current spikes, the relay detects it, then the trip signal reaches the breaker."
-            )
-            fs_caption_ph = st.empty()
-            fs_chart_ph = st.empty()
-            fs_done_key = f"{project_key}__fault_sim_last"
-
-            def _fs_base_fig():
-                fig = go.Figure()
-                fig.update_layout(
-                    xaxis_title="Time (ms, t=0 is fault inception)", yaxis_title="Primary Current (A)",
-                    template="plotly_white", height=340, margin=dict(t=20, b=40),
+                fig_ifc.update_layout(
+                    title="IFC66KD2A 50/50/51 TCC",
+                    xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
+                    xaxis_type="log", yaxis_type="log", template="plotly_white", height=500,
                 )
-                return fig
+                st.plotly_chart(fig_ifc, use_container_width=True)
+                st.caption(
+                    "GE IAC 'Long Time Inverse' curve (5-constant polynomial, GEK-106618C constants) — "
+                    "same formula used for the Induced Draft Fan's own IFC66KD2A. Time dial verified "
+                    "against this motor's own settings doc: TD4 gives ~13.3s at 500% (doc: 13s), "
+                    "~16.8s at 3.7x tap / 100%V LRC (doc: ~16s), ~18.4s at 3.3x tap / 90%V LRC (doc: ~18s)."
+                )
 
-            if fs_run_sim:
-                if fs_sim_eval["trip_50"]:
-                    fs_relay_ms = relay.inst_delay_ms
-                    fs_total_ms = fs_relay_ms + fs_breaker_cycles * fs_cycle_ms
-
-                    fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current spikes to {fs_sim_current:,.0f} A primary.")
-                    fig1 = _fs_base_fig()
-                    fig1.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1")
-                    time.sleep(0.9)
-
-                    fs_caption_ph.warning(f"🔍 The 50 instantaneous element detects the fault and issues a trip signal at t={fs_relay_ms:.0f} ms — {fs_sim_eval['status']}.")
-                    fig2 = _fs_base_fig()
-                    fig2.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_relay_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig2.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50 Trips")
-                    fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2")
-                    time.sleep(0.9)
-
-                    fs_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={fs_total_ms:.0f} ms. Total clearing time: {fs_total_ms:.0f} ms ({fs_total_ms / fs_cycle_ms:.1f} cycles).")
-                    fig3 = _fs_base_fig()
-                    fig3.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_total_ms, fs_total_ms, fs_total_ms + 40.0],
-                        y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current, 0.0, 0.0],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig3.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50 Trips")
-                    fig3.add_vline(x=fs_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
-                    fs_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{project_key}__fault_sim_f3")
-
-                    st.session_state[fs_done_key] = {
-                        "kind": "trip", "status": fs_sim_eval["status"], "relay_ms": fs_relay_ms, "total_ms": fs_total_ms,
-                        "sim_current": fs_sim_current, "preload_current": fs_preload_current, "log_x": False,
-                    }
-                elif fs_sim_eval["trip_51"]:
-                    fs_relay_ms = fs_sim_eval["t51"] * 1000.0
-                    fs_total_ms = fs_relay_ms + fs_breaker_cycles * fs_cycle_ms
-
-                    fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {fs_sim_current:,.0f} A primary (locked rotor).")
-                    fig1 = _fs_base_fig()
-                    fig1.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig1.update_xaxes(type="log")
-                    fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1t")
-                    time.sleep(0.9)
-
-                    fs_caption_ph.warning(f"🔍 The 51 overload element times out and issues a trip signal at t={fs_relay_ms:.0f} ms ({fs_sim_eval['t51']:.2f}s) — {fs_sim_eval['status']}.")
-                    fig2 = _fs_base_fig()
-                    fig2.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_relay_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig2.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
-                    fig2.update_xaxes(type="log")
-                    fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2t")
-                    time.sleep(0.9)
-
-                    fs_caption_ph.success(f"✅ Trip signal reaches the breaker — it interrupts the fault at t={fs_total_ms:.0f} ms. Total clearing time: {fs_total_ms / 1000.0:.2f} s.")
-                    fig3 = _fs_base_fig()
-                    fig3.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_total_ms, fs_total_ms, fs_total_ms * 1.1 + 40.0],
-                        y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current, 0.0, 0.0],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig3.add_vline(x=fs_relay_ms, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="51 Trips")
-                    fig3.add_vline(x=fs_total_ms, line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
-                    fig3.update_xaxes(type="log")
-                    fs_chart_ph.plotly_chart(fig3, use_container_width=True, key=f"{project_key}__fault_sim_f3t")
-
-                    st.session_state[fs_done_key] = {
-                        "kind": "trip_51", "status": fs_sim_eval["status"], "relay_ms": fs_relay_ms, "total_ms": fs_total_ms,
-                        "sim_current": fs_sim_current, "preload_current": fs_preload_current, "log_x": True,
-                    }
-                else:
-                    fs_window_ms = 200.0
-                    fs_caption_ph.warning(f"⚡ Fault occurs at t=0 — current rises to {fs_sim_current:,.0f} A primary.")
-                    fig1 = _fs_base_fig()
-                    fig1.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0], y=[fs_preload_current, fs_preload_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fs_chart_ph.plotly_chart(fig1, use_container_width=True, key=f"{project_key}__fault_sim_f1n")
-                    time.sleep(0.9)
-
-                    fs_caption_ph.info("🛡️ Neither the 51 nor the instantaneous element crosses its trip threshold at the settings above. No trip.")
-                    fig2 = _fs_base_fig()
-                    fig2.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_window_ms], y=[fs_preload_current, fs_preload_current, fs_sim_current, fs_sim_current],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fs_chart_ph.plotly_chart(fig2, use_container_width=True, key=f"{project_key}__fault_sim_f2n")
-
-                    st.session_state[fs_done_key] = {
-                        "kind": "no_trip", "status": fs_sim_eval["status"], "window_ms": fs_window_ms,
-                        "sim_current": fs_sim_current, "preload_current": fs_preload_current,
-                    }
-            else:
-                fs_last = st.session_state.get(fs_done_key)
-                if fs_last is None:
-                    fs_caption_ph.caption("Click **Run Fault Simulation** to watch the fault current rise, the relay detect it, and the breaker clear it, step by step.")
-                elif fs_last["kind"] in ("trip", "trip_51"):
-                    fs_dur = f"{fs_last['total_ms'] / fs_cycle_ms:.1f} cycles" if fs_last["kind"] == "trip" else f"{fs_last['total_ms'] / 1000.0:.2f} s"
-                    fs_caption_ph.success(f"Last run: {fs_last['status']} — total clearing time {fs_last['total_ms']:.0f} ms ({fs_dur}).")
-                    fig_last = _fs_base_fig()
-                    fs_tail = fs_last["total_ms"] + 40.0 if fs_last["kind"] == "trip" else fs_last["total_ms"] * 1.1 + 40.0
-                    fig_last.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_last["total_ms"], fs_last["total_ms"], fs_tail],
-                        y=[fs_last["preload_current"], fs_last["preload_current"], fs_last["sim_current"], fs_last["sim_current"], 0.0, 0.0],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fig_last.add_vline(x=fs_last["relay_ms"], line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="Relay Trips")
-                    fig_last.add_vline(x=fs_last["total_ms"], line=dict(color="#16A34A", width=2, dash="dash"), annotation_text="Breaker Clears")
-                    if fs_last.get("log_x"):
-                        fig_last.update_xaxes(type="log")
-                    fs_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{project_key}__fault_sim_last_fig")
-                else:
-                    fs_caption_ph.info(f"Last run: {fs_last['status']} — no trip.")
-                    fig_last = _fs_base_fig()
-                    fig_last.add_trace(go.Scatter(
-                        x=[-fs_preload_ms, 0, 0, fs_last["window_ms"]],
-                        y=[fs_last["preload_current"], fs_last["preload_current"], fs_last["sim_current"], fs_last["sim_current"]],
-                        mode="lines", line=dict(color="#DC2626", width=3), name="Fault Current",
-                    ))
-                    fs_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{project_key}__fault_sim_last_fig")
-
-            if project_key == "pa_fan":
-                with st.expander("GE IFC66KD2A 50/50/51 (separate discrete relay)", expanded=False):
-                    st.subheader("Electromechanical 50/50/51 Relay (IFC66KD2A)")
-                    st.caption(
-                        "This motor's own settings document specifies a separate, discrete GE IFC66KD2A "
-                        "50/50/51 electromechanical relay and a GE HFC22B2A backup instantaneous relay, "
-                        "in addition to the SR469 MPR modeled on the other tabs — the same relay stack "
-                        "architecture as the Induced Draft Fan."
-                    )
-
-                    ifc_eval = ifc_relay.evaluate_protection(test_current)
-                    ifc_backup_eval = ifc_backup_relay.evaluate_protection(test_current) if ifc_backup_relay else None
-
-                    st.info(f"Test current (set above): **{test_current:.1f} A primary**")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Relay Secondary", f"{ifc_eval['i_relay_sec']:.3f} A")
-                    m2.metric("Multiple of 51 Pickup", f"{ifc_eval['multiple_of_pickup_51']:.2f}x")
-                    m3.metric("51 Trip Time", f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "No Trip")
-
-                    if ifc_eval["is_trip"]:
-                        st.error(ifc_eval["status"])
-                    elif ifc_eval["alarm_50b"]:
-                        st.warning(ifc_eval["status"])
-                    else:
-                        st.success("SYSTEM HEALTHY (Below Pickup)")
-
-                    elem_rows = [
-                        {"Element": "51 (Long Time Inverse)", "State": "TRIP" if ifc_eval["trip_51"] else "Below Pickup",
-                         "Detail": f"{ifc_eval['t51']:.2f}s" if ifc_eval["t51"] is not None else "—"},
-                        {"Element": "50A (Instantaneous)", "State": "TRIP" if ifc_eval["trip_50a"] else "Below Pickup",
-                         "Detail": f"Pickup {ifc_relay.pickup_50a:.1f}A sec."},
-                        {"Element": "50B (Overload Alarm)", "State": "ALARM" if ifc_eval["alarm_50b"] else "Normal",
-                         "Detail": f"Est. pickup {ifc_relay.pickup_50b:.2f}A sec. / dropout {ifc_relay.dropout_50b:.2f}A sec."},
+                st.markdown("---")
+                st.markdown("#### Settings Reference")
+                _ifc_sheet_rows = [
+                    ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                    ("51 Tap (A sec.)", f"{ifc_relay.tap_51:.2f}"),
+                    ("51 Time Dial", f"{ifc_relay.time_dial:.2f}"),
+                    ("50A Pickup (A sec.)", f"{ifc_relay.pickup_50a:.2f}"),
+                    ("50B Dropout (A sec.)", f"{ifc_relay.dropout_50b:.2f}"),
+                    ("Target & Seal-in (A)", f"{ifc_relay.target_seal_in:.2f}"),
+                ]
+                if ifc_backup_relay is not None:
+                    _ifc_sheet_rows += [
+                        ("Backup 50 CT Ratio", f"{ifc_backup_relay.ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
+                        ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
                     ]
-                    if ifc_backup_eval is not None:
-                        elem_rows.append({
-                            "Element": "50 (Backup, HFC22B2A)",
-                            "State": "TRIP" if ifc_backup_eval["is_trip"] else "Below Pickup",
-                            "Detail": f"Pickup {ifc_backup_relay.pickup_amps:.1f}A sec. (higher-ratio CT, won't saturate)",
-                        })
-                    st.table(elem_rows)
+                render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
 
-                    st.markdown("---")
-                    st.markdown("**Starting/Stall Margin Check (51 element)**")
-                    t_ifc_lrc_100 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_100)) if locked_rotor_amps_100 else None
-                    t_ifc_lrc_80 = ifc_relay.calculate_51_trip_time(ifc_relay.relay_current(locked_rotor_amps_80)) if locked_rotor_amps_80 else None
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        ok_100 = t_ifc_lrc_100 is not None and accel_time_100 < t_ifc_lrc_100 < safe_stall_100
-                        st.write(f"**100% V:** 51 trips in {t_ifc_lrc_100:.1f}s at LRC" if t_ifc_lrc_100 else "**100% V:** No trip at LRC")
-                        st.write(f"Accel {accel_time_100}s < Trip < Safe Stall {safe_stall_100}s")
-                        st.success("Margin OK") if ok_100 else st.error("Check margin")
-                    with c2:
-                        ok_80 = t_ifc_lrc_80 is not None and accel_time_80 < t_ifc_lrc_80 < safe_stall_80
-                        st.write(f"**80% V:** 51 trips in {t_ifc_lrc_80:.1f}s at LRC" if t_ifc_lrc_80 else "**80% V:** No trip at LRC")
-                        st.write(f"Accel {accel_time_80}s < Trip < Safe Stall {safe_stall_80}s")
-                        st.success("Margin OK") if ok_80 else st.error("Check margin")
-                    st.caption(
-                        "Per the settings document's own discussion: at the default Time Dial (4.0), the "
-                        "100% voltage trip time (~16.8s) exceeds the 14.2s safe stall time - accepted in "
-                        "the doc because the SR469 MPR's own cooldown timers already prevent back-to-back "
-                        "hot starts, so the IFC66 is unlikely to see a start from a fully hot motor."
-                    )
+    # -----------------------------------------------------------------------
+    # TAB 2 — Commissioning & Injection Tool
+    # -----------------------------------------------------------------------
+    with c["Commissioning & Injection Tool"]:
+        st.subheader("Commissioning & Secondary Current Injection Assistant")
+        st.write(
+            "Pick a target multiple of the Overload Pickup to calculate the exact secondary Amps to "
+            "inject at your test set, and see the expected trip time."
+        )
+        target_multiple = st.slider("Target Multiple of Motor FLA (M)", 1.05, 10.0, 3.9, 0.05, key=f"{project_key}__inj_multiple")
+        inj_pri_amps = target_multiple * motor_fla
+        inj_sec_amps = relay.relay_current(inj_pri_amps)
+        expected_t = relay.calculate_overload_trip_time(inj_pri_amps)
+        ic1, ic2, ic3 = st.columns(3)
+        ic1.metric("Inject (primary A)", f"{inj_pri_amps:.1f} A")
+        ic2.metric("Equivalent Secondary Current", f"{inj_sec_amps:.3f} A")
+        ic3.metric("Expected Overload Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
 
-                    st.markdown("---")
-                    st.subheader("Time-Current Characteristic (TCC) Curve")
-                    m_range_ifc = np.linspace(1.01, 20.0, 400)
-                    t_range_ifc = [ifc_relay.calculate_51_trip_time(m * ifc_relay.tap_51) for m in m_range_ifc]
-                    fig_ifc = go.Figure()
-                    fig_ifc.add_trace(go.Scatter(x=m_range_ifc, y=t_range_ifc, mode="lines", name="51 (Long Time Inverse)", line=dict(color="#2563EB", width=3)))
+        st.markdown("---")
+        st.subheader("Auto-Sweep Full Curve Test Table")
+        sw1, sw2, sw3 = st.columns(3)
+        with sw1:
+            sweep_start = st.number_input("Sweep Start (Multiple of FLA)", value=1.5, min_value=1.05, step=0.1, key=f"{project_key}__sweep_start")
+        with sw2:
+            sweep_end = st.number_input("Sweep End (Multiple of FLA)", value=6.0, step=0.5, key=f"{project_key}__sweep_end")
+        with sw3:
+            sweep_step = st.number_input("Sweep Step (Multiple of FLA)", value=0.5, min_value=0.1, step=0.1, key=f"{project_key}__sweep_step")
 
-                    x_50a = ifc_relay.pickup_50a / ifc_relay.tap_51
-                    fig_ifc.add_vline(x=x_50a, line=dict(color="#DC2626", width=2, dash="dash"), annotation_text="50A Pickup")
-                    x_50b = ifc_relay.pickup_50b / ifc_relay.tap_51
-                    fig_ifc.add_vline(x=x_50b, line=dict(color="#F59E0B", width=2, dash="dot"), annotation_text="50B Alarm")
-                    if ifc_backup_relay is not None:
-                        x_backup = (ifc_backup_relay.pickup_amps * ifc_backup_relay.effective_ratio) / ifc_relay.tap_51 / ifc_relay.effective_ratio
-                        fig_ifc.add_vline(x=x_backup, line=dict(color="#7C3AED", width=2, dash="dashdot"), annotation_text="Backup 50")
-
-                    if locked_rotor_amps_100 is not None:
-                        lrc_100_x = ifc_relay.relay_current(locked_rotor_amps_100) / ifc_relay.tap_51
-                        lrc_80_x = ifc_relay.relay_current(locked_rotor_amps_80) / ifc_relay.tap_51
-                        fig_ifc.add_trace(go.Scatter(
-                            x=[lrc_100_x], y=[accel_time_100], mode="markers+text", name="Start @ 100% V",
-                            text=["Start @ 100%V"], textposition="top center", marker=dict(size=13, color="green", symbol="triangle-up")
-                        ))
-                        fig_ifc.add_trace(go.Scatter(
-                            x=[lrc_80_x], y=[accel_time_80], mode="markers+text", name="Start @ 80% V",
-                            text=["Start @ 80%V"], textposition="top center", marker=dict(size=13, color="darkgreen", symbol="triangle-up")
-                        ))
-                        fig_ifc.add_trace(go.Scatter(
-                            x=[lrc_100_x], y=[safe_stall_100], mode="markers+text", name="Safe Stall @ 100% V",
-                            text=["Safe Stall @ 100%V"], textposition="bottom center", marker=dict(size=13, color="black", symbol="x")
-                        ))
-                        fig_ifc.add_trace(go.Scatter(
-                            x=[lrc_80_x], y=[safe_stall_80], mode="markers+text", name="Safe Stall @ 80% V",
-                            text=["Safe Stall @ 80%V"], textposition="bottom center", marker=dict(size=13, color="gray", symbol="x")
-                        ))
-
-                    fig_ifc.update_layout(
-                        title="IFC66KD2A 50/50/51 TCC",
-                        xaxis_title="Current (x 51 Tap)", yaxis_title="Trip Time (s)",
-                        xaxis_type="log", yaxis_type="log", template="plotly_white", height=500,
-                    )
-                    st.plotly_chart(fig_ifc, use_container_width=True)
-                    st.caption(
-                        "GE IAC 'Long Time Inverse' curve (5-constant polynomial, GEK-106618C constants) — "
-                        "same formula used for the Induced Draft Fan's own IFC66KD2A. Time dial verified "
-                        "against this motor's own settings doc: TD4 gives ~13.3s at 500% (doc: 13s), "
-                        "~16.8s at 3.7x tap / 100%V LRC (doc: ~16s), ~18.4s at 3.3x tap / 90%V LRC (doc: ~18s)."
-                    )
-
-                    st.markdown("---")
-                    st.markdown("#### Settings Reference")
-                    _ifc_sheet_rows = [
-                        ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
-                        ("51 Tap (A sec.)", f"{ifc_relay.tap_51:.2f}"),
-                        ("51 Time Dial", f"{ifc_relay.time_dial:.2f}"),
-                        ("50A Pickup (A sec.)", f"{ifc_relay.pickup_50a:.2f}"),
-                        ("50B Dropout (A sec.)", f"{ifc_relay.dropout_50b:.2f}"),
-                        ("Target & Seal-in (A)", f"{ifc_relay.target_seal_in:.2f}"),
-                    ]
-                    if ifc_backup_relay is not None:
-                        _ifc_sheet_rows += [
-                            ("Backup 50 CT Ratio", f"{ifc_backup_relay.ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
-                            ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
-                        ]
-                    render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
-
-        # -----------------------------------------------------------------------
-        # TAB 2 — Commissioning & Injection Tool
-        # -----------------------------------------------------------------------
-        with tab2:
-            st.subheader("Commissioning & Secondary Current Injection Assistant")
-            st.write(
-                "Pick a target multiple of the Overload Pickup to calculate the exact secondary Amps to "
-                "inject at your test set, and see the expected trip time."
-            )
-            target_multiple = st.slider("Target Multiple of Motor FLA (M)", 1.05, 10.0, 3.9, 0.05, key=f"{project_key}__inj_multiple")
-            inj_pri_amps = target_multiple * motor_fla
-            inj_sec_amps = relay.relay_current(inj_pri_amps)
-            expected_t = relay.calculate_overload_trip_time(inj_pri_amps)
-            ic1, ic2, ic3 = st.columns(3)
-            ic1.metric("Inject (primary A)", f"{inj_pri_amps:.1f} A")
-            ic2.metric("Equivalent Secondary Current", f"{inj_sec_amps:.3f} A")
-            ic3.metric("Expected Overload Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
-
-            st.markdown("---")
-            st.subheader("Auto-Sweep Full Curve Test Table")
-            sw1, sw2, sw3 = st.columns(3)
-            with sw1:
-                sweep_start = st.number_input("Sweep Start (Multiple of FLA)", value=1.5, min_value=1.05, step=0.1, key=f"{project_key}__sweep_start")
-            with sw2:
-                sweep_end = st.number_input("Sweep End (Multiple of FLA)", value=6.0, step=0.5, key=f"{project_key}__sweep_end")
-            with sw3:
-                sweep_step = st.number_input("Sweep Step (Multiple of FLA)", value=0.5, min_value=0.1, step=0.1, key=f"{project_key}__sweep_step")
-
-            if st.button("Generate Sweep Table", key=f"{project_key}__sweep_btn"):
-                if sweep_end <= sweep_start or sweep_step <= 0:
-                    st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-                else:
-                    sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                    sweep_rows = []
-                    for m in sweep_points:
-                        pri_amps = m * motor_fla
-                        t = relay.calculate_overload_trip_time(pri_amps)
-                        sweep_rows.append({
-                            "Multiple of FLA (M)": round(float(m), 3),
-                            "Primary Current (A)": round(pri_amps, 1),
-                            "Secondary Current (A)": round(relay.relay_current(pri_amps), 3),
-                            "Overload Trip Time (s)": round(t, 3) if t is not None else None,
-                        })
-                    st.session_state[f"{project_key}_sweep_df"] = pd.DataFrame(sweep_rows)
-
-            if f"{project_key}_sweep_df" in st.session_state:
-                st.dataframe(st.session_state[f"{project_key}_sweep_df"], use_container_width=True)
-                csv_sweep = st.session_state[f"{project_key}_sweep_df"].to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="Download Sweep Table as CSV",
-                    data=csv_sweep,
-                    file_name=f"{project_key}_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv",
-                    key=f"{project_key}__sweep_dl",
-                )
-
-        # -----------------------------------------------------------------------
-        # TAB 4 — Settings Summary & Approval
-        # -----------------------------------------------------------------------
-        with tab4:
-            st.subheader("Settings Summary & Approval Record")
-            st.caption(
-                "Record the settings basis and review status before exporting a controlled report. "
-                "This record supports engineering review; it does not replace the approved protection study."
-            )
-
-            def _ensure(key, default):
-                if key not in st.session_state:
-                    st.session_state[key] = default
-
-            _ensure(f"{project_key}__source_document", "Data.xlsx (Motor Data sheet)")
-            _ensure(f"{project_key}__revision", "Rev. 0")
-            _ensure(f"{project_key}__prepared_by", "")
-            _ensure(f"{project_key}__reviewed_by", "")
-            _ensure(f"{project_key}__approval_status", "Draft — engineering review required")
-            _ensure(f"{project_key}__review_note", "")
-
-            source_document = st.text_input("Source document", key=f"{project_key}__source_document")
-            col_doc_1, col_doc_2 = st.columns(2)
-            with col_doc_1:
-                revision = st.text_input("Document / settings revision", key=f"{project_key}__revision")
-                prepared_by = st.text_input("Prepared by", key=f"{project_key}__prepared_by")
-            with col_doc_2:
-                reviewed_by = st.text_input("Reviewed by", key=f"{project_key}__reviewed_by")
-                approval_status = st.selectbox(
-                    "Review status",
-                    ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
-                    key=f"{project_key}__approval_status",
-                )
-            review_note = st.text_area("Review note / change description", key=f"{project_key}__review_note")
-
-            st.markdown("### Applied Settings")
-            summary_rows = [
-                {"Category": "Motor", "Parameter": "Full-load current", "Value": f"{motor_fla:.0f} A"},
-                {"Category": "CT", "Parameter": "Phase CT ratio", "Value": f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"},
-                {"Category": "CT", "Parameter": "Ground CT ratio", "Value": f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"},
-                {"Category": "Overload", "Parameter": "Pickup / Curve Multiplier", "Value": f"{overload_pickup_pct:.0f}% FLA / CM {curve_multiplier:.1f}"},
-                {"Category": "Instantaneous", "Parameter": "Pickup / Delay", "Value": f"{inst_pickup_multiple_of_ct:.1f}x CT sec. ({relay.inst_pickup_amps:.0f}A primary) / {inst_delay_ms:.0f}ms"},
-                {"Category": "Ground Fault", "Parameter": "Pickup / Delay", "Value": f"{gf_pickup_frac:.2f}x Ground CT ({relay.gf_pickup_amps:.2f}A) / {gf_delay_ms:.0f}ms"},
-                {"Category": "Unbalance", "Parameter": "Alarm / Trip", "Value": f"{unbal_alarm_pct:.0f}% / {unbal_trip_pct:.0f}%"},
-            ]
-            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
-
-            st.markdown("### Coordination Review")
-            checks = [
-                {
-                    "label": "Instantaneous pickup above motor FLA",
-                    "passed": relay.inst_pickup_amps > motor_fla,
-                    "detail": f"{relay.inst_pickup_amps:.0f} A primary versus {motor_fla:.0f} A FLA",
-                },
-                {
-                    "label": "Overload pickup above 100% FLA",
-                    "passed": overload_pickup_pct > 100.0,
-                    "detail": f"Overload pickup set at {overload_pickup_pct:.0f}% FLA",
-                },
-            ]
-            all_pass = all(c["passed"] for c in checks)
-            if all_pass:
-                st.success("All displayed coordination checks pass. Engineering approval is still required before issue.")
+        if st.button("Generate Sweep Table", key=f"{project_key}__sweep_btn"):
+            if sweep_end <= sweep_start or sweep_step <= 0:
+                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
             else:
-                st.error("One or more coordination checks require engineering review before approval.")
-            st.dataframe(
-                pd.DataFrame([{"Check": c["label"], "Result": "PASS" if c["passed"] else "REVIEW REQUIRED", "Basis": c["detail"]} for c in checks]),
-                use_container_width=True, hide_index=True,
-            )
+                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+                sweep_rows = []
+                for m in sweep_points:
+                    pri_amps = m * motor_fla
+                    t = relay.calculate_overload_trip_time(pri_amps)
+                    sweep_rows.append({
+                        "Multiple of FLA (M)": round(float(m), 3),
+                        "Primary Current (A)": round(pri_amps, 1),
+                        "Secondary Current (A)": round(relay.relay_current(pri_amps), 3),
+                        "Overload Trip Time (s)": round(t, 3) if t is not None else None,
+                    })
+                st.session_state[f"{project_key}_sweep_df"] = pd.DataFrame(sweep_rows)
 
-            approval = {
-                "source_document": source_document, "revision": revision,
-                "prepared_by": prepared_by or "Not recorded", "reviewed_by": reviewed_by or "Not recorded",
-                "approval_status": approval_status, "review_note": review_note or "None",
-            }
-            approval_pdf_bytes = generate_fan_motor_pdf_report(
-                f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
-                test_current, ground_current, unbalance_input, approval=approval,
-            )
+        if f"{project_key}_sweep_df" in st.session_state:
+            st.dataframe(st.session_state[f"{project_key}_sweep_df"], use_container_width=True)
+            csv_sweep = st.session_state[f"{project_key}_sweep_df"].to_csv(index=False).encode("utf-8")
             st.download_button(
-                label="Download Settings Summary & Approval Report (PDF)",
-                data=approval_pdf_bytes,
-                file_name=f"{project_key}_Settings_Summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
-                key=f"{project_key}__approval_pdf_dl",
+                label="Download Sweep Table as CSV",
+                data=csv_sweep,
+                file_name=f"{project_key}_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                key=f"{project_key}__sweep_dl",
             )
 
-            st.markdown("---")
-            st.markdown("#### Save Profile")
-            st.caption(
-                "Name and download every setting currently active on this page — most useful after "
-                "entering your own values under Custom Profile, so you can pick this file back up "
-                "next time instead of re-typing everything. Use the loader in the sidebar to restore "
-                "it later."
+    # -----------------------------------------------------------------------
+    # TAB 4 — Settings Summary & Approval
+    # -----------------------------------------------------------------------
+    with c["Settings Summary & Approval"]:
+        st.subheader("Settings Summary & Approval Record")
+        st.caption(
+            "Record the settings basis and review status before exporting a controlled report. "
+            "This record supports engineering review; it does not replace the approved protection study."
+        )
+
+        def _ensure(key, default):
+            if key not in st.session_state:
+                st.session_state[key] = default
+
+        _ensure(f"{project_key}__source_document", "Data.xlsx (Motor Data sheet)")
+        _ensure(f"{project_key}__revision", "Rev. 0")
+        _ensure(f"{project_key}__prepared_by", "")
+        _ensure(f"{project_key}__reviewed_by", "")
+        _ensure(f"{project_key}__approval_status", "Draft — engineering review required")
+        _ensure(f"{project_key}__review_note", "")
+
+        source_document = st.text_input("Source document", key=f"{project_key}__source_document")
+        col_doc_1, col_doc_2 = st.columns(2)
+        with col_doc_1:
+            revision = st.text_input("Document / settings revision", key=f"{project_key}__revision")
+            prepared_by = st.text_input("Prepared by", key=f"{project_key}__prepared_by")
+        with col_doc_2:
+            reviewed_by = st.text_input("Reviewed by", key=f"{project_key}__reviewed_by")
+            approval_status = st.selectbox(
+                "Review status",
+                ["Draft — engineering review required", "Reviewed — pending approval", "Approved for issue"],
+                key=f"{project_key}__approval_status",
             )
-            export_profile_button(
-                st, project_key, f"{project_key}__",
-                default_name=f"{fan_type} Profile", button_key=project_key,
-            )
+        review_note = st.text_area("Review note / change description", key=f"{project_key}__review_note")
+
+        st.markdown("### Applied Settings")
+        summary_rows = [
+            {"Category": "Motor", "Parameter": "Full-load current", "Value": f"{motor_fla:.0f} A"},
+            {"Category": "CT", "Parameter": "Phase CT ratio", "Value": f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"},
+            {"Category": "CT", "Parameter": "Ground CT ratio", "Value": f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"},
+            {"Category": "Overload", "Parameter": "Pickup / Curve Multiplier", "Value": f"{overload_pickup_pct:.0f}% FLA / CM {curve_multiplier:.1f}"},
+            {"Category": "Instantaneous", "Parameter": "Pickup / Delay", "Value": f"{inst_pickup_multiple_of_ct:.1f}x CT sec. ({relay.inst_pickup_amps:.0f}A primary) / {inst_delay_ms:.0f}ms"},
+            {"Category": "Ground Fault", "Parameter": "Pickup / Delay", "Value": f"{gf_pickup_frac:.2f}x Ground CT ({relay.gf_pickup_amps:.2f}A) / {gf_delay_ms:.0f}ms"},
+            {"Category": "Unbalance", "Parameter": "Alarm / Trip", "Value": f"{unbal_alarm_pct:.0f}% / {unbal_trip_pct:.0f}%"},
+        ]
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+        st.markdown("### Coordination Review")
+        checks = [
+            {
+                "label": "Instantaneous pickup above motor FLA",
+                "passed": relay.inst_pickup_amps > motor_fla,
+                "detail": f"{relay.inst_pickup_amps:.0f} A primary versus {motor_fla:.0f} A FLA",
+            },
+            {
+                "label": "Overload pickup above 100% FLA",
+                "passed": overload_pickup_pct > 100.0,
+                "detail": f"Overload pickup set at {overload_pickup_pct:.0f}% FLA",
+            },
+        ]
+        all_pass = all(c["passed"] for c in checks)
+        if all_pass:
+            st.success("All displayed coordination checks pass. Engineering approval is still required before issue.")
+        else:
+            st.error("One or more coordination checks require engineering review before approval.")
+        st.dataframe(
+            pd.DataFrame([{"Check": c["label"], "Result": "PASS" if c["passed"] else "REVIEW REQUIRED", "Basis": c["detail"]} for c in checks]),
+            use_container_width=True, hide_index=True,
+        )
+
+        approval = {
+            "source_document": source_document, "revision": revision,
+            "prepared_by": prepared_by or "Not recorded", "reviewed_by": reviewed_by or "Not recorded",
+            "approval_status": approval_status, "review_note": review_note or "None",
+        }
+        approval_pdf_bytes = generate_fan_motor_pdf_report(
+            f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
+            test_current, ground_current, unbalance_input, approval=approval,
+        )
+        st.download_button(
+            label="Download Settings Summary & Approval Report (PDF)",
+            data=approval_pdf_bytes,
+            file_name=f"{project_key}_Settings_Summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            key=f"{project_key}__approval_pdf_dl",
+        )
+
+        st.markdown("---")
+        st.markdown("#### Save Profile")
+        st.caption(
+            "Name and download every setting currently active on this page — most useful after "
+            "entering your own values under Custom Profile, so you can pick this file back up "
+            "next time instead of re-typing everything. Use the loader in the sidebar to restore "
+            "it later."
+        )
+        export_profile_button(
+            st, project_key, f"{project_key}__",
+            default_name=f"{fan_type} Profile", button_key=project_key,
+        )
 
