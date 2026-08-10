@@ -47,9 +47,9 @@ root cause, since they were drafted before this taxonomy was introduced.
 """
 
 CATEGORIES = [
-    "GE G60 (Generator 87G)",
-    "Mitsubishi CAC1-10-M3 / CAC2-10-M3 (Transformer Differential)",
-    "Multilin SR469 / GE 869 (Motor Protection)",
+    "GE G60",
+    "Mitsubishi CAC1-10-M3 / CAC2-10-M3",
+    "Multilin SR469 / GE 869",
 ]
 
 FREQUENCY_OPTIONS = ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "As-needed"]
@@ -79,9 +79,9 @@ def risk_level(rpn):
     return "High"
 
 
-_G60 = "GE G60 (Generator 87G)"
-_CAC = "Mitsubishi CAC1-10-M3 / CAC2-10-M3 (Transformer Differential)"
-_SR469 = "Multilin SR469 / GE 869 (Motor Protection)"
+_G60 = "GE G60"
+_CAC = "Mitsubishi CAC1-10-M3 / CAC2-10-M3"
+_SR469 = "Multilin SR469 / GE 869"
 
 FMEA_ENTRIES = [
     # --- GE G60 (Generator 87G) -------------------------------------------------
