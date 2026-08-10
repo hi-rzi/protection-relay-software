@@ -125,30 +125,27 @@ for rid in visible_ids:
         "Component": r["component"],
         "Failure Category": r.get("failure_category", ""),
         "Failure Mode": r["failure_mode"],
-        "Potential Cause": r["potential_cause"],
-        "Potential Effect": r["potential_effect"],
-        "Diagnostics": r["detection_method"],
         "S": r["default_severity"],
         "O": r["default_occurrence"],
         "D": r["default_detection"],
         "RPN": rpn,
         "Risk": risk_level(rpn),
-        "Maintenance Task": r.get("maintenance_task", ""),
-        "Frequency": r.get("maintenance_frequency", FREQUENCY_OPTIONS[0]),
-        "Recommended Action": r.get("recommended_action", ""),
     })
 
 display_df = pd.DataFrame(display_rows)
 if sort_desc and not display_df.empty:
     display_df = display_df.sort_values("RPN", ascending=False).reset_index(drop=True)
 
+st.caption(
+    "Scores only. Pick a row below to view its cause/effect/diagnostics and edit its "
+    "maintenance task."
+)
 edited_df = st.data_editor(
     display_df,
     key="fmea_editor",
     use_container_width=True,
     hide_index=True,
-    disabled=["id", "Category", "Component", "Failure Category", "Failure Mode",
-              "Potential Cause", "Potential Effect", "Diagnostics", "RPN", "Risk"],
+    disabled=["id", "Category", "Component", "Failure Category", "Failure Mode", "RPN", "Risk"],
     column_config={
         "id": None,
         "Failure Category": st.column_config.TextColumn("Failure Category", width="small", help="Root-cause branch from the failure-cause diagram."),
@@ -156,24 +153,71 @@ edited_df = st.data_editor(
         "O": st.column_config.NumberColumn("O", min_value=1, max_value=10, step=1, help="Occurrence (1-10)"),
         "D": st.column_config.NumberColumn("D", min_value=1, max_value=10, step=1, help="Detection (1 = easily caught, 10 = essentially undetectable)"),
         "RPN": st.column_config.NumberColumn("RPN", help="Severity x Occurrence x Detection"),
-        "Diagnostics": st.column_config.TextColumn("Diagnostics", width="medium", help="How this failure is actually detected - an alarm, a supervision circuit, a periodic test."),
-        "Maintenance Task": st.column_config.TextColumn("Maintenance Task", width="large", help="What to do to prevent, detect, or respond to this failure mode."),
-        "Frequency": st.column_config.SelectboxColumn("Frequency", options=FREQUENCY_OPTIONS, help="Recalibrate against your plant's own maintenance procedure/standard."),
-        "Recommended Action": st.column_config.TextColumn("Recommended Action", width="large"),
     },
 )
 
-# Write edits back into the session-held rows by id, so switching the category
-# filter (which only changes what's passed to data_editor next rerun) doesn't
-# lose anything already typed.
+# Write S/O/D edits back into the session-held rows by id, so switching the
+# category filter (which only changes what's passed to data_editor next rerun)
+# doesn't lose anything already typed.
 for _, row in edited_df.iterrows():
     target = rows_by_id[row["id"]]
     target["default_severity"] = int(row["S"])
     target["default_occurrence"] = int(row["O"])
     target["default_detection"] = int(row["D"])
-    target["maintenance_task"] = row["Maintenance Task"]
-    target["maintenance_frequency"] = row["Frequency"]
-    target["recommended_action"] = row["Recommended Action"]
+
+# ---------------------------------------------------------------------------
+# Row detail - the table above is deliberately lean (scores only); everything
+# else about one failure mode (cause, effect, diagnostics, maintenance task/
+# frequency, recommended action) lives here, one row at a time, rather than as
+# 6 more columns nobody can scan at once. Still attached to the specific row
+# by id, same as before - just a different presentation of the same data.
+# ---------------------------------------------------------------------------
+st.markdown("#### Row Detail")
+
+detail_ids = edited_df["id"].tolist()
+detail_key = f"fmea_detail_selector_{hash(tuple(detail_ids))}"
+selected_id = st.selectbox(
+    "Failure mode",
+    options=detail_ids,
+    format_func=lambda rid: f"{rows_by_id[rid]['component']} — {rows_by_id[rid]['failure_mode']}",
+    key=detail_key,
+)
+detail_row = rows_by_id[selected_id]
+detail_rpn = detail_row["default_severity"] * detail_row["default_occurrence"] * detail_row["default_detection"]
+
+with st.container(border=True):
+    st.markdown(
+        f"**{detail_row['category']} · {detail_row.get('failure_category', '')}** — "
+        f"RPN {detail_rpn} ({risk_level(detail_rpn)})"
+    )
+    st.markdown(f"**Potential Cause:** {detail_row['potential_cause']}")
+    st.markdown(f"**Potential Effect:** {detail_row['potential_effect']}")
+    st.markdown(f"**Diagnostics:** {detail_row['detection_method']}")
+
+    detail_task_col, detail_freq_col = st.columns([3, 1])
+    with detail_task_col:
+        maint_task = st.text_area(
+            "Maintenance Task", value=detail_row.get("maintenance_task", ""),
+            key=f"fmea_maint_task_{selected_id}", height=80,
+            help="What to do to prevent, detect, or respond to this failure mode.",
+        )
+    with detail_freq_col:
+        freq_options = FREQUENCY_OPTIONS
+        current_freq = detail_row.get("maintenance_frequency", freq_options[0])
+        freq_index = freq_options.index(current_freq) if current_freq in freq_options else 0
+        maint_freq = st.selectbox(
+            "Frequency", freq_options, index=freq_index,
+            key=f"fmea_maint_freq_{selected_id}",
+            help="Recalibrate against your plant's own maintenance procedure/standard.",
+        )
+    rec_action = st.text_area(
+        "Recommended Action", value=detail_row.get("recommended_action", ""),
+        key=f"fmea_rec_action_{selected_id}", height=60,
+    )
+
+detail_row["maintenance_task"] = maint_task
+detail_row["maintenance_frequency"] = maint_freq
+detail_row["recommended_action"] = rec_action
 
 # Recompute RPN/Risk from the just-written-back values for the callout below,
 # so it reflects this rerun's edits immediately rather than the pre-edit table.
@@ -199,6 +243,33 @@ fmea_export = {
     "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
     "rows": st.session_state.fmea_rows,
 }
+
+# CSV/PDF export need every column, not just the lean on-screen table - rebuilt
+# here from rows_by_id (already holds this rerun's S/O/D and maintenance edits)
+# in the same row order the table is currently showing.
+full_rows = []
+for rid in detail_ids:
+    r = rows_by_id[rid]
+    rpn = r["default_severity"] * r["default_occurrence"] * r["default_detection"]
+    full_rows.append({
+        "Category": r["category"],
+        "Component": r["component"],
+        "Failure Category": r.get("failure_category", ""),
+        "Failure Mode": r["failure_mode"],
+        "Potential Cause": r["potential_cause"],
+        "Potential Effect": r["potential_effect"],
+        "Diagnostics": r["detection_method"],
+        "S": r["default_severity"],
+        "O": r["default_occurrence"],
+        "D": r["default_detection"],
+        "RPN": rpn,
+        "Risk": risk_level(rpn),
+        "Maintenance Task": r.get("maintenance_task", ""),
+        "Frequency": r.get("maintenance_frequency", FREQUENCY_OPTIONS[0]),
+        "Recommended Action": r.get("recommended_action", ""),
+    })
+full_df = pd.DataFrame(full_rows)
+
 save_col, csv_col, pdf_col = st.columns(3)
 with save_col:
     st.download_button(
@@ -209,16 +280,15 @@ with save_col:
         help="Saves every row's current scores and recommended actions - reload it later with the loader above.",
     )
 with csv_col:
-    csv_df = edited_df.drop(columns=["id"])
     st.download_button(
         "Download CSV",
-        data=csv_df.to_csv(index=False),
+        data=full_df.to_csv(index=False),
         file_name=f"FMEA_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
     )
 with pdf_col:
     if st.button("Export PDF"):
-        pdf_buf = generate_fmea_pdf_report(edited_df.to_dict("records"), selected_categories)
+        pdf_buf = generate_fmea_pdf_report(full_rows, selected_categories)
         st.download_button(
             "Download PDF",
             data=pdf_buf.getvalue(),
