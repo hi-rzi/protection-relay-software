@@ -346,9 +346,12 @@ def generate_fmea_pdf_report(rows, categories):
     Action (present in the CSV/JSON export, which has no page-width constraint)
     to keep the columns readable on one landscape page.
 
-    rows: list of dicts with keys Category, Component, Failure Mode, Potential
-        Effect, Diagnostics, S, O, D, RPN, Risk, Maintenance Task, Frequency
-        (the same shape views/fmea.py already builds for its on-screen table).
+    rows: list of dicts with keys Category, Component, Failure Category, Failure
+        Mode, Potential Effect, Diagnostics, S, O, D, RPN, Risk, Maintenance Task,
+        Frequency (the same shape views/fmea.py already builds for its on-screen
+        table). Failure Category is the root-cause branch (Hardware Failure /
+        Software Defects / Measurement Errors / Wiring Problems / Environment)
+        from the supervisor-supplied failure-cause diagram for digital relays.
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
@@ -370,9 +373,9 @@ def generate_fmea_pdf_report(rows, categories):
     header_style = ParagraphStyle('FmeaHeader', parent=styles['Normal'], fontSize=8, leading=10,
                                    textColor=colors.white, fontName='Helvetica-Bold', alignment=1)
 
-    columns = ["Category", "Component", "Failure Mode", "Potential Effect", "Diagnostics",
-               "S", "O", "D", "RPN", "Risk", "Maintenance Task", "Frequency"]
-    col_widths = (68, 68, 82, 98, 82, 18, 18, 18, 28, 34, 78, 48)
+    columns = ["Category", "Component", "Failure Category", "Failure Mode", "Potential Effect",
+               "Diagnostics", "S", "O", "D", "RPN", "Risk", "Maintenance Task", "Frequency"]
+    col_widths = (58, 58, 62, 74, 90, 74, 16, 16, 16, 26, 32, 70, 40)
 
     table_data = [[Paragraph(c, header_style) for c in columns]]
     for r in rows:

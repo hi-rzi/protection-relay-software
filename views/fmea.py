@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from common.fmea_data import CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
+from common.fmea_data import CATEGORIES, FAILURE_CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
 from common.pdf_report import generate_fmea_pdf_report
 
 st.title("FMEA — Digital Protection Relays")
@@ -43,7 +43,15 @@ with st.expander("Scope and how to use this page", expanded=False):
         "separate tab — a maintenance action divorced from the specific failure it "
         "addresses isn't actionable. Frequency is editable for the same reason S/O/D are: "
         "these are starting suggestions, recalibrate them against your plant's own "
-        "maintenance procedure/standard."
+        "maintenance procedure/standard.\n\n"
+        "**Failure Category** classifies each row's root cause using the five-branch "
+        "taxonomy from the supervisor-supplied failure-cause diagram for digital relays: "
+        "**Hardware Failure** (aging, component deterioration), **Software Defects** "
+        "(firmware bugs, weak design, improper specification/settings), **Measurement "
+        "Errors** (sensor failure, filtering, out-of-range operation), **Wiring Problems** "
+        "(mal-connection, electromagnetic compatibility), and **Environment** (temperature/"
+        "humidity, dust, a noisy operating environment). Filter by it below to view the "
+        "FMEA the same way the diagram organizes root causes."
     )
 
 if "fmea_rows" not in st.session_state:
@@ -78,13 +86,34 @@ if uploaded_fmea is not None:
 
 st.markdown("### Scored FMEA")
 
-selected_categories = st.multiselect(
-    "Relay family", CATEGORIES, default=CATEGORIES, key="fmea_category_filter"
-)
+filter_col1, filter_col2 = st.columns(2)
+with filter_col1:
+    selected_categories = st.multiselect(
+        "Relay family", CATEGORIES, default=CATEGORIES, key="fmea_category_filter"
+    )
+with filter_col2:
+    selected_failure_categories = st.multiselect(
+        "Failure category", FAILURE_CATEGORIES, default=FAILURE_CATEGORIES,
+        key="fmea_failure_category_filter",
+        help="Root-cause branch from the failure-cause diagram (Hardware Failure / "
+             "Software Defects / Measurement Errors / Wiring Problems / Environment).",
+    )
 sort_desc = st.checkbox("Sort by RPN (highest risk first)", value=True, key="fmea_sort_desc")
 
 rows_by_id = {r["id"]: r for r in st.session_state.fmea_rows}
-visible_ids = [r["id"] for r in st.session_state.fmea_rows if r["category"] in selected_categories]
+
+if not selected_categories or not selected_failure_categories:
+    st.info("Select at least one relay family and one failure category above to see FMEA rows.")
+    st.stop()
+
+visible_ids = [
+    r["id"] for r in st.session_state.fmea_rows
+    if r["category"] in selected_categories and r.get("failure_category") in selected_failure_categories
+]
+
+if not visible_ids:
+    st.info("No FMEA rows match that relay family + failure category combination.")
+    st.stop()
 
 display_rows = []
 for rid in visible_ids:
@@ -94,6 +123,7 @@ for rid in visible_ids:
         "id": r["id"],
         "Category": r["category"],
         "Component": r["component"],
+        "Failure Category": r.get("failure_category", ""),
         "Failure Mode": r["failure_mode"],
         "Potential Cause": r["potential_cause"],
         "Potential Effect": r["potential_effect"],
@@ -117,10 +147,11 @@ edited_df = st.data_editor(
     key="fmea_editor",
     use_container_width=True,
     hide_index=True,
-    disabled=["id", "Category", "Component", "Failure Mode", "Potential Cause",
-              "Potential Effect", "Diagnostics", "RPN", "Risk"],
+    disabled=["id", "Category", "Component", "Failure Category", "Failure Mode",
+              "Potential Cause", "Potential Effect", "Diagnostics", "RPN", "Risk"],
     column_config={
         "id": None,
+        "Failure Category": st.column_config.TextColumn("Failure Category", width="small", help="Root-cause branch from the failure-cause diagram."),
         "S": st.column_config.NumberColumn("S", min_value=1, max_value=10, step=1, help="Severity (1-10)"),
         "O": st.column_config.NumberColumn("O", min_value=1, max_value=10, step=1, help="Occurrence (1-10)"),
         "D": st.column_config.NumberColumn("D", min_value=1, max_value=10, step=1, help="Detection (1 = easily caught, 10 = essentially undetectable)"),
