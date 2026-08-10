@@ -1,0 +1,344 @@
+{% extends "equipment_base.html" %}
+{% import "partials/settings_form.html" as f %}
+
+{% block title %}Overall GSUT-GEN Differential Protection — Electrical Equipment Protection Suite{% endblock %}
+{% block equipment_tag %}overall{% endblock %}
+{% block equipment_title %}Overall GSUT-GEN Differential Protection{% endblock %}
+{% block equipment_caption %}Backup differential zone covering Generator + GSUT + Unit Auxiliary Transformer — CAC2-10-M3 three-restraint percentage-bias differential relay (Mitsubishi, 3-winding).{% endblock %}
+
+{% block settings_tab %}
+<div class="panel">
+  <button type="button" id="show-preview-btn" class="btn btn--secondary">
+    &#128202; Show Live Preview — Differential Bias Characteristic Curve
+  </button>
+  <div id="settings-preview-chart" class="chart chart--sm" hidden></div>
+</div>
+
+<hr>
+
+<h2>Current Settings</h2>
+
+<div class="panel panel--bordered">
+  <h3>Ratings and CT</h3>
+  {{ f.number_field("mva", "Base Rating (MVA)", default_settings.mva, step=10,
+      help_text="Relay currents are calculated assuming each device carries the full rating of the Generator Step-Up Transformer.") }}
+  <div class="field-grid field-grid--3">
+    <div>
+      <h4>Winding 1 — HV (525kV)</h4>
+      {{ f.number_field("kv_hv", "HV Rated Voltage (kV)", default_settings.kv_hv, step=1,
+          help_text="Uses the center-of-tap-range voltage (538.125kV) per the settings doc's full-load calc, not the 525kV nameplate.") }}
+      <div class="field" id="ct-hv-select-wrap">
+        <label for="f-ct_hv">HV CT Ratio Tap (Multi-Ratio, Primary A)</label>
+        <select id="f-ct_hv" data-field="ct_hv">
+          {% for tap in mr_ct_taps_2000_5 %}
+            <option value="{{ tap }}" {% if tap == default_settings.ct_hv %}selected{% endif %}>{{ tap }}</option>
+          {% endfor %}
+        </select>
+        <p class="field__help">Same 2000:5 Delta-connected multi-ratio bushing CT as the GSUT page. Documented as set on 1600:5.</p>
+      </div>
+      <div class="field" id="ct-hv-number-wrap" hidden>
+        <label for="f-ct_hv-number">HV CT Ratio (Primary A, e.g. 100 in '100:5')</label>
+        <input type="number" id="f-ct_hv-number" data-field="ct_hv" value="{{ default_settings.ct_hv }}">
+      </div>
+      {{ f.select_field("ct_conn_hv", "HV CT Connection", ["DELTA", "WYE"], default_settings.ct_conn_hv) }}
+    </div>
+    <div>
+      <h4>Winding 2 — Generator (23kV)</h4>
+      {{ f.number_field("kv_gen", "Generator Rated Voltage (kV)", default_settings.kv_gen, step=0.1) }}
+      {{ f.number_field("ct_gen", "Generator CT Ratio (Primary A, e.g. 24000 in '24000:5')", default_settings.ct_gen, step=1) }}
+      {{ f.select_field("ct_conn_gen", "Generator CT Connection", ["WYE", "DELTA"], default_settings.ct_conn_gen) }}
+    </div>
+    <div>
+      <h4>Winding 3 — Unit Aux. Transformer (23kV)</h4>
+      {{ f.number_field("kv_uat", "UAT Rated Voltage (kV)", default_settings.kv_uat, step=0.1) }}
+      {{ f.number_field("ct_uat", "UAT CT Ratio (Primary A, e.g. 24000 in '24000:5')", default_settings.ct_uat, step=1) }}
+      {{ f.select_field("ct_conn_uat", "UAT CT Connection", ["WYE", "DELTA"], default_settings.ct_conn_uat) }}
+    </div>
+  </div>
+  {{ f.select_field("ct_sec", "CT Secondary Rating (A)", [1.0, 5.0], default_settings.ct_sec,
+      help_text="The rated secondary current stamped on the CT nameplate. Applied to all three CTs.") }}
+  <p class="caption" id="ct-effective-ratio-caption"></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>CT Matching Taps</h3>
+  <p class="caption">T1/T2/T3 are chosen jointly to minimize the 3-way mismatch below — not to each match their own T_E.</p>
+  <div class="field-grid field-grid--3">
+    <div>
+      {{ f.slider_with_exact_input("tap_hv", "HV Tap (T1)", 0.4, 2.18, default_settings.tap_hv, 0.02,
+          help_text="CAC2-10-M3 setting range: 0.4-2.18 in steps of 0.02.") }}
+      <p class="caption" id="t1e-caption"></p>
+    </div>
+    <div>
+      {{ f.slider_with_exact_input("tap_gen", "Generator Tap (T2)", 0.4, 2.18, default_settings.tap_gen, 0.02,
+          help_text="CAC2-10-M3 setting range: 0.4-2.18 in steps of 0.02.") }}
+      <p class="caption" id="t2e-caption"></p>
+    </div>
+    <div>
+      {{ f.slider_with_exact_input("tap_uat", "UAT Tap (T3)", 0.4, 2.18, default_settings.tap_uat, 0.02,
+          help_text="CAC2-10-M3 setting range: 0.4-2.18 in steps of 0.02.") }}
+      <p class="caption" id="t3e-caption"></p>
+    </div>
+  </div>
+  <div class="metric">
+    <span class="metric__label">Mismatch at currently-set taps (the actual signal)</span>
+    <span class="metric__value" id="mismatch-value">—</span>
+  </div>
+  <p class="alert" id="mismatch-alert" hidden></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Differential Settings</h3>
+  <p class="caption" id="bias-floor-caption"></p>
+  <div class="field-grid field-grid--3">
+    <div>
+      {{ f.slider_with_exact_input("bias", "Bias, τ (%)", 20, 40, default_settings.bias, 10,
+          help_text="CAC2-10-M3 available settings: 20%, 30%, or 40%.") }}
+      <p class="alert" id="bias-alert"></p>
+    </div>
+    <div>
+      {{ f.slider_with_exact_input("min_operate", "Minimum Operate (%)", 20, 40, default_settings.min_operate, 10,
+          help_text="CAC2-10-M3 available settings: IT x 20%, 30%, or 40%.") }}
+      <p class="alert" id="min-operate-alert"></p>
+    </div>
+    <div>
+      <div class="field">
+        <label for="f-hoc">HOC (x tap value current)</label>
+        <select id="f-hoc" data-field="hoc">
+          {% for opt in [5, 6, 8, 10, 12] %}
+            <option value="{{ opt }}" {% if opt == default_settings.hoc %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        <p class="field__help">CAC2-10-M3 available settings: 5, 6, 8, 10, or 12 times tap value current. Not harmonically restrained.</p>
+      </div>
+      <p class="alert" id="hoc-alert"></p>
+    </div>
+  </div>
+</div>
+
+<p class="alert" id="overall-status-caption"></p>
+{% endblock %}
+
+{% block tab_live_sim %}
+<div class="panel panel--bordered">
+  <h3>Wiring &amp; Convention</h3>
+  <p class="caption">Must match the actual field CT wiring — not a tunable protection margin.</p>
+  <div class="field-grid field-grid--2">
+    <div class="field">
+      <label>Restraint Standard</label>
+      <div class="radio-row" id="convention-radio">
+        <label><input type="radio" name="convention" value="IEEE" checked> IEEE (average)</label>
+        <label><input type="radio" name="convention" value="IEC"> IEC (sum)</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Polarity Reference</label>
+      <div class="radio-row" id="ct-polarity-radio">
+        <label><input type="radio" name="ct_polarity" value="OPPOSITE" checked> OPPOSITE</label>
+        <label><input type="radio" name="ct_polarity" value="SAME"> SAME</label>
+      </div>
+      <p class="field__help">OPPOSITE: HV (Winding 1) is the reference; Generator and UAT windings are flipped relative to it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="live-sim-grid">
+  <div>
+    <h3>Winding Operating Phase Inputs</h3>
+    <p class="caption">Enter PRIMARY-side current in Amps for each of the three windings.</p>
+    <p class="alert" id="rated-current-info"></p>
+
+    <div id="phase-inputs"></div>
+  </div>
+
+  <div>
+    <h3>Real-time Protection Verdict</h3>
+    <p class="alert" id="trip-status-banner"></p>
+    <table class="data-table" id="verdict-table">
+      <thead><tr><th>Phase</th><th>I_op [pu]</th><th>I_rest [pu]</th><th>Threshold [pu]</th><th>Action Verdict</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="caption" id="winding-mags-caption"></p>
+  </div>
+</div>
+
+<h3>Differential Bias Characteristic Curve</h3>
+<div class="radio-row" id="chart-units-radio">
+  <label><input type="radio" name="chart_units" value="pu" checked> Per-Unit (pu)</label>
+  <label><input type="radio" name="chart_units" value="amps"> Secondary Amps (A)</label>
+</div>
+<div id="bias-curve-chart" class="chart"></div>
+{% endblock %}
+
+{% block tab_commissioning %}
+<h3>Commissioning &amp; Secondary Current Injection Assistant</h3>
+<p class="hint">With a 3-restraint relay there's no single unique way to split a target differential across three
+  currents, so this tool uses the standard commissioning method instead: energize one winding at a time (the other
+  two at zero) and read the resulting I_op / I_rest / trip verdict straight from the relay engine.</p>
+
+<h4>Single-Winding Injection Test</h4>
+<div class="field-grid field-grid--2">
+  <div class="field">
+    <label for="inj-winding-select">Winding to energize</label>
+    <select id="inj-winding-select">
+      {% for name in winding_names %}
+        <option value="{{ loop.index0 }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    {{ f.slider_with_exact_input("inj_current_pu", "Test Current (pu of that winding's rated current)", 0.05, 20.0, 1.0, 0.05) }}
+  </div>
+</div>
+<div class="metric-row">
+  <div class="metric"><span class="metric__label">Inject (secondary A)</span><span class="metric__value" id="inj-secondary-value">—</span></div>
+  <div class="metric"><span class="metric__label">I_op</span><span class="metric__value" id="inj-iop-value">—</span></div>
+  <div class="metric"><span class="metric__label">I_rest</span><span class="metric__value" id="inj-irest-value">—</span></div>
+  <div class="metric"><span class="metric__label">Threshold</span><span class="metric__value" id="inj-threshold-value">—</span></div>
+</div>
+<p class="alert" id="inj-status-alert"></p>
+
+<hr>
+<h3>Auto-Sweep Single-Winding Test Table</h3>
+<div class="field-grid field-grid--3">
+  {{ f.number_field("sweep_start", "Sweep Start (pu)", 0.2, step=0.1) }}
+  {{ f.number_field("sweep_end", "Sweep End (pu)", 6.0, step=0.5) }}
+  {{ f.number_field("sweep_step", "Sweep Step (pu)", 0.5, step=0.1) }}
+</div>
+<button type="button" id="generate-sweep-btn" class="btn btn--secondary">Generate Sweep Table</button>
+<table class="data-table" id="sweep-table" hidden>
+  <thead><tr><th>Test Current (pu)</th><th id="sweep-injection-col">Injection (A)</th><th>I_op (pu)</th><th>I_rest (pu)</th><th>Threshold (pu)</th><th>Status</th></tr></thead>
+  <tbody></tbody>
+</table>
+<button type="button" id="download-sweep-csv-btn" class="btn btn--ghost" hidden>Download Sweep Table as CSV</button>
+{% endblock %}
+
+{% block tab_curve_test_points %}
+<h3>Test Point Verification &amp; Curve</h3>
+
+<div class="field">
+  <label>How was this measured?</label>
+  <div class="radio-row" id="tp-source-radio">
+    <label><input type="radio" name="tp_source" value="restraint" checked> Restraint &amp; Diff directly</label>
+    <label><input type="radio" name="tp_source" value="raw"> Raw per-CT currents</label>
+  </div>
+  <p class="field__help">Test set/relay already shows restraint &amp; operate current? Enter directly. Otherwise
+    enter raw per-CT current and the app computes it the same way the relay does.</p>
+</div>
+
+<form id="add-test-point-form" class="panel panel--bordered">
+  <div class="field">
+    <label for="tp-phase">Phase</label>
+    <select id="tp-phase">
+      <option>Phase A</option><option>Phase B</option><option>Phase C</option><option>Other</option>
+    </select>
+  </div>
+
+  <div id="tp-restraint-fields">
+    <div class="field">
+      <label>Entry units</label>
+      <div class="radio-row" id="tp-unit-radio">
+        <label><input type="radio" name="tp_unit" value="amps" checked> Secondary Amps (A)</label>
+        <label><input type="radio" name="tp_unit" value="pu"> Per-Unit (pu)</label>
+      </div>
+    </div>
+    <div class="field-grid field-grid--2">
+      <div class="field"><label for="tp-restraint">Restraint Current</label>
+        <input type="number" id="tp-restraint" value="1.0" step="0.1"></div>
+      <div class="field"><label for="tp-diff">Measured Diff. Current</label>
+        <input type="number" id="tp-diff" value="0.3" step="0.05"></div>
+    </div>
+  </div>
+
+  <div id="tp-raw-fields" hidden>
+    <div class="field-grid field-grid--3">
+      <div class="field"><label for="tp-raw-hv-amps">HV [A]</label><input type="number" id="tp-raw-hv-amps" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-hv-angle">HV Angle (&deg;)</label><input type="number" id="tp-raw-hv-angle" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-gen-amps">Gen [A]</label><input type="number" id="tp-raw-gen-amps" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-gen-angle">Gen Angle (&deg;)</label><input type="number" id="tp-raw-gen-angle" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-uat-amps">UAT [A]</label><input type="number" id="tp-raw-uat-amps" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-uat-angle">UAT Angle (&deg;)</label><input type="number" id="tp-raw-uat-angle" value="0" step="1"></div>
+    </div>
+  </div>
+
+  <div class="field"><label for="tp-label">Label (optional)</label><input type="text" id="tp-label" value=""></div>
+  <button type="submit" class="btn btn--secondary">Add Test Point</button>
+</form>
+
+<div id="tp-table-wrap" hidden>
+  <div class="radio-row" id="tp-table-unit-radio">
+    <label><input type="radio" name="tp_table_unit" value="amps" checked> Secondary Amps (A)</label>
+    <label><input type="radio" name="tp_table_unit" value="pu"> Per-Unit (pu)</label>
+  </div>
+  <table class="data-table" id="tp-table">
+    <thead><tr><th>Phase</th><th class="tp-restraint-col">Restraint</th><th class="tp-diff-col">Measured Diff</th><th>Label</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="field-grid field-grid--2">
+    <div class="field"><label for="tp-remove-idx">Row # to remove (0-indexed)</label><input type="number" id="tp-remove-idx" value="0" min="0" step="1"></div>
+    <button type="button" id="tp-remove-btn" class="btn btn--ghost">Remove Row</button>
+  </div>
+  <button type="button" id="tp-clear-btn" class="btn btn--ghost">Clear All Test Points</button>
+</div>
+<p class="hint" id="tp-empty-hint">No test points added yet — add some above to see them plotted below.</p>
+
+<hr>
+<h4>Differential Bias Characteristic Curve</h4>
+<div class="radio-row" id="comm-chart-units-radio">
+  <label><input type="radio" name="comm_chart_units" value="pu" checked> Per-Unit (pu)</label>
+  <label><input type="radio" name="comm_chart_units" value="amps"> Secondary Amps (A)</label>
+</div>
+<div class="field">
+  <label>CAL. line source</label>
+  <div class="radio-row" id="cal-source-radio">
+    <label><input type="radio" name="cal_source" value="connect" checked> Connect my test points (commissioning report style)</label>
+    <label><input type="radio" name="cal_source" value="theoretical"> Theoretical relay characteristic</label>
+  </div>
+</div>
+<div id="tp-curve-chart" class="chart"></div>
+{% endblock %}
+
+{% block tab_approval %}
+<h3>Settings Summary &amp; Approval Record</h3>
+
+<div class="field"><label for="source-document">Source document</label>
+  <input type="text" id="source-document" value="Transformer Diff Setting - Overall GSUT-GEN.pdf"></div>
+<div class="field-grid field-grid--2">
+  <div>
+    <div class="field"><label for="revision">Document / settings revision</label><input type="text" id="revision" value="Rev. 0"></div>
+    <div class="field"><label for="prepared-by">Prepared by</label><input type="text" id="prepared-by" value=""></div>
+  </div>
+  <div>
+    <div class="field"><label for="reviewed-by">Reviewed by</label><input type="text" id="reviewed-by" value=""></div>
+    <div class="field"><label for="approval-status">Review status</label>
+      <select id="approval-status">
+        <option>Draft — engineering review required</option>
+        <option>Reviewed — pending approval</option>
+        <option>Approved for issue</option>
+      </select>
+    </div>
+  </div>
+</div>
+<div class="field"><label for="review-note">Review note / change description</label><textarea id="review-note" rows="3"></textarea></div>
+
+<hr>
+<button type="button" id="export-report-btn" class="btn btn--primary">Export Certified Protection Audit Report</button>
+
+<h4>Relay-Ready Settings Sheet</h4>
+<p class="caption">Named exactly as the CAC2-10-M3 manual — reference only, not an importable relay project file.</p>
+<table class="data-table" id="settings-sheet-table">
+  <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+  <tbody></tbody>
+</table>
+<button type="button" id="download-settings-sheet-btn" class="btn btn--ghost">Download Settings Sheet (.csv)</button>
+
+<hr>
+<h4>Save Profile</h4>
+<p class="caption">Downloads every current setting. Restore later via the sidebar loader.</p>
+<div class="field"><label for="profile-name">Profile Name</label><input type="text" id="profile-name" value="Overall GSUT-GEN Profile"></div>
+<button type="button" id="save-profile-btn" class="btn btn--secondary">&#128190; Save Profile (.json)</button>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/transformer_overall.js') }}"></script>
+{% endblock %}

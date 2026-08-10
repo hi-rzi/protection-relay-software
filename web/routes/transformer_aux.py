@@ -1,0 +1,92 @@
+import csv
+import io
+import json
+
+from flask import Blueprint, Response, jsonify, render_template, request
+
+from common.pdf_report import generate_transformer_pdf_report
+from web.presets.transformer_aux import PRESETS, MR_CT_TAPS_3000_5
+from web.services import aux_transformer as svc
+
+bp = Blueprint("transformer_aux", __name__, url_prefix="")
+
+PHASES = svc.PHASES
+
+
+@bp.route("/transformer/aux")
+def page():
+    default_preset_name = list(PRESETS.keys())[0]
+    default_settings = PRESETS[default_preset_name]
+
+    initial_data = {
+        "presets": PRESETS,
+        "default_preset_name": default_preset_name,
+        "mr_ct_taps_3000_5": MR_CT_TAPS_3000_5,
+    }
+
+    return render_template(
+        "transformer_aux.html",
+        presets=PRESETS,
+        default_preset_name=default_preset_name,
+        default_settings=default_settings,
+        mr_ct_taps_3000_5=MR_CT_TAPS_3000_5,
+        has_fault_current=True,
+        initial_data_json=json.dumps(initial_data),
+    )
+
+
+@bp.route("/api/transformer/aux/recompute", methods=["POST"])
+def recompute():
+    payload = request.get_json(force=True, silent=True) or {}
+    result = svc.recompute(payload)
+    return jsonify(result)
+
+
+@bp.route("/api/transformer/aux/settings-sheet.csv", methods=["POST"])
+def settings_sheet_csv():
+    payload = request.get_json(force=True, silent=True) or {}
+    settings = payload.get("settings", {})
+    convention = str(payload.get("convention", "IEEE")).upper()
+    ct_polarity = str(payload.get("ct_polarity", "OPPOSITE")).upper()
+    relay = svc.build_relay(settings, convention, ct_polarity)
+    rows = svc.settings_sheet_rows(settings, relay, convention, ct_polarity)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Parameter", "Value"])
+    writer.writerows(rows)
+    csv_bytes = buf.getvalue().encode("utf-8")
+
+    return Response(
+        csv_bytes, mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=UAT_Settings_Sheet.csv"},
+    )
+
+
+@bp.route("/api/transformer/aux/report.pdf", methods=["POST"])
+def report_pdf():
+    payload = request.get_json(force=True, silent=True) or {}
+    settings = payload.get("settings", {})
+    convention = str(payload.get("convention", "IEEE")).upper()
+    ct_polarity = str(payload.get("ct_polarity", "OPPOSITE")).upper()
+    unit_name = payload.get("selected_preset", "UAT")
+    phase_inputs = payload.get("phase_inputs") or {}
+
+    relay = svc.build_relay(settings, convention, ct_polarity)
+    if not phase_inputs:
+        phase_inputs = svc.default_phase_a_angles(relay, ct_polarity)
+    evals = svc.evaluate_phases(relay, phase_inputs)
+    winding_currents = {
+        p: [
+            float(phase_inputs.get(p, {}).get("i_hv", 0.0)),
+            float(phase_inputs.get(p, {}).get("i_lv", 0.0)),
+        ]
+        for p in PHASES
+    }
+
+    pdf_buf = generate_transformer_pdf_report(unit_name, relay, evals, PHASES, winding_currents=winding_currents)
+
+    return Response(
+        pdf_buf.getvalue(), mimetype="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=UAT_Differential_Protection_Report.pdf"},
+    )

@@ -1,0 +1,378 @@
+{% extends "equipment_base.html" %}
+{% import "partials/settings_form.html" as f %}
+
+{% block title %}Generator Differential Protection — Electrical Equipment Protection Suite{% endblock %}
+{% block equipment_tag %}generator{% endblock %}
+{% block equipment_title %}Generator Differential Protection (87G){% endblock %}
+{% block equipment_caption %}Differential protection for the generator stator zone — GE G60 numerical or GE CFD22B4A legacy relay.{% endblock %}
+
+{% block settings_tab %}
+<div class="panel panel--bordered">
+  <h3>Generator Relay Type Select</h3>
+  <div class="field">
+    <label>Choose Relay Implementation</label>
+    <div class="radio-row" id="relay-mode-radio">
+      <label><input type="radio" name="relay_mode" value="GENERATOR" checked> GE G60</label>
+      <label><input type="radio" name="relay_mode" value="GENERATOR_LEGACY"> GE CFD22B4A</label>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <button type="button" id="show-preview-btn" class="btn btn--secondary">
+    &#128202; Show Live Preview — Differential Characteristic Curve
+  </button>
+  <div id="settings-preview-chart" class="chart chart--sm" hidden></div>
+</div>
+
+<hr>
+
+<h2>Current Settings</h2>
+
+<div class="panel panel--bordered">
+  <h3>Ratings and CT</h3>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("mva", "Generator Rating (MVA)", default_settings.mva, step=10) }}
+      {{ f.number_field("kv", "Rated Voltage (kV)", default_settings.kv, step=1) }}
+    </div>
+    <div>
+      {{ f.number_field("ct_n", "Neutral Side CT Rating (Primary A, e.g. 20000 in '20000:5')", default_settings.ct_n, step=1) }}
+      {{ f.number_field("ct_t", "Terminal Side CT Rating (Primary A)", default_settings.ct_t, step=1) }}
+      {{ f.select_field("ct_sec", "CT Secondary Rating (A)", [1.0, 5.0], default_settings.ct_sec or 5.0,
+          help_text="The rated secondary current stamped on the CT nameplate. Applied to both CTs.") }}
+    </div>
+  </div>
+  <p class="caption" id="ct-effective-ratio-caption"></p>
+  <div class="metric">
+    <span class="metric__label">CT mismatch between sides</span>
+    <span class="metric__value" id="mismatch-value">—</span>
+  </div>
+  <p class="alert" id="mismatch-alert" hidden></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Protection Characteristic</h3>
+
+  <div id="mode-g60-fields">
+    <div class="field-grid field-grid--2">
+      <div>
+        {{ f.slider_with_exact_input("pickup", "Pickup (pu)", 0.05, 1.00, default_settings.pickup, 0.01,
+            help_text="G60 manual range: 0.050 to 1.00 pu, step 0.01. Generator differential pickup is conventionally set low (5-10% typical) since there's no CT mismatch to guard against when the ratios above match.") }}
+        <p class="alert" id="pickup-alert"></p>
+        {{ f.slider_with_exact_input("slope1", "Slope 1 (%)", 1, 100, default_settings.slope1, 1,
+            help_text="G60 manual range: 1 to 100%, step 1.") }}
+        <p class="alert" id="slope1-alert"></p>
+      </div>
+      <div>
+        {{ f.slider_with_exact_input("break1", "Break 1 (pu)", 1.00, 1.50, default_settings.break1, 0.01,
+            help_text="G60 manual range: 1.00 to 1.50 pu, step 0.01. Restraint stays flat at Pickup below this point.") }}
+        {{ f.slider_with_exact_input("slope2", "Slope 2 (%)", 1, 100, default_settings.slope2, 1,
+            help_text="G60 manual range: 1 to 100%, step 1.") }}
+        {{ f.slider_with_exact_input("break2", "Break 2 (pu)", 1.50, 30.00, default_settings.break2, 0.01,
+            help_text="G60 manual range: 1.50 to 30.00 pu, step 0.01. Slope 2 applies above this point.") }}
+        <p class="caption">Break points/Slope 2 shape the curve above rated current — a through-fault/inrush coordination study is needed to tune these.</p>
+      </div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="f-unrestrained_enabled" data-field="unrestrained_enabled"> Enable Unrestrained High-Set Element</label>
+      <p class="field__help">Only enable this if your G60 manual confirms a separate unrestrained/high-set differential element with its own pickup setting. Left unconfirmed by default.</p>
+    </div>
+    <div id="unrestrained-wrap" hidden>
+      {{ f.slider_with_exact_input("unrestrained", "Unrestrained High-Set Pickup (pu)", 3.0, 30.0, 8.0, 0.5) }}
+      <p class="caption">Higher = more secure against inrush/CT saturation misoperation, but needs a larger internal fault to trip instantaneously.</p>
+    </div>
+  </div>
+
+  <div id="mode-legacy-fields" hidden>
+    <div class="field-grid field-grid--2">
+      <div>
+        <div class="field field--slider">
+          <label for="f-legacy_target_amps-slider">Target / Seal-in Pickup (Secondary Amps)</label>
+          <div class="field__slider-row">
+            <input type="range" id="f-legacy_target_amps-slider" data-slider-pair="legacy_target_amps"
+                   min="0.1" max="1.0" step="0.05" value="{{ default_settings_legacy.target_amps }}">
+            <input type="number" id="f-legacy_target_amps-number" data-field="legacy_target_amps" data-number-pair="legacy_target_amps"
+                   min="0.1" max="1.0" step="0.05" value="{{ default_settings_legacy.target_amps }}">
+          </div>
+          <p class="field__help">Factory default is 0.2 A. Per GEK-34124E, NOT recommended below 0.1 A; the rear contact may need up to ~0.25 A to close.</p>
+        </div>
+        <p class="alert" id="target-amps-alert"></p>
+      </div>
+      <div>
+        <div class="field field--slider">
+          <label for="f-legacy_slope1-slider">Restraint Slope (%)</label>
+          <div class="field__slider-row">
+            <input type="range" id="f-legacy_slope1-slider" data-slider-pair="legacy_slope1"
+                   min="5" max="30" step="1" value="{{ default_settings_legacy.slope1 }}">
+            <input type="number" id="f-legacy_slope1-number" data-field="legacy_slope1" data-number-pair="legacy_slope1"
+                   min="5" max="30" step="1" value="{{ default_settings_legacy.slope1 }}">
+          </div>
+        </div>
+        <p class="caption">Fixed by the relay's internal design (balances at ~10% of the smaller terminal current), not a tunable field setting.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="alert" id="overall-status-caption"></p>
+{% endblock %}
+
+{% block tab_live_sim %}
+<div class="panel panel--bordered">
+  <h3>Wiring &amp; Convention</h3>
+  <p class="caption">Must match the actual field CT wiring — not a tunable protection margin.</p>
+  <div class="field-grid field-grid--2">
+    <div class="field">
+      <label>Restraint Standard</label>
+      <div class="radio-row" id="convention-radio">
+        <label><input type="radio" name="convention" value="IEEE" checked> IEEE (average)</label>
+        <label><input type="radio" name="convention" value="IEC"> IEC (sum)</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Polarity Reference</label>
+      <div class="radio-row" id="ct-polarity-radio">
+        <label><input type="radio" name="ct_polarity" value="OPPOSITE"> OPPOSITE</label>
+        <label><input type="radio" name="ct_polarity" value="SAME" checked> SAME</label>
+      </div>
+      <p class="field__help">OPPOSITE: standard facing inwards. SAME: facing identical directions.</p>
+    </div>
+  </div>
+</div>
+
+<div class="live-sim-grid">
+  <div>
+    <h3>Primary (Generator) Operating Phase Inputs</h3>
+    <p class="caption">Enter the actual PRIMARY-side current in Amps for each side — the app converts this through the CT ratio and rated base automatically.</p>
+    <p class="alert" id="rated-current-info"></p>
+
+    <div id="phase-inputs"></div>
+  </div>
+
+  <div>
+    <h3>Real-time Protection Verdict</h3>
+    <p class="alert" id="trip-status-banner"></p>
+    <table class="data-table" id="verdict-table">
+      <thead><tr><th>Phase</th><th>I_op [pu]</th><th>I_rest [pu]</th><th>Threshold [pu]</th><th>Action Verdict</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<h3>Differential Slope Characteristic Curve</h3>
+<div class="radio-row" id="chart-units-radio">
+  <label><input type="radio" name="chart_units" value="pu" checked> Per-Unit (pu)</label>
+  <label><input type="radio" name="chart_units" value="amps"> Secondary Amps (A)</label>
+</div>
+<div id="bias-curve-chart" class="chart"></div>
+<p class="caption" id="curve-shape-caption"></p>
+{% endblock %}
+
+{% block tab_commissioning %}
+<h3>Commissioning &amp; Secondary Current Injection Assistant</h3>
+<p class="hint">Pick a target restraint current per phase to get the exact secondary Amps to inject at each CT (Neutral side, Terminal side).</p>
+
+<h4>Boundary Injection Calculator</h4>
+<div class="field-grid field-grid--3" id="boundary-injection-grid"></div>
+
+<hr>
+<h3>Auto-Sweep Full Curve Test Table</h3>
+<div class="field-grid field-grid--3">
+  {{ f.number_field("sweep_start", "Sweep Start (pu)", 0.2, step=0.1) }}
+  {{ f.number_field("sweep_end", "Sweep End (pu)", 6.0, step=0.5) }}
+  {{ f.number_field("sweep_step", "Sweep Step (pu)", 0.5, step=0.1) }}
+</div>
+<button type="button" id="generate-sweep-btn" class="btn btn--secondary">Generate Sweep Table</button>
+<table class="data-table" id="sweep-table" hidden>
+  <thead><tr><th>I_rest (pu)</th><th>Boundary I_op (pu)</th><th>Neutral Injection I_N (A)</th><th>Terminal Injection I_T (A)</th></tr></thead>
+  <tbody></tbody>
+</table>
+<button type="button" id="download-sweep-csv-btn" class="btn btn--ghost" hidden>Download Sweep Table as CSV</button>
+{% endblock %}
+
+{% block tab_curve_test_points %}
+<h3>Test Point Verification &amp; Curve</h3>
+
+<div class="field">
+  <label>How was this measured?</label>
+  <div class="radio-row" id="tp-source-radio">
+    <label><input type="radio" name="tp_source" value="restraint" checked> Restraint &amp; Diff directly</label>
+    <label><input type="radio" name="tp_source" value="raw"> Raw per-CT currents</label>
+  </div>
+  <p class="field__help">Test set/relay already shows restraint &amp; operate current? Enter directly. Otherwise
+    enter raw per-CT current (Neutral, Terminal) and the app computes it the same way the relay does.</p>
+</div>
+
+<form id="add-test-point-form" class="panel panel--bordered">
+  <div class="field">
+    <label for="tp-phase">Phase</label>
+    <select id="tp-phase">
+      <option>Phase A</option><option>Phase B</option><option>Phase C</option><option>Other</option>
+    </select>
+  </div>
+
+  <div id="tp-restraint-fields">
+    <div class="field">
+      <label>Entry units</label>
+      <div class="radio-row" id="tp-unit-radio">
+        <label><input type="radio" name="tp_unit" value="amps" checked> Secondary Amps (A)</label>
+        <label><input type="radio" name="tp_unit" value="pu"> Per-Unit (pu)</label>
+      </div>
+    </div>
+    <div class="field-grid field-grid--2">
+      <div class="field"><label for="tp-restraint">Restraint Current</label>
+        <input type="number" id="tp-restraint" value="1.0" step="0.1"></div>
+      <div class="field"><label for="tp-diff">Measured Diff. Current</label>
+        <input type="number" id="tp-diff" value="0.3" step="0.05"></div>
+    </div>
+  </div>
+
+  <div id="tp-raw-fields" hidden>
+    <div class="field-grid field-grid--2">
+      <div class="field"><label for="tp-raw-n-amps">Neutral (N) [A]</label><input type="number" id="tp-raw-n-amps" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-n-angle">Neutral (N) Angle (&deg;)</label><input type="number" id="tp-raw-n-angle" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-t-amps">Terminal (T) [A]</label><input type="number" id="tp-raw-t-amps" value="0" step="1"></div>
+      <div class="field"><label for="tp-raw-t-angle">Terminal (T) Angle (&deg;)</label><input type="number" id="tp-raw-t-angle" value="0" step="1"></div>
+    </div>
+  </div>
+
+  <div class="field"><label for="tp-label">Label (optional)</label><input type="text" id="tp-label" value=""></div>
+  <button type="submit" class="btn btn--secondary">Add Test Point</button>
+</form>
+
+<div id="tp-table-wrap" hidden>
+  <div class="radio-row" id="tp-table-unit-radio">
+    <label><input type="radio" name="tp_table_unit" value="amps" checked> Secondary Amps (A)</label>
+    <label><input type="radio" name="tp_table_unit" value="pu"> Per-Unit (pu)</label>
+  </div>
+  <table class="data-table" id="tp-table">
+    <thead><tr><th>Phase</th><th class="tp-restraint-col">Restraint</th><th class="tp-diff-col">Measured Diff</th><th>Label</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="field-grid field-grid--2">
+    <div class="field"><label for="tp-remove-idx">Row # to remove (0-indexed)</label><input type="number" id="tp-remove-idx" value="0" min="0" step="1"></div>
+    <button type="button" id="tp-remove-btn" class="btn btn--ghost">Remove Row</button>
+  </div>
+  <button type="button" id="tp-clear-btn" class="btn btn--ghost">Clear All Test Points</button>
+</div>
+<p class="hint" id="tp-empty-hint">No test points added yet — add some above to see them plotted below.</p>
+
+<hr>
+<h4>Differential Slope Characteristic Curve</h4>
+<div class="radio-row" id="comm-chart-units-radio">
+  <label><input type="radio" name="comm_chart_units" value="pu" checked> Per-Unit (pu)</label>
+  <label><input type="radio" name="comm_chart_units" value="amps"> Secondary Amps (A)</label>
+</div>
+<div class="field">
+  <label>CAL. line source</label>
+  <div class="radio-row" id="cal-source-radio">
+    <label><input type="radio" name="cal_source" value="connect" checked> Connect my test points (commissioning report style)</label>
+    <label><input type="radio" name="cal_source" value="theoretical"> Theoretical relay characteristic</label>
+  </div>
+</div>
+<div id="tp-curve-chart" class="chart"></div>
+{% endblock %}
+
+{% block tab_fault_current %}
+<h3>Fault Current Analysis</h3>
+<p class="caption">Checks the 87G CTs against the maximum current they'll actually see for a real fault. Uses only the generator's
+  own positive-sequence reactance (a simple Thevenin source at 1.0pu voltage) — NOT a full short-circuit study. The external
+  through-fault figure is a reference value from the plant's own fault study, not independently computed by this app.</p>
+
+<div class="field-grid field-grid--2">
+  <div>
+    <h4>Generator's own contribution to an internal fault</h4>
+    {{ f.number_field("x1_pu", "Positive Sequence Reactance, X1G (pu)", default_settings.x1_pu, step=0.005,
+        help_text="Subtransient/transient reactance of the generator, on its own MVA base.") }}
+    {{ f.number_field("asym_factor", "Asymmetry Factor", default_settings.asym_factor, step=0.01,
+        help_text="Multiplier for worst-case DC-offset fault current (1.73x is the settings doc's own assumption).") }}
+    <div class="metric"><span class="metric__label">Symmetrical Fault Current</span><span class="metric__value" id="fault-sym-value">—</span></div>
+    <div class="metric"><span class="metric__label">Asymmetrical Fault Current (worst case)</span><span class="metric__value" id="fault-asym-value">—</span></div>
+    <div class="metric"><span class="metric__label">Relay Secondary Current at Max Fault</span><span class="metric__value" id="fault-relay-sec-internal-value">—</span></div>
+  </div>
+  <div>
+    <h4>External (through-fault) contribution from upstream</h4>
+    {{ f.number_field("external_fault_ka", "Maximum Through-Fault Current (kA primary)", default_settings.external_fault_ka, step=1,
+        help_text="Maximum fault current fed INTO this zone from elsewhere in the system — from the plant's own fault study.") }}
+    <div class="metric"><span class="metric__label">Relay Secondary Current at Max Through-Fault</span><span class="metric__value" id="fault-relay-sec-external-value">—</span></div>
+  </div>
+</div>
+
+<hr>
+{{ f.number_field("ct_withstand_a", "CT / Relay Secondary Current Withstand Limit (A)", default_settings.ct_withstand_a, step=1) }}
+<p class="alert" id="withstand-internal-alert"></p>
+<p class="alert" id="withstand-external-alert"></p>
+
+<hr>
+<h4>Actual Fault Current Waveform</h4>
+<p class="caption">The Asymmetrical Fault Current above is an RMS figure — this shows the instantaneous AC current: a decaying
+  DC offset riding on the steady-state sine wave, worst case. The decay rate is back-calculated from the Asymmetry Factor
+  (this page has no direct X/R input) — treat the shape as illustrative.</p>
+<div id="fault-waveform-chart" class="chart chart--sm"></div>
+
+<hr>
+<h4>Fault Clearing Time Simulation</h4>
+<p class="caption">Feeds the fault current through the same trip logic as Live Simulation, then adds relay/breaker operating time.</p>
+<div class="field">
+  <label>Fault Scenario</label>
+  <div class="radio-row" id="fault-scenario-radio">
+    <label><input type="radio" name="fault_scenario" value="Internal Fault (within 87G zone)" checked> Internal Fault (within 87G zone)</label>
+    <label><input type="radio" name="fault_scenario" value="External Through-Fault"> External Through-Fault</label>
+  </div>
+  <p class="field__help">Internal: fault current is fed almost entirely from the Neutral side — a large, easily-detected mismatch.
+    External: the same current passes through both CTs, so a healthy 87G should NOT operate.</p>
+</div>
+<div class="field-grid field-grid--2">
+  {{ f.number_field("relay_operate_cycles", "Relay Operate Time (cycles)", 1.5, step=0.25) }}
+  {{ f.number_field("breaker_cycles", "Breaker Interrupting Time (cycles)", 5.0, step=0.5) }}
+</div>
+<button type="button" id="run-fault-sim-btn" class="btn btn--secondary">&#9654; Run Fault Simulation</button>
+<p class="alert" id="fault-sim-caption">Click <strong>Run Fault Simulation</strong> to watch the fault current spike, the relay detect it, and the breaker clear it.</p>
+<div id="fault-sim-chart" class="chart chart--sm"></div>
+{% endblock %}
+
+{% block tab_approval %}
+<h3>Settings Summary &amp; Approval Record</h3>
+
+<div class="field"><label for="source-document">Source document</label>
+  <input type="text" id="source-document" value="Generator Diff setting.pdf / GEK-34124E"></div>
+<div class="field-grid field-grid--2">
+  <div>
+    <div class="field"><label for="revision">Document / settings revision</label><input type="text" id="revision" value="Rev. 0"></div>
+    <div class="field"><label for="prepared-by">Prepared by</label><input type="text" id="prepared-by" value=""></div>
+  </div>
+  <div>
+    <div class="field"><label for="reviewed-by">Reviewed by</label><input type="text" id="reviewed-by" value=""></div>
+    <div class="field"><label for="approval-status">Review status</label>
+      <select id="approval-status">
+        <option>Draft — engineering review required</option>
+        <option>Reviewed — pending approval</option>
+        <option>Approved for issue</option>
+      </select>
+    </div>
+  </div>
+</div>
+<div class="field"><label for="review-note">Review note / change description</label><textarea id="review-note" rows="3"></textarea></div>
+
+<hr>
+<button type="button" id="export-report-btn" class="btn btn--primary">Export Certified Protection Audit Report</button>
+
+<h4>Relay-Ready Settings Sheet</h4>
+<p class="caption" id="relay-type-caption">Reference only — not an importable relay project file.</p>
+<table class="data-table" id="settings-sheet-table">
+  <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+  <tbody></tbody>
+</table>
+<button type="button" id="download-settings-sheet-btn" class="btn btn--ghost">Download Settings Sheet (.csv)</button>
+
+<hr>
+<h4>Save Profile</h4>
+<p class="caption">Downloads every current setting. Restore later via the sidebar loader.</p>
+<div class="field"><label for="profile-name">Profile Name</label><input type="text" id="profile-name" value="Generator Profile"></div>
+<button type="button" id="save-profile-btn" class="btn btn--secondary">&#128190; Save Profile (.json)</button>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/generator.js') }}"></script>
+{% endblock %}

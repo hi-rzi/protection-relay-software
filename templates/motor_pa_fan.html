@@ -1,0 +1,347 @@
+{% extends "equipment_base.html" %}
+{% import "partials/settings_form.html" as f %}
+
+{% block title %}PA Fan Motor Protection — Electrical Equipment Protection Suite{% endblock %}
+{% block equipment_tag %}pa_fan{% endblock %}
+{% block equipment_title %}Primary Air (PA) Fan Motor Protection{% endblock %}
+{% block equipment_caption %}6.9kV Primary Air Fan — Multilin SR469 static Motor Protection Relay, the separate discrete 50/50/51 electromechanical relay (IFC66KD2A) with its backup instantaneous relay (HFC22B2A), and the GE HFC23C1A self-balancing differential (87M).{% endblock %}
+{% block curve_test_points_label %}TCC Curve &amp; Test Points{% endblock %}
+
+{% block settings_tab %}
+<div class="panel">
+  <button type="button" id="show-preview-btn" class="btn btn--secondary">
+    &#128202; Show Live Preview — Overload (51) Curve
+  </button>
+  <div id="settings-preview-chart" class="chart chart--sm" hidden></div>
+</div>
+
+<hr>
+
+<h2>Current Settings</h2>
+<p class="caption">Every setting currently applied to this relay. Adjust a value below and the comment beside it updates live.</p>
+
+<div class="panel panel--bordered">
+  <h3>Motor Data &amp; CT Spec</h3>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("fla", "Motor Full Load Current (A)", default_settings.fla, step=1) }}
+      {{ f.number_field("ct_ratio", "CT Ratio (Primary A, e.g. 300 in '300:5')", default_settings.ct_ratio, step=1) }}
+    </div>
+    <div>
+      {{ f.select_field("ct_sec", "CT Secondary Rating (A)", [1.0, 5.0], default_settings.ct_sec) }}
+      {{ f.number_field("gct_ratio", "Ground (Zero-Sequence) CT Ratio (Primary A, e.g. 50 in '50:5')", default_settings.gct_ratio, step=1) }}
+    </div>
+  </div>
+  <p class="caption" id="ct-effective-ratio-caption"></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>87M Self-Balancing Differential (GE HFC23C1A)</h3>
+  <p class="caption">A separate relay from the SR469/IFC66KD2A above — both line and neutral conductors of each phase pass through ONE CT here, so a healthy motor's current cancels to zero. Fitted to motors over 1500HP. Instantaneous, single pickup, no restraint/bias slope.</p>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("diff87m_ct_ratio", "87M CT Ratio (Primary A, e.g. 50 in '50:5')", default_settings.diff87m_ct_ratio, step=1,
+        help_text="Induced Draft Fans use 100/5 here — every other motor at this plant uses 50/5.") }}</div>
+    <div>{{ f.number_field("diff87m_pickup_sec", "87M Pickup (A sec.)", default_settings.diff87m_pickup_sec, step=0.1,
+        help_text="HFC23C1A range: Low tap 0.5-2A, High tap 2-4A, continuously adjustable.") }}</div>
+  </div>
+  <p class="alert" id="diff87m-alert"></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Overload (Thermal Model)</h3>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("ovl_pct", "Overload Pickup (% FLA)", default_settings.ovl_pct, step=1,
+        help_text="Typical range 110-115% FLA.") }}<p class="alert" id="ovl-pct-alert"></p></div>
+    <div>{{ f.number_field("cm", "Curve Multiplier (CM)", default_settings.cm, step=0.5,
+        help_text="GE Multilin 'Standard' thermal curve shared across 469/269Plus/369/869.") }}</div>
+  </div>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Motor Starting &amp; Safe Stall Data</h3>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("lrc_100", "Locked Rotor Current @ 100% V (A)", default_settings.lrc_100, step=1) }}
+      {{ f.number_field("lrc_80", "Locked Rotor Current @ 80% V (A)", default_settings.lrc_80, step=1) }}
+    </div>
+    <div>
+      {{ f.number_field("accel_100", "Acceleration Time @ 100% V (s)", default_settings.accel_100, step=0.1) }}
+      {{ f.number_field("accel_80", "Acceleration Time @ 80% V (s)", default_settings.accel_80, step=0.1) }}
+    </div>
+  </div>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("stall_100", "Safe Stall Time @ 100% V (s)", default_settings.stall_100, step=0.1,
+        help_text="Only the hot safe stall time is documented (hot/cold ratio = 1.0).") }}</div>
+    <div>{{ f.number_field("stall_80", "Safe Stall Time @ 80% V (s)", default_settings.stall_80, step=0.1) }}</div>
+  </div>
+  <p class="alert" id="stall-margin-alert"></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Instantaneous (Short Circuit)</h3>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("inst_ct", "Instantaneous Pickup (x CT primary)", default_settings.inst_ct, step=0.1,
+        help_text="Multiple of the CT's primary rating.") }}<p class="alert" id="inst-alert"></p></div>
+    <div>{{ f.number_field("inst_delay", "Instantaneous Delay (ms)", default_settings.inst_delay, step=10) }}</div>
+  </div>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Ground Fault</h3>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("gf_frac", "GF Pickup (x Ground CT Primary A)", default_settings.gf_frac, step=0.05) }}</div>
+    <div>{{ f.number_field("gf_delay", "GF Delay (ms)", default_settings.gf_delay, step=10) }}</div>
+  </div>
+  <p class="caption">No documented rule-of-thumb floor for this setting in the app yet — reference only.</p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Current Unbalance</h3>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("unb_alarm_pct", "Unbalance Alarm Pickup (%)", default_settings.unb_alarm_pct, step=1) }}
+      {{ f.number_field("unb_alarm_delay", "Unbalance Alarm Delay (s)", default_settings.unb_alarm_delay, step=1) }}
+    </div>
+    <div>
+      {{ f.number_field("unb_trip_pct", "Unbalance Trip Pickup (%)", default_settings.unb_trip_pct, step=1) }}
+      {{ f.number_field("unb_trip_delay", "Unbalance Trip Delay (s)", default_settings.unb_trip_delay, step=1) }}
+    </div>
+  </div>
+  <p class="alert" id="unbalance-alert"></p>
+</div>
+
+<div class="panel panel--bordered">
+  <h3>Other Settings (reference only)</h3>
+  <p class="caption">No documented rule-of-thumb floor for these in the app yet — reference only, not live-checked.</p>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("jam_pct", "Mechanical Jam Pickup (% FLA)", default_settings.jam_pct, step=5) }}
+      {{ f.number_field("jam_delay", "Mechanical Jam Delay (s)", default_settings.jam_delay, step=0.5) }}
+      {{ f.number_field("accel", "Acceleration Timer (s)", default_settings.accel, step=1) }}
+    </div>
+    <div>
+      {{ f.number_field("ovl_alarm_delay", "Overload Alarm Delay (s)", default_settings.ovl_alarm_delay, step=0.5) }}
+      {{ f.number_field("pdiff_frac", "Phase Differential Pickup (x CT)", default_settings.pdiff_frac, step=0.05) }}
+      {{ f.number_field("pdiff_delay", "Phase Differential Delay (ms)", default_settings.pdiff_delay, step=10) }}
+    </div>
+  </div>
+</div>
+
+<div class="panel panel--bordered" id="ifc-settings-panel">
+  <h3>IFC66KD2A 50/50/51 (separate discrete electromechanical relay)</h3>
+  <p class="caption">Documented alongside the SR469 MPR above — same relay model as the Induced Draft Fan's own 50/50/51, on this motor's phase CT.</p>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("ifc_tap51", "51 Tap (A sec.)", default_settings.ifc_tap51, step=0.1,
+          help_text="IFC66KD2A range: 2.5-7.5A at discrete taps.") }}
+      <p class="alert" id="ifc-51-alert"></p>
+    </div>
+    <div>
+      {{ f.number_field("ifc_td", "51 Time Dial", default_settings.ifc_td, step=0.1,
+          help_text="IAC 'Long Time Inverse' curve (GEK-106618C constants).") }}
+      <p class="alert" id="ifc-51-margin-alert"></p>
+    </div>
+  </div>
+  <div class="field-grid field-grid--2">
+    <div>
+      {{ f.number_field("ifc_50a", "50A Pickup (A sec.)", default_settings.ifc_50a, step=1,
+          help_text="Set at ~200-300% of locked rotor current to allow starting inrush.") }}
+      <p class="alert" id="ifc-50a-alert"></p>
+    </div>
+    <div>
+      {{ f.number_field("ifc_50b", "50B Dropout (A sec.)", default_settings.ifc_50b, step=0.1,
+          help_text="High-dropout overload ALARM element — estimated pickup = dropout / 0.8.") }}
+      <p class="alert" id="ifc-50b-alert"></p>
+    </div>
+  </div>
+  {{ f.number_field("ifc_target", "Target &amp; Seal-in (A)", default_settings.ifc_target, step=0.1) }}
+
+  <div class="field field--checkbox">
+    <label><input type="checkbox" id="ifc-backup-en" checked> Enable HFC22B2A backup relay</label>
+  </div>
+  <div class="field-grid field-grid--2">
+    <div>{{ f.number_field("ifc_backup_ct", "Backup CT Ratio (Primary A, e.g. 2000 in '2000:5')", default_settings.ifc_backup_ct, step=1) }}</div>
+    <div>{{ f.number_field("ifc_backup_pickup", "Backup 50 Pickup (A sec.)", default_settings.ifc_backup_pickup, step=0.5) }}</div>
+  </div>
+  <p class="alert" id="ifc-backup-alert"></p>
+</div>
+
+<p class="alert" id="overall-status-caption"></p>
+{% endblock %}
+
+{% block tab_live_sim %}
+<div class="live-sim-grid">
+  <div>
+    <h3>Operating Current Input</h3>
+    <p class="caption">Enter the actual PRIMARY-side current in Amps — the app converts through the CT ratio automatically.</p>
+    <p class="alert alert--info" id="fla-pickup-info"></p>
+    <div class="field"><label for="test-current">Phase Current (Primary A)</label><input type="number" id="test-current" step="10" value="0"></div>
+    <div class="field"><label for="ground-current">Ground Current (Primary A)</label><input type="number" id="ground-current" step="1" value="0"></div>
+    <div class="field"><label for="unbalance-input">Current Unbalance (%, I2/I1)</label><input type="number" id="unbalance-input" step="1" min="0" max="100" value="0"></div>
+    <div class="field"><label for="diff87m-test-imbalance">87M Imbalance Test Current (Primary A)</label><input type="number" id="diff87m-test-imbalance" step="1" value="0"
+        title="The NET (line minus neutral) current through the self-balancing CT — zero for a healthy motor."></div>
+  </div>
+  <div>
+    <h3>Real-time Protection Verdict</h3>
+    <p class="alert" id="trip-status-banner"></p>
+    <table class="data-table" id="verdict-table">
+      <thead><tr><th>Function</th><th>Multiple</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button type="button" id="export-report-btn" class="btn btn--primary">Export Certified Protection Audit Report</button>
+
+    <h4>Relay-Ready Settings Sheet — Multilin SR469</h4>
+    <table class="data-table" id="settings-sheet-table-sr469"><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody></tbody></table>
+
+    <h4>Relay-Ready Settings Sheet — GE HFC23C1A (87M)</h4>
+    <table class="data-table" id="settings-sheet-table-87m"><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+{% endblock %}
+
+{% block tab_commissioning %}
+<h3>Commissioning &amp; Secondary Current Injection Assistant</h3>
+<p class="hint">Pick a target multiple of the Overload Pickup to calculate the exact secondary Amps to inject at your test set, and see the expected trip time.</p>
+<div class="field field--slider">
+  <label for="inj-multiple-slider">Target Multiple of Motor FLA (M)</label>
+  <div class="field__slider-row">
+    <input type="range" id="inj-multiple-slider" min="1.05" max="10.0" step="0.05" value="3.9">
+    <input type="number" id="inj-multiple-number" min="1.05" max="10.0" step="0.05" value="3.9">
+  </div>
+</div>
+<div class="field-grid field-grid--3">
+  <div class="metric"><span class="metric__label">Inject (primary A)</span><span class="metric__value" id="inj-pri-value">—</span></div>
+  <div class="metric"><span class="metric__label">Equivalent Secondary Current</span><span class="metric__value" id="inj-sec-value">—</span></div>
+  <div class="metric"><span class="metric__label">Expected Overload Trip Time</span><span class="metric__value" id="inj-trip-value">—</span></div>
+</div>
+
+<hr>
+<h3>Auto-Sweep Full Curve Test Table</h3>
+<div class="field-grid field-grid--3">
+  <div class="field"><label for="sweep-start">Sweep Start (Multiple of FLA)</label><input type="number" id="sweep-start" value="1.5" step="0.1"></div>
+  <div class="field"><label for="sweep-end">Sweep End (Multiple of FLA)</label><input type="number" id="sweep-end" value="6.0" step="0.5"></div>
+  <div class="field"><label for="sweep-step">Sweep Step (Multiple of FLA)</label><input type="number" id="sweep-step" value="0.5" step="0.1"></div>
+</div>
+<button type="button" id="generate-sweep-btn" class="btn btn--secondary">Generate Sweep Table</button>
+<table class="data-table" id="sweep-table" hidden>
+  <thead><tr><th>Multiple of FLA (M)</th><th>Primary Current (A)</th><th>Secondary Current (A)</th><th>Overload Trip Time (s)</th></tr></thead>
+  <tbody></tbody>
+</table>
+<button type="button" id="download-sweep-csv-btn" class="btn btn--ghost" hidden>Download Sweep Table as CSV</button>
+{% endblock %}
+
+{% block tab_curve_test_points %}
+<h3>Overload (51) Time-Current Characteristic</h3>
+<div id="tcc-chart" class="chart"></div>
+<p class="caption">GE Multilin "Standard" thermal curve: T = CM x 2.2116623 / (0.025303373x(M-1)&sup2; + 0.050547581x(M-1)), M = current as a multiple of motor FLA.</p>
+
+<div id="stall-margin-section">
+  <hr>
+  <h4>Starting/Stall Margin Check</h4>
+  <p class="caption">The overload curve should pass BELOW both Safe Stall markers and ABOVE both Start markers — the relay must not trip during a normal start, but must trip before insulation is thermally damaged on a stall.</p>
+  <div class="field-grid field-grid--2">
+    <div id="stall-100-result"></div>
+    <div id="stall-80-result"></div>
+  </div>
+</div>
+
+<hr>
+<h4>Other SR469 Functions — Settings Reference (not live-simulated)</h4>
+<table class="data-table" id="other-functions-table">
+  <thead><tr><th>Function</th><th>Setting</th><th>Note</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<hr>
+<h4>Fault Clearing Time Simulation</h4>
+<p class="caption">Feeds a fault current through the same protection logic as Live Simulation, then adds a typical breaker operating time to show total clearing time.</p>
+<div class="field" id="fault-scenario-field">
+  <label>Fault Scenario</label>
+  <div class="radio-row" id="fault-scenario-radio">
+    <label><input type="radio" name="fault_scenario" value="Locked Rotor / Stall" checked> Locked Rotor / Stall</label>
+    <label><input type="radio" name="fault_scenario" value="Short-Circuit Fault"> Short-Circuit Fault</label>
+  </div>
+</div>
+<div class="field"><label for="fault-breaker-cycles">Breaker Interrupting Time (cycles)</label><input type="number" id="fault-breaker-cycles" value="5.0" step="0.5" min="1" max="15"></div>
+<button type="button" id="run-fault-sim-btn" class="btn btn--secondary">&#9654; Run Fault Simulation</button>
+<p class="alert" id="fault-sim-caption">Click <strong>Run Fault Simulation</strong> to see the fault current, relay response, and breaker clearing time.</p>
+<div id="fault-sim-chart" class="chart chart--sm"></div>
+
+<hr>
+<details id="ifc-details">
+  <summary><strong>GE IFC66KD2A 50/50/51 (separate discrete relay)</strong></summary>
+  <div class="panel">
+    <p class="caption">This motor's own settings document specifies a separate, discrete GE IFC66KD2A 50/50/51 electromechanical relay and a GE HFC22B2A backup instantaneous relay, in addition to the SR469 MPR modeled above — the same relay stack architecture as the Induced Draft Fan.</p>
+    <p class="alert alert--info" id="ifc-test-current-info"></p>
+    <div class="field-grid field-grid--3">
+      <div class="metric"><span class="metric__label">Relay Secondary</span><span class="metric__value" id="ifc-relay-sec-value">—</span></div>
+      <div class="metric"><span class="metric__label">Multiple of 51 Pickup</span><span class="metric__value" id="ifc-multiple-value">—</span></div>
+      <div class="metric"><span class="metric__label">51 Trip Time</span><span class="metric__value" id="ifc-trip-time-value">—</span></div>
+    </div>
+    <p class="alert" id="ifc-verdict-banner"></p>
+    <table class="data-table" id="ifc-elements-table">
+      <thead><tr><th>Element</th><th>State</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h4>Starting/Stall Margin Check (51 element)</h4>
+    <div class="field-grid field-grid--2">
+      <div id="ifc-stall-100-result"></div>
+      <div id="ifc-stall-80-result"></div>
+    </div>
+
+    <h4>Time-Current Characteristic (TCC) Curve</h4>
+    <div id="ifc-tcc-chart" class="chart"></div>
+    <p class="caption">GE IAC "Long Time Inverse" curve (5-constant polynomial, GEK-106618C constants) — same formula used for the Induced Draft Fan's own IFC66KD2A.</p>
+
+    <h4>Settings Reference</h4>
+    <table class="data-table" id="ifc-settings-sheet-table"><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody></tbody></table>
+  </div>
+</details>
+{% endblock %}
+
+{% block tab_approval %}
+<h3>Settings Summary &amp; Approval Record</h3>
+<p class="caption">Record the settings basis and review status before exporting a controlled report. This record supports engineering review; it does not replace the approved protection study.</p>
+
+<div class="field"><label for="source-document">Source document</label><input type="text" id="source-document" value="PAFAN MOTOR PROTECTION.pdf"></div>
+<div class="field-grid field-grid--2">
+  <div>
+    <div class="field"><label for="revision">Document / settings revision</label><input type="text" id="revision" value="Rev. 0"></div>
+    <div class="field"><label for="prepared-by">Prepared by</label><input type="text" id="prepared-by" value=""></div>
+  </div>
+  <div>
+    <div class="field"><label for="reviewed-by">Reviewed by</label><input type="text" id="reviewed-by" value=""></div>
+    <div class="field"><label for="approval-status">Review status</label>
+      <select id="approval-status">
+        <option>Draft — engineering review required</option>
+        <option>Reviewed — pending approval</option>
+        <option>Approved for issue</option>
+      </select>
+    </div>
+  </div>
+</div>
+<div class="field"><label for="review-note">Review note / change description</label><textarea id="review-note" rows="3"></textarea></div>
+
+<hr>
+<h4>Applied Settings</h4>
+<table class="data-table" id="applied-settings-table"><thead><tr><th>Category</th><th>Parameter</th><th>Value</th></tr></thead><tbody></tbody></table>
+
+<h4>Coordination Review</h4>
+<p class="alert" id="coordination-status"></p>
+<table class="data-table" id="coordination-table"><thead><tr><th>Check</th><th>Result</th><th>Basis</th></tr></thead><tbody></tbody></table>
+
+<hr>
+<button type="button" id="export-approval-pdf-btn" class="btn btn--primary">Download Settings Summary &amp; Approval Report (PDF)</button>
+<button type="button" id="download-settings-sheet-btn" class="btn btn--ghost">Download Combined Settings Sheet (.csv)</button>
+
+<hr>
+<h4>Save Profile</h4>
+<p class="caption">Downloads every current setting. Restore later via the sidebar loader.</p>
+<div class="field"><label for="profile-name">Profile Name</label><input type="text" id="profile-name" value="Primary Air (PA) Fan Profile"></div>
+<button type="button" id="save-profile-btn" class="btn btn--secondary">&#128190; Save Profile (.json)</button>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/pages/motor_pa_fan.js') }}"></script>
+{% endblock %}

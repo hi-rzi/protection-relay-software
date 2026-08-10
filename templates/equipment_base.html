@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/equipment.css') }}">{% endblock %}
+{% block content %}
+<div class="equipment-page" id="equipment-page" data-equipment="{% block equipment_tag %}{% endblock %}">
+  <div class="equipment-page__title">
+    <h1>{% block equipment_title %}{% endblock %}</h1>
+    <p class="equipment-page__caption">{% block equipment_caption %}{% endblock %}</p>
+  </div>
+
+  <aside class="equipment-sidebar">
+    <h2>Equipment Presets</h2>
+    <label for="preset-select">Load Standard Profile</label>
+    <select id="preset-select">
+      {% for name in presets.keys() %}
+        <option value="{{ name }}" {% if name == default_preset_name %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" id="reset-preset-btn" class="btn btn--ghost">&#8630; Reset to preset defaults</button>
+
+    <div class="sidebar-block">
+      <label for="profile-load-input">Load a saved profile (.json)</label>
+      <input type="file" id="profile-load-input" accept=".json">
+    </div>
+
+    <div id="preset-confidence-warning" class="alert alert--warning" hidden>
+      <strong>Data confidence:</strong> Differential and fault-current settings are verified against the
+      settings document. <strong>X/R Ratio</strong> is an unconfirmed placeholder.
+    </div>
+    <div id="toast" class="toast" hidden></div>
+  </aside>
+
+  <div class="equipment-body">
+    <div class="tabgroup" data-tabgroup="outer">
+      <div class="tabgroup__tabs tabgroup__tabs--cards" id="outer-tab-cards">
+        <button type="button" class="tab-btn tab-btn--card" data-tab="settings">
+          <span class="tab-btn--card__icon">&#9881;&#65039;</span>
+          <span class="tab-btn--card__title">Current Settings</span>
+          <span class="tab-btn--card__desc">Review and edit every applied setting for this relay.</span>
+        </button>
+        <button type="button" class="tab-btn tab-btn--card" data-tab="analysis">
+          <span class="tab-btn--card__icon">&#128202;</span>
+          <span class="tab-btn--card__title">Analysis &amp; Tools</span>
+          <span class="tab-btn--card__desc">Simulation, commissioning, testing, and export.</span>
+        </button>
+      </div>
+
+      <div class="tabpanel" data-tabpanel="settings" hidden>
+        {% block settings_tab %}{% endblock %}
+      </div>
+
+      <div class="tabpanel" data-tabpanel="analysis" hidden>
+        <p class="hint">Reads settings from the Current Settings tab.</p>
+
+        <div class="tabgroup" data-tabgroup="inner">
+          <div class="tabgroup__tabs">
+            <button type="button" class="tab-btn tab-btn--active" data-tab="live-sim">Live Simulation</button>
+            <button type="button" class="tab-btn" data-tab="commissioning">Commissioning &amp; Injection Tool</button>
+            <button type="button" class="tab-btn" data-tab="curve-test-points">{% block curve_test_points_label %}Differential Curve &amp; Test Points{% endblock %}</button>
+            {% if has_fault_current %}
+              <button type="button" class="tab-btn" data-tab="fault-current">Fault Current Analysis</button>
+            {% endif %}
+            <button type="button" class="tab-btn" data-tab="approval">Settings Summary &amp; Approval</button>
+          </div>
+
+          <div class="tabpanel" data-tabpanel="live-sim">{% block tab_live_sim %}{% endblock %}</div>
+          <div class="tabpanel" data-tabpanel="commissioning" hidden>{% block tab_commissioning %}{% endblock %}</div>
+          <div class="tabpanel" data-tabpanel="curve-test-points" hidden>{% block tab_curve_test_points %}{% endblock %}</div>
+          {% if has_fault_current %}
+            <div class="tabpanel" data-tabpanel="fault-current" hidden>{% block tab_fault_current %}{% endblock %}</div>
+          {% endif %}
+          <div class="tabpanel" data-tabpanel="approval" hidden>{% block tab_approval %}{% endblock %}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="initial-data" type="application/json">{{ initial_data_json | safe }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/shared/settings-form.js') }}"></script>
+<script src="{{ url_for('static', filename='js/shared/recompute.js') }}"></script>
+<script src="{{ url_for('static', filename='js/shared/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/shared/profile.js') }}"></script>
+<script src="{{ url_for('static', filename='js/shared/project-store.js') }}"></script>
+{% block page_scripts %}{% endblock %}
+{% endblock %}

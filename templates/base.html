@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Electrical Equipment Protection Suite{% endblock %}</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<header class="app-header">
+  <div class="app-header__brand">Electrical Equipment Protection Suite</div>
+  <nav class="app-header__nav">
+    <a class="app-header__link {% if request.blueprint == 'generator' %}app-header__link--active{% endif %}" href="{{ url_for('generator.page') }}">Generator</a>
+    <span class="app-header__group">Transformer</span>
+    <a class="app-header__link {% if request.blueprint == 'transformer_exct' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_exct.page') }}">EXCT</a>
+    <a class="app-header__link {% if request.blueprint == 'transformer_gsut' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_gsut.page') }}">GSUT</a>
+    <a class="app-header__link {% if request.blueprint == 'transformer_overall' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_overall.page') }}">Overall</a>
+    <a class="app-header__link {% if request.blueprint == 'transformer_aux' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_aux.page') }}">Aux</a>
+    <span class="app-header__group">Motor</span>
+    <a class="app-header__link {% if request.blueprint == 'motor_idfan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_idfan.page') }}">ID Fan</a>
+    <a class="app-header__link {% if request.blueprint == 'motor_pa_fan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_pa_fan.page') }}">PA Fan</a>
+    <a class="app-header__link {% if request.blueprint == 'motor_fd_fan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_fd_fan.page') }}">FD Fan</a>
+  </nav>
+</header>
+<main class="app-main">
+  {% block content %}{% endblock %}
+</main>
+<footer class="app-footer">
+  <span>Flask build — all 8 equipment pages. Home/Guide/Project pages remain on the Streamlit app.</span>
+</footer>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

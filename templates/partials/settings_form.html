@@ -1,0 +1,37 @@
+{# Reusable Jinja macros for repeated field patterns, replacing common/ui_helpers.py's
+   Streamlit widgets with plain HTML wired up by static/js/shared/settings-form.js. #}
+
+{% macro number_field(field, label, value, step=1, help_text=None) %}
+<div class="field">
+  <label for="f-{{ field }}">{{ label }}</label>
+  <input type="number" id="f-{{ field }}" data-field="{{ field }}" value="{{ value }}" step="{{ step }}">
+  {% if help_text %}<p class="field__help">{{ help_text }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro select_field(field, label, options, value, help_text=None) %}
+<div class="field">
+  <label for="f-{{ field }}">{{ label }}</label>
+  <select id="f-{{ field }}" data-field="{{ field }}">
+    {% for opt in options %}
+      <option value="{{ opt }}" {% if opt == value %}selected{% endif %}>{{ opt }}</option>
+    {% endfor %}
+  </select>
+  {% if help_text %}<p class="field__help">{{ help_text }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{# slider_with_exact_input replacement: a range input + paired exact-value number
+   input, kept in sync by settings-form.js (data-slider-pair links them). #}
+{% macro slider_with_exact_input(field, label, min_v, max_v, value, step, help_text=None) %}
+<div class="field field--slider">
+  <label for="f-{{ field }}-slider">{{ label }}</label>
+  <div class="field__slider-row">
+    <input type="range" id="f-{{ field }}-slider" data-slider-pair="{{ field }}"
+           min="{{ min_v }}" max="{{ max_v }}" step="{{ step }}" value="{{ value }}">
+    <input type="number" id="f-{{ field }}-number" data-field="{{ field }}" data-number-pair="{{ field }}"
+           min="{{ min_v }}" max="{{ max_v }}" step="{{ step }}" value="{{ value }}">
+  </div>
+  {% if help_text %}<p class="field__help">{{ help_text }}</p>{% endif %}
+</div>
+{% endmacro %}
