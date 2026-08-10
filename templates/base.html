@@ -16,15 +16,31 @@
   <div class="app-header__brand">Electrical Equipment Protection Suite</div>
   <nav class="app-header__nav">
     <a class="app-header__link {% if request.blueprint == 'generator' %}app-header__link--active{% endif %}" href="{{ url_for('generator.page') }}">Generator</a>
-    <span class="app-header__group">Transformer</span>
-    <a class="app-header__link {% if request.blueprint == 'transformer_exct' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_exct.page') }}">EXCT</a>
-    <a class="app-header__link {% if request.blueprint == 'transformer_gsut' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_gsut.page') }}">GSUT</a>
-    <a class="app-header__link {% if request.blueprint == 'transformer_overall' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_overall.page') }}">Overall</a>
-    <a class="app-header__link {% if request.blueprint == 'transformer_aux' %}app-header__link--active{% endif %}" href="{{ url_for('transformer_aux.page') }}">Aux</a>
-    <span class="app-header__group">Motor</span>
-    <a class="app-header__link {% if request.blueprint == 'motor_idfan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_idfan.page') }}">ID Fan</a>
-    <a class="app-header__link {% if request.blueprint == 'motor_pa_fan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_pa_fan.page') }}">PA Fan</a>
-    <a class="app-header__link {% if request.blueprint == 'motor_fd_fan' %}app-header__link--active{% endif %}" href="{{ url_for('motor_fd_fan.page') }}">FD Fan</a>
+
+    {% set transformer_active = request.blueprint in ['transformer_exct', 'transformer_gsut', 'transformer_overall', 'transformer_aux'] %}
+    <div class="app-header__dropdown">
+      <button type="button" class="app-header__link app-header__dropdown-toggle {% if transformer_active %}app-header__link--active{% endif %}">
+        Transformer <span class="app-header__caret">&#9662;</span>
+      </button>
+      <div class="app-header__dropdown-menu">
+        <a class="app-header__dropdown-item {% if request.blueprint == 'transformer_exct' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('transformer_exct.page') }}">EXCT</a>
+        <a class="app-header__dropdown-item {% if request.blueprint == 'transformer_gsut' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('transformer_gsut.page') }}">GSUT</a>
+        <a class="app-header__dropdown-item {% if request.blueprint == 'transformer_overall' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('transformer_overall.page') }}">Overall</a>
+        <a class="app-header__dropdown-item {% if request.blueprint == 'transformer_aux' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('transformer_aux.page') }}">Aux</a>
+      </div>
+    </div>
+
+    {% set motor_active = request.blueprint in ['motor_idfan', 'motor_pa_fan', 'motor_fd_fan'] %}
+    <div class="app-header__dropdown">
+      <button type="button" class="app-header__link app-header__dropdown-toggle {% if motor_active %}app-header__link--active{% endif %}">
+        Motor <span class="app-header__caret">&#9662;</span>
+      </button>
+      <div class="app-header__dropdown-menu">
+        <a class="app-header__dropdown-item {% if request.blueprint == 'motor_idfan' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('motor_idfan.page') }}">ID Fan</a>
+        <a class="app-header__dropdown-item {% if request.blueprint == 'motor_pa_fan' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('motor_pa_fan.page') }}">PA Fan</a>
+        <a class="app-header__dropdown-item {% if request.blueprint == 'motor_fd_fan' %}app-header__dropdown-item--active{% endif %}" href="{{ url_for('motor_fd_fan.page') }}">FD Fan</a>
+      </div>
+    </div>
   </nav>
 </header>
 <main class="app-main">
@@ -33,6 +49,27 @@
 <footer class="app-footer">
   <span>Flask build — all 8 equipment pages. Home/Guide/Project pages remain on the Streamlit app.</span>
 </footer>
+<script>
+(function () {
+  "use strict";
+  document.querySelectorAll(".app-header__dropdown").forEach(function (dropdown) {
+    var toggle = dropdown.querySelector(".app-header__dropdown-toggle");
+    toggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var isOpen = dropdown.classList.contains("app-header__dropdown--open");
+      document.querySelectorAll(".app-header__dropdown--open").forEach(function (d) {
+        d.classList.remove("app-header__dropdown--open");
+      });
+      if (!isOpen) dropdown.classList.add("app-header__dropdown--open");
+    });
+  });
+  document.addEventListener("click", function () {
+    document.querySelectorAll(".app-header__dropdown--open").forEach(function (d) {
+      d.classList.remove("app-header__dropdown--open");
+    });
+  });
+})();
+</script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>
