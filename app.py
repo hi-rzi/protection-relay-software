@@ -7,6 +7,7 @@ pg = st.navigation({
         st.Page("views/home.py", title="Home", default=True),
         st.Page("views/guide.py", title="Guide"),
         st.Page("views/project.py", title="Project"),
+        st.Page("views/fmea.py", title="FMEA"),
     ],
     "Generator": [st.Page("views/generator.py", title="Generator (87G)")],
     "Transformer": [

@@ -2,7 +2,7 @@ import datetime
 import io
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
@@ -328,3 +328,63 @@ def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, un
         results_header=results_header, results_rows=results_rows,
         results_col_widths=(120, 70, 90, 130, 130),
     )
+
+
+def generate_fmea_pdf_report(rows, categories):
+    """FMEA (Failure Mode and Effects Analysis) report, views/fmea.py.
+
+    Not built on build_pdf_report()'s results table: that table wraps only its
+    header cells in Paragraph, leaving body cells as plain unwrapped strings -
+    fine for the short numeric/verdict values every other report's results table
+    holds, but FMEA's Category/Component/Failure Mode/Effect/Recommended Action
+    columns are long free text that would overflow into neighboring columns
+    unwrapped. This builds its own landscape table with every cell (header and
+    body) wrapped in Paragraph, and deliberately omits Potential Cause and
+    Detection Method (present in the CSV/JSON export, which has no page-width
+    constraint) to keep the ~10 remaining columns readable on one landscape page.
+
+    rows: list of dicts with keys Category, Component, Failure Mode, Potential
+        Effect, S, O, D, RPN, Risk, Recommended Action (the same shape
+        views/fmea.py already builds for its on-screen table).
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                             rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor("#1E3A8A"))
+    story.append(Paragraph("FMEA — Digital Protection Relays", title_style))
+    story.append(Spacer(1, 6))
+    meta_text = (
+        f"<b>Generated:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
+        f"<b>Relay families:</b> {', '.join(categories)} | <b>{len(rows)} failure mode(s)</b>"
+    )
+    story.append(Paragraph(meta_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    cell_style = ParagraphStyle('FmeaCell', parent=styles['Normal'], fontSize=7.5, leading=9)
+    header_style = ParagraphStyle('FmeaHeader', parent=styles['Normal'], fontSize=8, leading=10,
+                                   textColor=colors.white, fontName='Helvetica-Bold', alignment=1)
+
+    columns = ["Category", "Component", "Failure Mode", "Potential Effect", "S", "O", "D", "RPN", "Risk", "Recommended Action"]
+    col_widths = (80, 80, 95, 125, 22, 22, 22, 30, 40, 105)
+
+    table_data = [[Paragraph(c, header_style) for c in columns]]
+    for r in rows:
+        table_data.append([
+            Paragraph(str(r.get(c, "")), cell_style) for c in columns
+        ])
+
+    t = Table(table_data, colWidths=list(col_widths), repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+    ]))
+    story.append(t)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
