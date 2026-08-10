@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from common.fmea_data import CATEGORIES, FMEA_ENTRIES, risk_level
+from common.fmea_data import CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
 from common.pdf_report import generate_fmea_pdf_report
 
 st.title("FMEA — Digital Protection Relays")
@@ -36,7 +36,14 @@ with st.expander("Scope and how to use this page", expanded=False):
         "Occurrence against (see `Reliability Data.py` at the repo root for a related "
         "MTBF/Arrhenius thermal-derating analysis for generator relays). Edit any score "
         "to reflect your own plant's experience; every value below is a starting point, "
-        "not a finding."
+        "not a finding.\n\n"
+        "**Diagnostics** (how the failure is actually caught — an alarm, a supervision "
+        "circuit, a periodic test) and **Maintenance Task / Frequency** (what to do about "
+        "it, and how often) are attached to each failure mode below, not split into a "
+        "separate tab — a maintenance action divorced from the specific failure it "
+        "addresses isn't actionable. Frequency is editable for the same reason S/O/D are: "
+        "these are starting suggestions, recalibrate them against your plant's own "
+        "maintenance procedure/standard."
     )
 
 if "fmea_rows" not in st.session_state:
@@ -90,12 +97,14 @@ for rid in visible_ids:
         "Failure Mode": r["failure_mode"],
         "Potential Cause": r["potential_cause"],
         "Potential Effect": r["potential_effect"],
-        "Detection Method": r["detection_method"],
+        "Diagnostics": r["detection_method"],
         "S": r["default_severity"],
         "O": r["default_occurrence"],
         "D": r["default_detection"],
         "RPN": rpn,
         "Risk": risk_level(rpn),
+        "Maintenance Task": r.get("maintenance_task", ""),
+        "Frequency": r.get("maintenance_frequency", FREQUENCY_OPTIONS[0]),
         "Recommended Action": r.get("recommended_action", ""),
     })
 
@@ -109,13 +118,16 @@ edited_df = st.data_editor(
     use_container_width=True,
     hide_index=True,
     disabled=["id", "Category", "Component", "Failure Mode", "Potential Cause",
-              "Potential Effect", "Detection Method", "RPN", "Risk"],
+              "Potential Effect", "Diagnostics", "RPN", "Risk"],
     column_config={
         "id": None,
         "S": st.column_config.NumberColumn("S", min_value=1, max_value=10, step=1, help="Severity (1-10)"),
         "O": st.column_config.NumberColumn("O", min_value=1, max_value=10, step=1, help="Occurrence (1-10)"),
         "D": st.column_config.NumberColumn("D", min_value=1, max_value=10, step=1, help="Detection (1 = easily caught, 10 = essentially undetectable)"),
         "RPN": st.column_config.NumberColumn("RPN", help="Severity x Occurrence x Detection"),
+        "Diagnostics": st.column_config.TextColumn("Diagnostics", width="medium", help="How this failure is actually detected - an alarm, a supervision circuit, a periodic test."),
+        "Maintenance Task": st.column_config.TextColumn("Maintenance Task", width="large", help="What to do to prevent, detect, or respond to this failure mode."),
+        "Frequency": st.column_config.SelectboxColumn("Frequency", options=FREQUENCY_OPTIONS, help="Recalibrate against your plant's own maintenance procedure/standard."),
         "Recommended Action": st.column_config.TextColumn("Recommended Action", width="large"),
     },
 )
@@ -128,6 +140,8 @@ for _, row in edited_df.iterrows():
     target["default_severity"] = int(row["S"])
     target["default_occurrence"] = int(row["O"])
     target["default_detection"] = int(row["D"])
+    target["maintenance_task"] = row["Maintenance Task"]
+    target["maintenance_frequency"] = row["Frequency"]
     target["recommended_action"] = row["Recommended Action"]
 
 # Recompute RPN/Risk from the just-written-back values for the callout below,

@@ -336,16 +336,19 @@ def generate_fmea_pdf_report(rows, categories):
     Not built on build_pdf_report()'s results table: that table wraps only its
     header cells in Paragraph, leaving body cells as plain unwrapped strings -
     fine for the short numeric/verdict values every other report's results table
-    holds, but FMEA's Category/Component/Failure Mode/Effect/Recommended Action
-    columns are long free text that would overflow into neighboring columns
-    unwrapped. This builds its own landscape table with every cell (header and
-    body) wrapped in Paragraph, and deliberately omits Potential Cause and
-    Detection Method (present in the CSV/JSON export, which has no page-width
-    constraint) to keep the ~10 remaining columns readable on one landscape page.
+    holds, but FMEA's Category/Component/Failure Mode/Effect/Diagnostics/
+    Maintenance Task columns are long free text that would overflow into
+    neighboring columns unwrapped. This builds its own landscape table with
+    every cell (header and body) wrapped in Paragraph. Includes Diagnostics and
+    Maintenance Task/Frequency per the supervisor's requirement that the report
+    show not just what can fail, but how it's detected and what maintenance
+    response it calls for - deliberately omits Potential Cause and Recommended
+    Action (present in the CSV/JSON export, which has no page-width constraint)
+    to keep the columns readable on one landscape page.
 
     rows: list of dicts with keys Category, Component, Failure Mode, Potential
-        Effect, S, O, D, RPN, Risk, Recommended Action (the same shape
-        views/fmea.py already builds for its on-screen table).
+        Effect, Diagnostics, S, O, D, RPN, Risk, Maintenance Task, Frequency
+        (the same shape views/fmea.py already builds for its on-screen table).
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
@@ -367,8 +370,9 @@ def generate_fmea_pdf_report(rows, categories):
     header_style = ParagraphStyle('FmeaHeader', parent=styles['Normal'], fontSize=8, leading=10,
                                    textColor=colors.white, fontName='Helvetica-Bold', alignment=1)
 
-    columns = ["Category", "Component", "Failure Mode", "Potential Effect", "S", "O", "D", "RPN", "Risk", "Recommended Action"]
-    col_widths = (80, 80, 95, 125, 22, 22, 22, 30, 40, 105)
+    columns = ["Category", "Component", "Failure Mode", "Potential Effect", "Diagnostics",
+               "S", "O", "D", "RPN", "Risk", "Maintenance Task", "Frequency"]
+    col_widths = (68, 68, 82, 98, 82, 18, 18, 18, 28, 34, 78, 48)
 
     table_data = [[Paragraph(c, header_style) for c in columns]]
     for r in rows:
