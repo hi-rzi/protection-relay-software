@@ -184,7 +184,7 @@ if selected_preset != "Custom Profile":
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
 # comment on whether an adjustment improves or weakens protection. Comments
 # reuse the exact same checks already used elsewhere on this page (the old
-# "Engineering Input Checks" in the Live Simulation tab, and the "Starting/
+# "Engineering Input Checks" in the Simulate & Test tab, and the "Starting/
 # Stall Margin Check") - no new engineering judgment invented, just surfaced
 # inline per-field instead of only after entering a test current.
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ with outer_settings:
     if st.button(
         "📊 Show Live Preview — 51 (Long Time Inverse) Curve",
         key="idfan_show_preview_btn",
-        help="Reflects the CT Ratio, 51 Tap, and Time Dial settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the TCC Curve & Test Points tab under Analysis & Tools.",
+        help="Reflects the CT Ratio, 51 Tap, and Time Dial settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the Simulate & Test tab under Analysis & Tools.",
     ):
         st.session_state["idfan_preview_shown"] = True
     if st.session_state.get("idfan_preview_shown", False):
@@ -361,7 +361,7 @@ with outer_settings:
             if ok_100 and ok_80:
                 st.success(f"Trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — inside the start/safe-stall margin both times. Lower time dial = faster trip (less thermal margin used on a stall) but less starting security.")
             else:
-                st.warning(f"Trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — outside the start/safe-stall margin at one or both voltages. See the TCC Curve tab for the full picture.")
+                st.warning(f"Trips in {t100_str} @ 100%V / {t80_str} @ 80%V at locked rotor — outside the start/safe-stall margin at one or both voltages. See the Simulate & Test tab for the full picture.")
 
     with st.container(border=True):
         st.markdown("**50A / 50B (Instantaneous)**")
@@ -468,16 +468,15 @@ record_equipment_settings("motor", {
 with outer_analysis:
     st.caption(
         "Everything below reads the settings from the Current Settings tab — adjust them there. "
-        "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
-        "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+        "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
+        "Commissioning & Injection Tool → Fault Current Analysis "
         "(where present) → Settings Summary & Approval. Full guide on the Home page."
     )
 
-    tab_theory, tab1, tab2, tab3, tab4 = st.tabs([
+    tab_theory, tab_sim, tab2, tab4 = st.tabs([
         "Theory",
-        "Live Simulation",
+        "Simulate & Test",
         "Commissioning & Injection Tool",
-        "TCC Curve & Test Points",
         "Settings Summary & Approval",
     ])
 
@@ -507,9 +506,9 @@ with outer_analysis:
         )
 
     # ---------------------------------------------------------------------------
-    # TAB 1 — Live Simulation
+    # TAB — Simulate & Test (Live Simulation + TCC Curve & Test Points)
     # ---------------------------------------------------------------------------
-    with tab1:
+    with tab_sim:
         col_inputs, col_results = st.columns([1.0, 1.2])
 
         with col_inputs:
@@ -681,72 +680,7 @@ with outer_analysis:
                 ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
             ], key_prefix="IDFan_87M")
 
-    # ---------------------------------------------------------------------------
-    # TAB 2 — Commissioning & Injection Tool
-    # ---------------------------------------------------------------------------
-    with tab2:
-        st.subheader("Commissioning & Secondary Current Injection Assistant")
-        st.write(
-            "Pick a target multiple of the 51 pickup to calculate the exact secondary Amps to "
-            "inject at your test set, and see the expected trip time."
-        )
-
-        st.markdown("#### 51 Element Injection Calculator")
-        ic1, ic2 = st.columns(2)
-        with ic1:
-            target_multiple = slider_with_exact_input(
-                st, "Target Multiple of Pickup (M = I / Tap)", 1.05, 20.0, 3.9, 0.05,
-                key=f"{selected_preset}__inj_multiple"
-            )
-        inj_sec_amps = target_multiple * relay.tap_51
-        inj_pri_amps = inj_sec_amps * relay.effective_ratio
-        expected_t = relay.calculate_51_trip_time(inj_sec_amps)
-        with ic2:
-            st.metric("Inject (secondary A)", f"{inj_sec_amps:.3f} A")
-            st.metric("Equivalent Primary Current", f"{inj_pri_amps:.1f} A")
-            st.metric("Expected 51 Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
-
         st.markdown("---")
-        st.subheader("Auto-Sweep Full Curve Test Table")
-        sw1, sw2, sw3 = st.columns(3)
-        with sw1:
-            sweep_start = st.number_input("Sweep Start (Multiple)", value=1.5, min_value=1.05, step=0.1)
-        with sw2:
-            sweep_end = st.number_input("Sweep End (Multiple)", value=10.0, step=0.5)
-        with sw3:
-            sweep_step = st.number_input("Sweep Step (Multiple)", value=0.5, min_value=0.1, step=0.1)
-
-        if st.button("Generate Sweep Table"):
-            if sweep_end <= sweep_start or sweep_step <= 0:
-                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-            else:
-                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                sweep_rows = []
-                for m in sweep_points:
-                    sec_amps = m * relay.tap_51
-                    t = relay.calculate_51_trip_time(sec_amps)
-                    sweep_rows.append({
-                        "Multiple (M)": round(float(m), 3),
-                        "Inject (Secondary A)": round(sec_amps, 3),
-                        "Equivalent Primary (A)": round(sec_amps * relay.effective_ratio, 1),
-                        "51 Trip Time (s)": round(t, 3) if t is not None else None,
-                    })
-                st.session_state["motor_sweep_df"] = pd.DataFrame(sweep_rows)
-
-        if "motor_sweep_df" in st.session_state:
-            st.dataframe(st.session_state["motor_sweep_df"], use_container_width=True)
-            csv_sweep = st.session_state["motor_sweep_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Sweep Table as CSV",
-                data=csv_sweep,
-                file_name=f"50-51_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-
-    # ---------------------------------------------------------------------------
-    # TAB 3 — TCC Curve
-    # ---------------------------------------------------------------------------
-    with tab3:
         st.subheader("Time-Current Characteristic (TCC) Curve")
         st.write(
             "51 Long Time Inverse curve, plotted alongside the motor's starting profile "
@@ -828,8 +762,8 @@ with outer_analysis:
         st.markdown("---")
         st.markdown("#### Fault Clearing Time Simulation")
         st.caption(
-            "Feeds a fault current through the same evaluate_protection() logic as the Live "
-            "Simulation tab, then adds a typical breaker operating time to show how long the "
+            "Feeds a fault current through the same evaluate_protection() logic used above, "
+            "then adds a typical breaker operating time to show how long the "
             "current actually flows before it's cleared. The 51 element's trip time comes "
             "straight from the curve above; the 50A instantaneous element's own operate time "
             "below is a typical value for this class of equipment, not confirmed against this "
@@ -1020,6 +954,68 @@ with outer_analysis:
                 ))
                 idfan_sim_chart_ph.plotly_chart(fig_last, use_container_width=True, key="idfan_fault_sim_last_fig")
 
+
+    # ---------------------------------------------------------------------------
+    # TAB 2 — Commissioning & Injection Tool
+    # ---------------------------------------------------------------------------
+    with tab2:
+        st.subheader("Commissioning & Secondary Current Injection Assistant")
+        st.write(
+            "Pick a target multiple of the 51 pickup to calculate the exact secondary Amps to "
+            "inject at your test set, and see the expected trip time."
+        )
+
+        st.markdown("#### 51 Element Injection Calculator")
+        ic1, ic2 = st.columns(2)
+        with ic1:
+            target_multiple = slider_with_exact_input(
+                st, "Target Multiple of Pickup (M = I / Tap)", 1.05, 20.0, 3.9, 0.05,
+                key=f"{selected_preset}__inj_multiple"
+            )
+        inj_sec_amps = target_multiple * relay.tap_51
+        inj_pri_amps = inj_sec_amps * relay.effective_ratio
+        expected_t = relay.calculate_51_trip_time(inj_sec_amps)
+        with ic2:
+            st.metric("Inject (secondary A)", f"{inj_sec_amps:.3f} A")
+            st.metric("Equivalent Primary Current", f"{inj_pri_amps:.1f} A")
+            st.metric("Expected 51 Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
+
+        st.markdown("---")
+        st.subheader("Auto-Sweep Full Curve Test Table")
+        sw1, sw2, sw3 = st.columns(3)
+        with sw1:
+            sweep_start = st.number_input("Sweep Start (Multiple)", value=1.5, min_value=1.05, step=0.1)
+        with sw2:
+            sweep_end = st.number_input("Sweep End (Multiple)", value=10.0, step=0.5)
+        with sw3:
+            sweep_step = st.number_input("Sweep Step (Multiple)", value=0.5, min_value=0.1, step=0.1)
+
+        if st.button("Generate Sweep Table"):
+            if sweep_end <= sweep_start or sweep_step <= 0:
+                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
+            else:
+                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+                sweep_rows = []
+                for m in sweep_points:
+                    sec_amps = m * relay.tap_51
+                    t = relay.calculate_51_trip_time(sec_amps)
+                    sweep_rows.append({
+                        "Multiple (M)": round(float(m), 3),
+                        "Inject (Secondary A)": round(sec_amps, 3),
+                        "Equivalent Primary (A)": round(sec_amps * relay.effective_ratio, 1),
+                        "51 Trip Time (s)": round(t, 3) if t is not None else None,
+                    })
+                st.session_state["motor_sweep_df"] = pd.DataFrame(sweep_rows)
+
+        if "motor_sweep_df" in st.session_state:
+            st.dataframe(st.session_state["motor_sweep_df"], use_container_width=True)
+            csv_sweep = st.session_state["motor_sweep_df"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Sweep Table as CSV",
+                data=csv_sweep,
+                file_name=f"50-51_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
 
     # ---------------------------------------------------------------------------
     # TAB 4 — Settings Summary & Approval

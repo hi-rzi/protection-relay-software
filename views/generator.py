@@ -115,7 +115,7 @@ with outer_settings:
     # down this same tab and haven't run yet on this script pass - reflects whatever was set on
     # the PREVIOUS interaction, and updates on the next rerun same as everything else on the
     # page. Deliberately theoretical only (no operating points, no unrestrained high-set line) -
-    # the full picture with live test inputs is still the Live Simulation tab in Analysis & Tools.
+    # the full picture with live test inputs is still the Simulate & Test tab in Analysis & Tools.
     _pv_key = f"{current_mode}__{selected_preset}__"
     _pv_mva = st.session_state.get(_pv_key + "mva", p_data["mva"])
     _pv_kv = st.session_state.get(_pv_key + "kv", p_data["kv"])
@@ -146,7 +146,7 @@ with outer_settings:
     if st.button(
         "📊 Show Live Preview — Differential Characteristic Curve",
         key=f"{_pv_key}show_preview_btn",
-        help="Reflects the settings below as you adjust them. Operating-point testing and the unrestrained high-set line (if enabled) are in the Live Simulation tab under Analysis & Tools.",
+        help="Reflects the settings below as you adjust them. Operating-point testing and the unrestrained high-set line (if enabled) are in the Simulate & Test tab under Analysis & Tools.",
     ):
         st.session_state[f"{_pv_key}preview_shown"] = True
     if st.session_state.get(f"{_pv_key}preview_shown", False):
@@ -338,8 +338,8 @@ else:
 record_equipment_settings("generator", _generator_project_settings)
 
 # Placeholder Wiring & Convention values, used only to build the relay object needed by the
-# Theory tab's SLD diagram below (which runs before the Live Simulation tab in script order).
-# The real Restraint Standard / Polarity Reference selection lives on the Live Simulation tab
+# Theory tab's SLD diagram below (which runs before the Simulate & Test tab in script order).
+# The real Restraint Standard / Polarity Reference selection lives on the Simulate & Test tab
 # now, which rebuilds this object with the user's actual choice before anything that needs the
 # real value (test evaluation, the settings sheet) runs.
 convention, ct_polarity = "IEEE", "SAME"
@@ -356,14 +356,14 @@ relay = AdvancedDifferentialRelay(
 with outer_analysis:
     st.caption(
         "Everything below reads the settings from the Current Settings tab — adjust them there. "
-        "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
-        "Commissioning & Injection Tool → Differential Curve & Test Points → Fault Current Analysis "
+        "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
+        "Commissioning & Injection Tool → Fault Current Analysis "
         "(where present) → Settings Summary & Approval. Full guide on the Home page."
     )
 
-    tab_theory, tab1, tab2, tab3, tab_fault, tab_approval = st.tabs([
-        "Theory", "Live Simulation",
-        "Commissioning & Injection Tool", "Differential Curve & Test Points",
+    tab_theory, tab_sim, tab2, tab_fault, tab_approval = st.tabs([
+        "Theory", "Simulate & Test",
+        "Commissioning & Injection Tool",
         "Fault Current Analysis", "Settings Summary & Approval",
     ])
 
@@ -384,7 +384,7 @@ with outer_analysis:
             sld_fallback_svg=generator_zone_svg(relay, ct_polarity, tag="87G"),
         )
 
-    with tab1:
+    with tab_sim:
         with st.container(border=True):
             st.markdown("**Wiring & Convention**")
             st.caption("Must match the actual field CT wiring — not a tunable protection margin, so no improve/worsen comment applies here.")
@@ -498,6 +498,7 @@ with outer_analysis:
 
         chart_units = st.radio(
             "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
+            key="live_chart_units",
             help="Secondary Amps matches how commissioning test reports are usually plotted "
                  "(e.g. GEK-34124 Figure 7). Conversion uses the Neutral-side rated secondary "
                  "current as the base — accurate as long as both CTs share the same ratio, "
@@ -586,85 +587,9 @@ with outer_analysis:
             f"characteristic ({relay.mode})."
         )
 
-
-    with tab2:
-        st.subheader("Commissioning & Secondary Current Injection Assistant")
-        st.write(
-            "Pick a target restraint current for each phase to calculate the exact secondary "
-            "Amps to inject at your test set for that phase — this is your test plan, telling "
-            "you what to dial in before you inject."
-        )
-
-        n_inj_label, t_inj_label = "Neutral Side", "Terminal Side"
-        default_restraints = {"Phase A": 0.5, "Phase B": 2.5, "Phase C": 5.0}
-
-        st.markdown("#### Boundary Injection Calculator")
-        phase_test_points = {}
-        cols = st.columns(3)
-        for p, col in zip(phases, cols):
-            with col:
-                st.markdown(f"**{p}**")
-                r_val = slider_with_exact_input(
-                    st, f"{p} Target Restraint (pu)", 0.1, 30.0, default_restraints[p], 0.1,
-                    key=f"{current_mode}__{selected_preset}__commtest__{p}"
-                )
-                boundary_op = relay.calculate_trip_threshold(r_val)
-                sec_N = (r_val + boundary_op / 2.0) * relay.i_rated_sec_N
-                sec_T = (r_val - boundary_op / 2.0) * relay.i_rated_sec_T
-                phase_test_points[p] = {"i_rest_pu": r_val, "i_op_pu": boundary_op, "sec_N": sec_N, "sec_T": sec_T}
-                st.metric("Boundary I_op", f"{boundary_op:.3f} pu")
-                st.caption(f"{n_inj_label} inject: **{sec_N:.3f} A**")
-                st.caption(f"{t_inj_label} inject: **{sec_T:.3f} A**")
-
         st.markdown("---")
-        st.subheader("Auto-Sweep Full Curve Test Table")
-        st.write(
-            "Generates a full table of boundary test points across the restraint range in one go, "
-            "instead of testing one point at a time — useful for a complete commissioning verification."
-        )
+        st.subheader("Log a Test Point")
 
-        sw1, sw2, sw3 = st.columns(3)
-        with sw1:
-            sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1)
-        with sw2:
-            if current_mode == "GENERATOR":
-                default_end = float(relay.break_2) + 2.0
-            else:
-                default_end = float(relay.i_unrestrained) if relay.i_unrestrained < 1e5 else 6.0
-            sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, default_end), step=0.5)
-        with sw3:
-            sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1)
-
-        if st.button("Generate Sweep Table"):
-            if sweep_end <= sweep_start or sweep_step <= 0:
-                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-            else:
-                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                sweep_rows = []
-                for i_rest in sweep_points:
-                    boundary_op = relay.calculate_trip_threshold(i_rest)
-                    sec_n = (i_rest + boundary_op / 2.0) * relay.i_rated_sec_N
-                    sec_t = (i_rest - boundary_op / 2.0) * relay.i_rated_sec_T
-                    sweep_rows.append({
-                        "I_rest (pu)": round(float(i_rest), 3),
-                        "Boundary I_op (pu)": round(boundary_op, 3),
-                        "Neutral Injection I_N (A)": round(sec_n, 3),
-                        "Terminal Injection I_T (A)": round(sec_t, 3),
-                    })
-                st.session_state["sweep_df"] = pd.DataFrame(sweep_rows)
-
-        if "sweep_df" in st.session_state:
-            st.dataframe(st.session_state["sweep_df"], use_container_width=True)
-            csv_sweep = st.session_state["sweep_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Sweep Table as CSV",
-                data=csv_sweep,
-                file_name=f"87G_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-
-
-    with tab3:
         st.subheader("Test Point Verification & Curve")
         st.write(
             "Enter measured test results and see them plotted against the calculated "
@@ -779,15 +704,15 @@ with outer_analysis:
         st.markdown("---")
         st.markdown("#### Differential Slope Characteristic Curve")
 
-        comm_chart_units = st.radio(
+        test_chart_units = st.radio(
             "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True,
-            key="comm_chart_units",
+            key="test_chart_units",
             help="Secondary Amps matches how commissioning test reports are usually plotted "
                  "(e.g. GEK-34124 Figure 7). Conversion uses the Neutral-side rated secondary "
                  "current as the base — accurate as long as both CTs share the same ratio, "
                  "which they do for this unit (24000:5 on both sides)."
         )
-        use_amps_comm = comm_chart_units == "Secondary Amps (A)"
+        use_amps_comm = test_chart_units == "Secondary Amps (A)"
         unit_label_comm = "A" if use_amps_comm else "pu"
 
         cal_source = st.radio(
@@ -892,6 +817,83 @@ with outer_analysis:
         render_historian_overlay(st, "generator", reference_lines=[
             ("Generator Rated (A)", relay.i_rated_pri),
         ])
+
+
+    with tab2:
+        st.subheader("Commissioning & Secondary Current Injection Assistant")
+        st.write(
+            "Pick a target restraint current for each phase to calculate the exact secondary "
+            "Amps to inject at your test set for that phase — this is your test plan, telling "
+            "you what to dial in before you inject."
+        )
+
+        n_inj_label, t_inj_label = "Neutral Side", "Terminal Side"
+        default_restraints = {"Phase A": 0.5, "Phase B": 2.5, "Phase C": 5.0}
+
+        st.markdown("#### Boundary Injection Calculator")
+        phase_test_points = {}
+        cols = st.columns(3)
+        for p, col in zip(phases, cols):
+            with col:
+                st.markdown(f"**{p}**")
+                r_val = slider_with_exact_input(
+                    st, f"{p} Target Restraint (pu)", 0.1, 30.0, default_restraints[p], 0.1,
+                    key=f"{current_mode}__{selected_preset}__commtest__{p}"
+                )
+                boundary_op = relay.calculate_trip_threshold(r_val)
+                sec_N = (r_val + boundary_op / 2.0) * relay.i_rated_sec_N
+                sec_T = (r_val - boundary_op / 2.0) * relay.i_rated_sec_T
+                phase_test_points[p] = {"i_rest_pu": r_val, "i_op_pu": boundary_op, "sec_N": sec_N, "sec_T": sec_T}
+                st.metric("Boundary I_op", f"{boundary_op:.3f} pu")
+                st.caption(f"{n_inj_label} inject: **{sec_N:.3f} A**")
+                st.caption(f"{t_inj_label} inject: **{sec_T:.3f} A**")
+
+        st.markdown("---")
+        st.subheader("Auto-Sweep Full Curve Test Table")
+        st.write(
+            "Generates a full table of boundary test points across the restraint range in one go, "
+            "instead of testing one point at a time — useful for a complete commissioning verification."
+        )
+
+        sw1, sw2, sw3 = st.columns(3)
+        with sw1:
+            sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1)
+        with sw2:
+            if current_mode == "GENERATOR":
+                default_end = float(relay.break_2) + 2.0
+            else:
+                default_end = float(relay.i_unrestrained) if relay.i_unrestrained < 1e5 else 6.0
+            sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, default_end), step=0.5)
+        with sw3:
+            sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1)
+
+        if st.button("Generate Sweep Table"):
+            if sweep_end <= sweep_start or sweep_step <= 0:
+                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
+            else:
+                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+                sweep_rows = []
+                for i_rest in sweep_points:
+                    boundary_op = relay.calculate_trip_threshold(i_rest)
+                    sec_n = (i_rest + boundary_op / 2.0) * relay.i_rated_sec_N
+                    sec_t = (i_rest - boundary_op / 2.0) * relay.i_rated_sec_T
+                    sweep_rows.append({
+                        "I_rest (pu)": round(float(i_rest), 3),
+                        "Boundary I_op (pu)": round(boundary_op, 3),
+                        "Neutral Injection I_N (A)": round(sec_n, 3),
+                        "Terminal Injection I_T (A)": round(sec_t, 3),
+                    })
+                st.session_state["sweep_df"] = pd.DataFrame(sweep_rows)
+
+        if "sweep_df" in st.session_state:
+            st.dataframe(st.session_state["sweep_df"], use_container_width=True)
+            csv_sweep = st.session_state["sweep_df"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Sweep Table as CSV",
+                data=csv_sweep,
+                file_name=f"87G_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
 
     # ---------------------------------------------------------------------------
     # TAB — Fault Current Analysis
@@ -1013,7 +1015,7 @@ with outer_analysis:
         st.markdown("---")
         st.markdown("#### Fault Clearing Time Simulation")
         st.caption(
-            "Feeds the fault current above through the same trip logic as the Live Vector Simulation "
+            "Feeds the fault current above through the same trip logic as the Simulate & Test "
             "tab, then adds typical relay and breaker operating times to show how long fault current "
             "actually flows before the breaker interrupts it. Relay/breaker times below are typical "
             "values for this class of equipment (not confirmed against this generator's own relay and "

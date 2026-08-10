@@ -299,7 +299,7 @@ def render_fan_motor_page(fan_type):
         if st.button(
             "📊 Show Live Preview — Overload (51) Curve",
             key=f"{project_key}__show_preview_btn",
-            help="Reflects the Motor FLA and Curve Multiplier settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the TCC Curve & Test Points tab under Analysis & Tools.",
+            help="Reflects the Motor FLA and Curve Multiplier settings below as you adjust them. Starting/safe-stall overlay and commissioning tools are in the Simulate & Test tab under Analysis & Tools.",
         ):
             st.session_state[f"{project_key}__preview_shown"] = True
         if st.session_state.get(f"{project_key}__preview_shown", False):
@@ -643,20 +643,19 @@ def render_fan_motor_page(fan_type):
     with outer_analysis:
         st.caption(
             "Everything below reads the settings from the Current Settings tab — adjust them there. "
-            "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
-            "Commissioning & Injection Tool → TCC Curve & Test Points → Fault Current Analysis "
+            "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
+            "Commissioning & Injection Tool → Fault Current Analysis "
             "(where present) → Settings Summary & Approval. Full guide on the Home page."
         )
 
         tab_names = [
             "Theory",
-            "Live Simulation",
+            "Simulate & Test",
             "Commissioning & Injection Tool",
-            "TCC Curve & Test Points",
             "Settings Summary & Approval",
         ]
         all_tabs = st.tabs(tab_names)
-        tab_theory, tab1, tab2, tab3, tab4 = all_tabs[:5]
+        tab_theory, tab1, tab2, tab4 = all_tabs[:4]
 
         with tab_theory:
             render_theory_tab(
@@ -671,7 +670,7 @@ def render_fan_motor_page(fan_type):
             )
 
         # -----------------------------------------------------------------------
-        # TAB 1 — Live Simulation
+        # TAB 1 — Simulate & Test
         # -----------------------------------------------------------------------
         with tab1:
             col_inputs, col_results = st.columns([1.0, 1.2])
@@ -746,66 +745,8 @@ def render_fan_motor_page(fan_type):
                     ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
                 ], key_prefix=f"{project_key.upper()}_87M")
 
-        # -----------------------------------------------------------------------
-        # TAB 2 — Commissioning & Injection Tool
-        # -----------------------------------------------------------------------
-        with tab2:
-            st.subheader("Commissioning & Secondary Current Injection Assistant")
-            st.write(
-                "Pick a target multiple of the Overload Pickup to calculate the exact secondary Amps to "
-                "inject at your test set, and see the expected trip time."
-            )
-            target_multiple = st.slider("Target Multiple of Motor FLA (M)", 1.05, 10.0, 3.9, 0.05, key=f"{project_key}__inj_multiple")
-            inj_pri_amps = target_multiple * motor_fla
-            inj_sec_amps = relay.relay_current(inj_pri_amps)
-            expected_t = relay.calculate_overload_trip_time(inj_pri_amps)
-            ic1, ic2, ic3 = st.columns(3)
-            ic1.metric("Inject (primary A)", f"{inj_pri_amps:.1f} A")
-            ic2.metric("Equivalent Secondary Current", f"{inj_sec_amps:.3f} A")
-            ic3.metric("Expected Overload Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
-
             st.markdown("---")
-            st.subheader("Auto-Sweep Full Curve Test Table")
-            sw1, sw2, sw3 = st.columns(3)
-            with sw1:
-                sweep_start = st.number_input("Sweep Start (Multiple of FLA)", value=1.5, min_value=1.05, step=0.1, key=f"{project_key}__sweep_start")
-            with sw2:
-                sweep_end = st.number_input("Sweep End (Multiple of FLA)", value=6.0, step=0.5, key=f"{project_key}__sweep_end")
-            with sw3:
-                sweep_step = st.number_input("Sweep Step (Multiple of FLA)", value=0.5, min_value=0.1, step=0.1, key=f"{project_key}__sweep_step")
 
-            if st.button("Generate Sweep Table", key=f"{project_key}__sweep_btn"):
-                if sweep_end <= sweep_start or sweep_step <= 0:
-                    st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-                else:
-                    sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                    sweep_rows = []
-                    for m in sweep_points:
-                        pri_amps = m * motor_fla
-                        t = relay.calculate_overload_trip_time(pri_amps)
-                        sweep_rows.append({
-                            "Multiple of FLA (M)": round(float(m), 3),
-                            "Primary Current (A)": round(pri_amps, 1),
-                            "Secondary Current (A)": round(relay.relay_current(pri_amps), 3),
-                            "Overload Trip Time (s)": round(t, 3) if t is not None else None,
-                        })
-                    st.session_state[f"{project_key}_sweep_df"] = pd.DataFrame(sweep_rows)
-
-            if f"{project_key}_sweep_df" in st.session_state:
-                st.dataframe(st.session_state[f"{project_key}_sweep_df"], use_container_width=True)
-                csv_sweep = st.session_state[f"{project_key}_sweep_df"].to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="Download Sweep Table as CSV",
-                    data=csv_sweep,
-                    file_name=f"{project_key}_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv",
-                    key=f"{project_key}__sweep_dl",
-                )
-
-        # -----------------------------------------------------------------------
-        # TAB 3 — TCC Curve
-        # -----------------------------------------------------------------------
-        with tab3:
             st.markdown("#### Overload (51) Time-Current Characteristic")
             has_stall_data = locked_rotor_amps_100 is not None
             max_mult = max(6.0, eval_result["multiple_of_fla"] + 1.0)
@@ -909,8 +850,8 @@ def render_fan_motor_page(fan_type):
             st.markdown("---")
             st.markdown("#### Fault Clearing Time Simulation")
             st.caption(
-                "Feeds a fault current through the same evaluate_protection() logic as the Live "
-                "Simulation tab, then adds a typical breaker operating time to show how long the "
+                "Feeds a fault current through the same evaluate_protection() logic used above, "
+                "then adds a typical breaker operating time to show how long the "
                 "current actually flows before it's cleared. The 51 element's trip time comes "
                 "straight from the curve above; the 50 instantaneous element's operate time uses "
                 "the real Instantaneous Delay setting from Current Settings."
@@ -1106,7 +1047,7 @@ def render_fan_motor_page(fan_type):
                     ifc_eval = ifc_relay.evaluate_protection(test_current)
                     ifc_backup_eval = ifc_backup_relay.evaluate_protection(test_current) if ifc_backup_relay else None
 
-                    st.info(f"Test current (from the Live Simulation tab): **{test_current:.1f} A primary**")
+                    st.info(f"Test current (set above): **{test_current:.1f} A primary**")
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Relay Secondary", f"{ifc_eval['i_relay_sec']:.3f} A")
                     m2.metric("Multiple of 51 Pickup", f"{ifc_eval['multiple_of_pickup_51']:.2f}x")
@@ -1221,6 +1162,62 @@ def render_fan_motor_page(fan_type):
                             ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
                         ]
                     render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
+
+        # -----------------------------------------------------------------------
+        # TAB 2 — Commissioning & Injection Tool
+        # -----------------------------------------------------------------------
+        with tab2:
+            st.subheader("Commissioning & Secondary Current Injection Assistant")
+            st.write(
+                "Pick a target multiple of the Overload Pickup to calculate the exact secondary Amps to "
+                "inject at your test set, and see the expected trip time."
+            )
+            target_multiple = st.slider("Target Multiple of Motor FLA (M)", 1.05, 10.0, 3.9, 0.05, key=f"{project_key}__inj_multiple")
+            inj_pri_amps = target_multiple * motor_fla
+            inj_sec_amps = relay.relay_current(inj_pri_amps)
+            expected_t = relay.calculate_overload_trip_time(inj_pri_amps)
+            ic1, ic2, ic3 = st.columns(3)
+            ic1.metric("Inject (primary A)", f"{inj_pri_amps:.1f} A")
+            ic2.metric("Equivalent Secondary Current", f"{inj_sec_amps:.3f} A")
+            ic3.metric("Expected Overload Trip Time", f"{expected_t:.2f}s" if expected_t is not None else "No Trip")
+
+            st.markdown("---")
+            st.subheader("Auto-Sweep Full Curve Test Table")
+            sw1, sw2, sw3 = st.columns(3)
+            with sw1:
+                sweep_start = st.number_input("Sweep Start (Multiple of FLA)", value=1.5, min_value=1.05, step=0.1, key=f"{project_key}__sweep_start")
+            with sw2:
+                sweep_end = st.number_input("Sweep End (Multiple of FLA)", value=6.0, step=0.5, key=f"{project_key}__sweep_end")
+            with sw3:
+                sweep_step = st.number_input("Sweep Step (Multiple of FLA)", value=0.5, min_value=0.1, step=0.1, key=f"{project_key}__sweep_step")
+
+            if st.button("Generate Sweep Table", key=f"{project_key}__sweep_btn"):
+                if sweep_end <= sweep_start or sweep_step <= 0:
+                    st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
+                else:
+                    sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+                    sweep_rows = []
+                    for m in sweep_points:
+                        pri_amps = m * motor_fla
+                        t = relay.calculate_overload_trip_time(pri_amps)
+                        sweep_rows.append({
+                            "Multiple of FLA (M)": round(float(m), 3),
+                            "Primary Current (A)": round(pri_amps, 1),
+                            "Secondary Current (A)": round(relay.relay_current(pri_amps), 3),
+                            "Overload Trip Time (s)": round(t, 3) if t is not None else None,
+                        })
+                    st.session_state[f"{project_key}_sweep_df"] = pd.DataFrame(sweep_rows)
+
+            if f"{project_key}_sweep_df" in st.session_state:
+                st.dataframe(st.session_state[f"{project_key}_sweep_df"], use_container_width=True)
+                csv_sweep = st.session_state[f"{project_key}_sweep_df"].to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="Download Sweep Table as CSV",
+                    data=csv_sweep,
+                    file_name=f"{project_key}_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    key=f"{project_key}__sweep_dl",
+                )
 
         # -----------------------------------------------------------------------
         # TAB 4 — Settings Summary & Approval

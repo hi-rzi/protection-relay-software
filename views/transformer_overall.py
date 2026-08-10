@@ -103,7 +103,7 @@ with outer_settings:
     if st.button(
         "📊 Show Live Preview — Differential Bias Characteristic Curve",
         key=f"{selected_preset}__show_preview_btn",
-        help="Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and operating-point testing are in the Live Simulation tab under Analysis & Tools.",
+        help="Reflects the Bias/Minimum Operate settings below as you adjust them. The HOC line and operating-point testing are in the Simulate & Test tab under Analysis & Tools.",
     ):
         st.session_state[f"{selected_preset}__preview_shown"] = True
     if st.session_state.get(f"{selected_preset}__preview_shown", False):
@@ -317,8 +317,8 @@ record_equipment_settings("overall", {
 })
 
 # Placeholder Wiring & Convention values, used only to build the relay object needed by the
-# Theory tab's SLD diagram below (which runs before the Live Simulation tab in script order).
-# The real Restraint Standard / Polarity Reference selection lives on the Live Simulation tab
+# Theory tab's SLD diagram below (which runs before the Simulate & Test tab in script order).
+# The real Restraint Standard / Polarity Reference selection lives on the Simulate & Test tab
 # now, which rebuilds this object with the user's actual choice before anything that needs the
 # real value (test evaluation, the settings sheet) runs.
 convention, ct_polarity = "IEEE", "OPPOSITE"
@@ -336,14 +336,14 @@ amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current,
 with outer_analysis:
     st.caption(
         "Everything below reads the settings from the Current Settings tab — adjust them there. "
-        "Tabs run in the same order on every equipment page: Theory → Live Simulation → "
-        "Commissioning & Injection Tool → Differential Curve & Test Points → Fault Current Analysis "
+        "Tabs run in the same order on every equipment page: Theory → Simulate & Test → "
+        "Commissioning & Injection Tool → Fault Current Analysis "
         "(where present) → Settings Summary & Approval. Full guide on the Home page."
     )
 
-    tab_theory, tab1, tab2, tab3, tab_approval = st.tabs([
-        "Theory", "Live Simulation",
-        "Commissioning & Injection Tool", "Differential Curve & Test Points",
+    tab_theory, tab_sim, tab2, tab_approval = st.tabs([
+        "Theory", "Simulate & Test",
+        "Commissioning & Injection Tool",
         "Settings Summary & Approval",
     ])
 
@@ -364,9 +364,9 @@ with outer_analysis:
         )
 
     # ---------------------------------------------------------------------------
-    # TAB 1 — Live Simulation
+    # TAB — Simulate & Test
     # ---------------------------------------------------------------------------
-    with tab1:
+    with tab_sim:
         with st.container(border=True):
             st.markdown("**Wiring & Convention**")
             st.caption(
@@ -514,7 +514,7 @@ with outer_analysis:
         st.subheader("Differential Bias Characteristic Curve")
 
         chart_units = st.radio(
-            "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_chart_units",
+            "Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_live_chart_units",
             help="pu base is the HV-side rated secondary current."
         )
         use_amps = chart_units == "Secondary Amps (A)"
@@ -582,91 +582,9 @@ with outer_analysis:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # ---------------------------------------------------------------------------
-    # TAB 2 — Commissioning & Injection Tool
-    # ---------------------------------------------------------------------------
-    with tab2:
-        st.subheader("Commissioning & Secondary Current Injection Assistant")
-        st.write(
-            "With a 3-restraint relay there's no single unique way to split a target differential "
-            "across three currents, so this tool uses the standard commissioning method instead: "
-            "**energize one winding at a time** (the other two at zero) and read the resulting "
-            "I_op / I_rest / trip verdict straight from the relay engine — exactly how these "
-            "relays are normally verified in the field."
-        )
-
-        st.markdown("#### Single-Winding Injection Test")
-        inj_col1, inj_col2 = st.columns(2)
-        with inj_col1:
-            inj_winding_name = st.selectbox("Winding to energize", winding_names, key="ov_inj_winding")
-            inj_winding_idx = winding_names.index(inj_winding_name)
-        with inj_col2:
-            inj_current_pu = slider_with_exact_input(
-                st, "Test Current (pu of that winding's rated current)", 0.05, 20.0, 1.0, 0.05,
-                key=f"{selected_preset}__ov_inj_current"
-            )
-
-        test_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
-        inj_primary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_pri"]
-        test_inputs[inj_winding_idx] = (inj_primary_amps, 0.0)
-        inj_result = relay.evaluate_protection(test_inputs)
-
-        inj_secondary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_sec"]
-
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Inject (secondary A)", f"{inj_secondary_amps:.3f} A")
-        r2.metric("I_op", f"{inj_result['i_op_pu']:.3f} pu")
-        r3.metric("I_rest", f"{inj_result['i_rest_pu']:.3f} pu")
-        r4.metric("Threshold", f"{inj_result['i_threshold_pu']:.3f} pu")
-        if inj_result["is_trip"]:
-            st.error(f"Status: {inj_result['status']}")
-        else:
-            st.success(f"Status: {inj_result['status']}")
-
         st.markdown("---")
-        st.subheader("Auto-Sweep Single-Winding Test Table")
-        sw1, sw2, sw3 = st.columns(3)
-        with sw1:
-            sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1, key="ov_sweep_start")
-        with sw2:
-            sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, relay.hoc_pu + 1.0), step=0.5, key="ov_sweep_end")
-        with sw3:
-            sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1, key="ov_sweep_step")
+        st.subheader("Log a Test Point")
 
-        if st.button("Generate Sweep Table", key="ov_sweep_btn"):
-            if sweep_end <= sweep_start or sweep_step <= 0:
-                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
-            else:
-                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
-                sweep_rows = []
-                for i_test in sweep_points:
-                    t_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
-                    t_inputs[inj_winding_idx] = (i_test * relay.windings[inj_winding_idx]["i_rated_pri"], 0.0)
-                    res = relay.evaluate_protection(t_inputs)
-                    sweep_rows.append({
-                        "Test Current (pu)": round(float(i_test), 3),
-                        f"{inj_winding_name} Injection (A)": round(i_test * relay.windings[inj_winding_idx]["i_rated_sec"], 3),
-                        "I_op (pu)": round(res["i_op_pu"], 3),
-                        "I_rest (pu)": round(res["i_rest_pu"], 3),
-                        "Threshold (pu)": round(res["i_threshold_pu"], 3),
-                        "Status": res["status"],
-                    })
-                st.session_state["ov_sweep_df"] = pd.DataFrame(sweep_rows)
-
-        if "ov_sweep_df" in st.session_state:
-            st.dataframe(st.session_state["ov_sweep_df"], use_container_width=True)
-            csv_sweep = st.session_state["ov_sweep_df"].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Sweep Table as CSV",
-                data=csv_sweep,
-                file_name=f"87OA_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-
-    # ---------------------------------------------------------------------------
-    # TAB 3 — Test Point Verification & Curve
-    # ---------------------------------------------------------------------------
-    with tab3:
         st.subheader("Test Point Verification & Curve")
         st.write("Enter measured test results and see them plotted against the calculated characteristic curve.")
 
@@ -755,7 +673,7 @@ with outer_analysis:
         st.markdown("---")
         st.markdown("#### Differential Bias Characteristic Curve")
 
-        comm_chart_units = st.radio("Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_comm_chart_units")
+        comm_chart_units = st.radio("Chart units", ["Per-Unit (pu)", "Secondary Amps (A)"], horizontal=True, key="ov_test_chart_units")
         use_amps_comm = comm_chart_units == "Secondary Amps (A)"
         unit_label_comm = "A" if use_amps_comm else "pu"
 
@@ -834,6 +752,87 @@ with outer_analysis:
             ("Generator Rated (A)", relay.windings[1]["i_rated_pri"]),
             ("UAT Rated (A)", relay.windings[2]["i_rated_pri"]),
         ])
+
+    # ---------------------------------------------------------------------------
+    # TAB 2 — Commissioning & Injection Tool
+    # ---------------------------------------------------------------------------
+    with tab2:
+        st.subheader("Commissioning & Secondary Current Injection Assistant")
+        st.write(
+            "With a 3-restraint relay there's no single unique way to split a target differential "
+            "across three currents, so this tool uses the standard commissioning method instead: "
+            "**energize one winding at a time** (the other two at zero) and read the resulting "
+            "I_op / I_rest / trip verdict straight from the relay engine — exactly how these "
+            "relays are normally verified in the field."
+        )
+
+        st.markdown("#### Single-Winding Injection Test")
+        inj_col1, inj_col2 = st.columns(2)
+        with inj_col1:
+            inj_winding_name = st.selectbox("Winding to energize", winding_names, key="ov_inj_winding")
+            inj_winding_idx = winding_names.index(inj_winding_name)
+        with inj_col2:
+            inj_current_pu = slider_with_exact_input(
+                st, "Test Current (pu of that winding's rated current)", 0.05, 20.0, 1.0, 0.05,
+                key=f"{selected_preset}__ov_inj_current"
+            )
+
+        test_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+        inj_primary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_pri"]
+        test_inputs[inj_winding_idx] = (inj_primary_amps, 0.0)
+        inj_result = relay.evaluate_protection(test_inputs)
+
+        inj_secondary_amps = inj_current_pu * relay.windings[inj_winding_idx]["i_rated_sec"]
+
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Inject (secondary A)", f"{inj_secondary_amps:.3f} A")
+        r2.metric("I_op", f"{inj_result['i_op_pu']:.3f} pu")
+        r3.metric("I_rest", f"{inj_result['i_rest_pu']:.3f} pu")
+        r4.metric("Threshold", f"{inj_result['i_threshold_pu']:.3f} pu")
+        if inj_result["is_trip"]:
+            st.error(f"Status: {inj_result['status']}")
+        else:
+            st.success(f"Status: {inj_result['status']}")
+
+        st.markdown("---")
+        st.subheader("Auto-Sweep Single-Winding Test Table")
+        sw1, sw2, sw3 = st.columns(3)
+        with sw1:
+            sweep_start = st.number_input("Sweep Start (pu)", value=0.2, min_value=0.0, step=0.1, key="ov_sweep_start")
+        with sw2:
+            sweep_end = st.number_input("Sweep End (pu)", value=max(6.0, relay.hoc_pu + 1.0), step=0.5, key="ov_sweep_end")
+        with sw3:
+            sweep_step = st.number_input("Sweep Step (pu)", value=0.5, min_value=0.1, step=0.1, key="ov_sweep_step")
+
+        if st.button("Generate Sweep Table", key="ov_sweep_btn"):
+            if sweep_end <= sweep_start or sweep_step <= 0:
+                st.error("Sweep End must be greater than Sweep Start, and Sweep Step must be positive.")
+            else:
+                sweep_points = np.arange(sweep_start, sweep_end + sweep_step / 2.0, sweep_step)
+                sweep_rows = []
+                for i_test in sweep_points:
+                    t_inputs = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+                    t_inputs[inj_winding_idx] = (i_test * relay.windings[inj_winding_idx]["i_rated_pri"], 0.0)
+                    res = relay.evaluate_protection(t_inputs)
+                    sweep_rows.append({
+                        "Test Current (pu)": round(float(i_test), 3),
+                        f"{inj_winding_name} Injection (A)": round(i_test * relay.windings[inj_winding_idx]["i_rated_sec"], 3),
+                        "I_op (pu)": round(res["i_op_pu"], 3),
+                        "I_rest (pu)": round(res["i_rest_pu"], 3),
+                        "Threshold (pu)": round(res["i_threshold_pu"], 3),
+                        "Status": res["status"],
+                    })
+                st.session_state["ov_sweep_df"] = pd.DataFrame(sweep_rows)
+
+        if "ov_sweep_df" in st.session_state:
+            st.dataframe(st.session_state["ov_sweep_df"], use_container_width=True)
+            csv_sweep = st.session_state["ov_sweep_df"].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Sweep Table as CSV",
+                data=csv_sweep,
+                file_name=f"87OA_Sweep_Test_Table_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
 
     # ---------------------------------------------------------------------------
     # TAB — Settings Summary & Approval

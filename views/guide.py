@@ -5,7 +5,7 @@ st.caption("How to use this app.")
 
 st.markdown(
     """
-Every equipment page follows the same 6-step sequence — once you know it on one page, you know it
+Every equipment page follows the same 5-step sequence — once you know it on one page, you know it
 on all nine:
 
 1. **Pick equipment from the sidebar** (Generator, Transformer, or Motor) and choose the specific relay.
@@ -13,9 +13,8 @@ on all nine:
 3. **Review "Current Settings"** — every applied setting, editable in place, with a live comment on whether it clears the recommended margin (🟢), needs a second look (🟠), or is informational only (⚪). A banner near the top shows whether this preset's values are ✓ verified against the real settings document or ⚠ only partially confirmed. Click **📊 Show Live Preview** at the top of the tab any time to see the characteristic curve reflect the settings below it.
 4. **Work through "Analysis & Tools" in order** — the tabs are always in this sequence:
    - **Theory** — how this protection scheme actually works, with the protection zone diagram.
-   - **Live Simulation** — test a current/fault scenario against the relay's real trip logic.
+   - **Simulate & Test** — test a current/fault scenario against the relay's real trip logic and see the characteristic curve live, then (if you want) log real test results and build your own graph against that same curve, all in one place.
    - **Commissioning & Injection Tool** — the exact secondary Amps to inject at the test set for a target result.
-   - **Curve & Test Points** — the relay's own characteristic curve, plus logging real test results against it.
    - **Fault Current Analysis** *(generator and transformer pages)* — checks the CTs against a real fault current, including a step-by-step fault-clearing simulation.
    - **Settings Summary & Approval** — document control (source doc, revision, prepared/reviewed by, approval status), the relay-ready settings sheet, and a certified PDF audit report — the last step before sign-off.
 5. **Check cross-equipment consistency and export everything together** on the **Project** page (sidebar) — settings status across all equipment, a coordination check, motor curve comparisons, and one bundled save/load.
@@ -31,7 +30,7 @@ setting genuinely needs to be that high. Check the inputs first.
 with st.expander("Notes on a few equipment-specific differences"):
     st.markdown(
         """
-- **Wiring & Convention** (Restraint Standard, CT Polarity) is on the **Live Simulation** tab for the generator and transformer pages, not Current Settings — it only affects that evaluation.
-- **Motor pages** don't have a separate Fault Current Analysis tab. Their fault-clearing simulation lives inside **Curve & Test Points** instead, and skips the current waveform (no real X/R data exists for a motor short-circuit contribution).
+- **Wiring & Convention** (Restraint Standard, CT Polarity) is at the top of the **Simulate & Test** tab for the generator and transformer pages, not Current Settings — it only affects that evaluation.
+- **Motor pages** don't have a separate Fault Current Analysis tab. Their fault-clearing simulation lives inside **Simulate & Test** instead, and skips the current waveform (no real X/R data exists for a motor short-circuit contribution).
 """
     )

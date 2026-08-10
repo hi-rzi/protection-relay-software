@@ -170,7 +170,7 @@ FMEA_ENTRIES = [
          failure_mode="Internal relay algorithm computes the wrong restraint/bias point",
          potential_cause="Firmware defect in the specific restraint-slope implementation",
          potential_effect="Relay trips or fails to trip at the wrong point vs. its own published characteristic",
-         detection_method="Periodic test-point verification against the calculated CAL. line (this app's own Curve & Test Points feature)",
+         detection_method="Periodic test-point verification against the calculated CAL. line (this app's own Simulate & Test feature)",
          default_severity=7, default_occurrence=1, default_detection=5),
 
     # --- Multilin SR469 / GE 869 (Motor Protection) -----------------------------
