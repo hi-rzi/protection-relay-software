@@ -7,7 +7,7 @@ import streamlit as st
 
 from common.fmea_data import CATEGORIES, FAILURE_CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
 from common.pdf_report import generate_fmea_pdf_report
-from common.theme import flow_row
+from common.theme import flow_row, pill_row
 
 st.title("FMEA — Digital Protection Relays")
 st.caption(
@@ -47,32 +47,77 @@ with st.expander("📍 How to use this page", expanded=False):
             st.write("Cause, effect, diagnostics, and the editable maintenance task/frequency for one row at a time — kept attached to its failure mode, not a separate tab.")
 
 with st.expander("Scope & FMEA scoring conventions", expanded=False):
-    st.markdown(
-        "**Why only these three relay families?** The GE CFD22B4A (legacy generator "
-        "relay) and the GE IFC66KD2A/HFC22B2A stack (on ID Fan and PA Fan) are "
-        "electromechanical — this app's own Theory tabs already describe them that way. "
-        "An electromechanical relay's dominant failure modes are physical (contact wear, "
-        "mechanical wear-out, coil burnout), genuinely different from a microprocessor "
-        "relay's (firmware, power supply, watchdog, CT/output circuitry). Mixing the two "
-        "into one FMEA would blur two different failure physics rather than usefully "
-        "compare them, so they're intentionally out of scope here.\n\n"
-        "**Severity / Occurrence / Detection** are each scored 1–10, standard FMEA "
-        "convention. Detection is the one axis that inverts intuition: **1 = the failure "
-        "would be caught immediately and reliably, 10 = it would go essentially "
-        "unnoticed** until it mattered.\n\n"
-        "**RPN starting scores are engineering-judgment placeholders, not measured plant "
-        "data** — this app has no logged relay failure history to calibrate Occurrence "
-        "against (see `Reliability Data.py` at the repo root for a related MTBF/Arrhenius "
-        "thermal-derating analysis for generator relays). Edit any score to reflect your "
-        "own plant's experience; every value below is a starting point, not a finding.\n\n"
-        "**Failure Category sub-causes**, from the supervisor-supplied failure-cause "
-        "diagram for digital relays: **Hardware Failure** = aging, component "
-        "deterioration. **Software Defects** = firmware bugs, weak design, improper "
-        "specification/settings. **Measurement Errors** = sensor failure, filtering, "
-        "out-of-range operation. **Wiring Problems** = mal-connection, electromagnetic "
-        "compatibility. **Environment** = temperature/humidity, dust, a noisy operating "
-        "environment."
+    st.markdown("##### Scope")
+    scope_in, scope_out = st.columns(2)
+    with scope_in:
+        with st.container(border=True):
+            st.markdown(":green[**✅ In scope — numerical/microprocessor relays**]")
+            st.write("⚡ GE G60 (Generator 87G)")
+            st.write("🔌 Mitsubishi CAC1-10-M3 / CAC2-10-M3 (Transformer)")
+            st.write("🌀 Multilin SR469 / GE 869 (Motor)")
+    with scope_out:
+        with st.container(border=True):
+            st.markdown(":red[**❌ Out of scope — electromechanical relays**]")
+            st.write("⚙️ GE CFD22B4A (legacy generator)")
+            st.write("⚙️ GE IFC66KD2A / HFC22B2A (ID Fan, PA Fan)")
+    st.caption(
+        "Different failure physics — contact wear/mechanical wear-out vs. firmware/power "
+        "supply/watchdog — mixing them would blur two failure physics rather than usefully "
+        "compare them."
     )
+
+    st.markdown("##### Scoring, 1–10 each")
+    sc1, sc2, sc3 = st.columns(3)
+    with sc1:
+        with st.container(border=True):
+            st.markdown("#### 💥 Severity")
+            st.write("How bad if it happens. **1** = minor, **10** = catastrophic.")
+    with sc2:
+        with st.container(border=True):
+            st.markdown("#### 🔁 Occurrence")
+            st.write("How likely it is. **1** = rare, **10** = frequent.")
+    with sc3:
+        with st.container(border=True):
+            st.markdown("#### 🔎 Detection ⚠️")
+            st.write("**Inverted** from the others: **1** = caught immediately, **10** = goes unnoticed.")
+
+    st.markdown("##### RPN = Severity × Occurrence × Detection")
+    pill_row([
+        ("accent", "🟢 Low · RPN &lt; 100"),
+        ("warning", "🟠 Medium · 100–199"),
+        ("negative", "🔴 High · ≥ 200"),
+    ])
+    st.caption(
+        "Starting scores are engineering-judgment placeholders, not measured plant data — "
+        "this app has no logged relay failure history to calibrate Occurrence against (see "
+        "`Reliability Data.py` at the repo root for a related MTBF/Arrhenius thermal-"
+        "derating analysis). Recalibrate against your own plant's experience."
+    )
+
+    st.markdown("##### Failure Category root causes")
+    fcat1, fcat2, fcat3 = st.columns(3)
+    with fcat1:
+        with st.container(border=True):
+            st.markdown("**⚙️ Hardware Failure**")
+            st.caption("Aging, component deterioration")
+    with fcat2:
+        with st.container(border=True):
+            st.markdown("**💻 Software Defects**")
+            st.caption("Firmware bugs, weak design, improper specification/settings")
+    with fcat3:
+        with st.container(border=True):
+            st.markdown("**📏 Measurement Errors**")
+            st.caption("Sensor failure, filtering, out-of-range operation")
+    fcat4, fcat5 = st.columns(2)
+    with fcat4:
+        with st.container(border=True):
+            st.markdown("**🔌 Wiring Problems**")
+            st.caption("Mal-connection, electromagnetic compatibility")
+    with fcat5:
+        with st.container(border=True):
+            st.markdown("**🌡️ Environment**")
+            st.caption("Temperature/humidity, dust, a noisy operating environment")
+    st.caption("From the supervisor-supplied failure-cause diagram for digital relays.")
 
 if "fmea_rows" not in st.session_state:
     st.session_state.fmea_rows = copy.deepcopy(FMEA_ENTRIES)

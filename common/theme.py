@@ -21,6 +21,7 @@ CARD_BG = "#161b22"
 BORDER = "#21262d"
 TEXT = "#e6edf3"
 NEGATIVE = "#f85149"
+WARNING = "#f0883e"
 
 
 def apply_theme():
@@ -114,6 +115,24 @@ def apply_theme():
         </style>""",
         unsafe_allow_html=True,
     )
+
+
+_PILL_COLORS = {"accent": ACCENT, "warning": WARNING, "negative": NEGATIVE}
+
+
+def pill_row(pills):
+    """Renders a row of small colored pill badges - pills is a list of
+    (color_key, label) tuples, color_key one of "accent"/"warning"/"negative".
+    Used for compact Low/Medium/High-style legends instead of a text list."""
+    spans = ""
+    for color_key, label in pills:
+        color = _PILL_COLORS[color_key]
+        spans += (
+            f'<span style="background:{color}26; color:{color}; padding:3px 12px; '
+            f'border-radius:999px; font-size:0.8rem; font-weight:600; margin-right:6px; '
+            f'display:inline-block; margin-bottom:4px;">{label}</span>'
+        )
+    st.markdown(spans, unsafe_allow_html=True)
 
 
 def flow_row(row_title, steps):
