@@ -10,7 +10,7 @@ from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
 from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_section_nav
-from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
+from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings, suggest_generator_differential_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
@@ -108,7 +108,7 @@ if not is_custom:
 # reuse the exact same functions as the old sidebar "Settings Calculator" (no
 # new engineering judgment invented) - just surfaced inline per-field.
 # ---------------------------------------------------------------------------
-sections = ["Current Settings", "Theory", "Simulate & Test",
+sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test",
             "Commissioning & Injection Tool", "Fault Current Analysis",
             "Settings Summary & Approval"]
 selected, c, pinned = sidebar_section_nav(sections, key_prefix="gen", pin_first=True)
@@ -356,6 +356,44 @@ relay = AdvancedDifferentialRelay(
     convention=convention, ct_polarity=ct_polarity,
     target_amps=target_amps
 )
+
+with c["Settings Calculator"]:
+    st.caption(
+        "Computed from the CT ratios entered under Current Settings — a starting point, not a "
+        "substitute for a coordination study."
+    )
+    if current_mode == "GENERATOR_LEGACY":
+        st.info(
+            "This calculator suggests Pickup/Slope/Break settings for the GE G60 numerical "
+            "dual-breakpoint characteristic. The GE CFD22B4A legacy relay uses a single-slope "
+            "product-restraint characteristic instead, set via Target Amps directly under "
+            "Current Settings — no suggested-settings sheet for it here."
+        )
+    else:
+        gen_suggestion = suggest_generator_differential_settings(calc_mismatch)
+        gcalc1, gcalc2, gcalc3 = st.columns(3)
+        with gcalc1:
+            with st.container(border=True):
+                st.markdown("#### Pickup")
+                st.metric("Suggested", f"{gen_suggestion['i_pickup']:.3f} pu")
+        with gcalc2:
+            with st.container(border=True):
+                st.markdown("#### Slope 1")
+                st.metric("Suggested", f"{gen_suggestion['slope_1']:.1f} %")
+        with gcalc3:
+            with st.container(border=True):
+                st.markdown("#### Slope 2")
+                st.metric("Suggested", f"{gen_suggestion['slope_2']:.1f} %")
+        gcalc4, gcalc5 = st.columns(2)
+        with gcalc4:
+            with st.container(border=True):
+                st.markdown("#### Break 1")
+                st.metric("Suggested", f"{gen_suggestion['break_1']:.2f} pu")
+        with gcalc5:
+            with st.container(border=True):
+                st.markdown("#### Break 2")
+                st.metric("Suggested", f"{gen_suggestion['break_2']:.2f} pu")
+        st.caption(gen_suggestion["basis"])
 
 with c["Theory"]:
     render_theory_tab(
