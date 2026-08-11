@@ -1,30 +1,115 @@
 import streamlit as st
 
+from common.theme import ACCENT, BORDER, CARD_BG, TEXT
+
 st.title("Guide")
-st.caption("How to use this app.")
+st.caption("How to use this app — same flow on every equipment page.")
 
 st.markdown(
-    """
-Every equipment page follows the same 5-step sequence — once you know it on one page, you know it
-on all nine:
+    f"""<style>
+    .poe-flow-row {{
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+        margin: 0.5rem 0 1.5rem 0;
+    }}
+    .poe-step {{
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        min-width: 108px; padding: 0.6rem 0.5rem;
+        background-color: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 12px;
+        text-align: center;
+    }}
+    .poe-step .poe-icon {{ font-size: 1.6rem; line-height: 1.2; }}
+    .poe-step .poe-label {{ font-size: 0.78rem; font-weight: 600; color: {TEXT}; margin-top: 2px; }}
+    .poe-arrow {{ color: {ACCENT}; font-size: 1.3rem; flex-shrink: 0; }}
+    .poe-row-title {{
+        font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+        color: {ACCENT}; font-weight: 700; margin-bottom: 0.4rem;
+    }}
+    </style>""",
+    unsafe_allow_html=True,
+)
 
-1. **Pick equipment from the Home page** — click the card for the relay you want (Generator, Transformer, or Motor); Home is the only place equipment is chosen, it's not in the sidebar.
-2. **Load a preset** at the top of the sidebar — a real POMI relay, or *Custom Profile* to enter your own ratings and CT specs. Not happy with what you've changed? The **↺ Reset to preset defaults** button below it puts every field back to the preset's stock values. Want to keep what you've entered? **💾 Save Profile** (bottom of Settings Summary & Approval) downloads it under a name you choose — reload it later with the loader further down the sidebar.
-3. **Review "Current Settings"** — every applied setting, editable in place, with a live comment on whether it clears the recommended margin (🟢), needs a second look (🟠), or is informational only (⚪). A banner near the top shows whether this preset's values are ✓ verified against the real settings document or ⚠ only partially confirmed. Click **📊 Show Live Preview** any time to see the characteristic curve reflect the settings below it. By default it stays pinned above whichever section you pick next — uncheck **Pin Current Settings** in the sidebar if you'd rather it be just another section.
-4. **Work through the sidebar sections in order** — they're always in this sequence:
-   - **Theory** — how this protection scheme actually works, with the protection zone diagram.
-   - **Simulate & Test** — test a current/fault scenario against the relay's real trip logic and see the characteristic curve live, then (if you want) log real test results and build your own graph against that same curve, all in one place.
-   - **Commissioning & Injection Tool** — the exact secondary Amps to inject at the test set for a target result.
-   - **Fault Current Analysis** *(generator and transformer pages)* — checks the CTs against a real fault current, including a step-by-step fault-clearing simulation.
-   - **Settings Summary & Approval** — document control (source doc, revision, prepared/reviewed by, approval status), the relay-ready settings sheet, and a certified PDF audit report — the last step before sign-off.
-5. **Check cross-equipment consistency and export everything together** on the **Project** page (sidebar) — settings status across all equipment, a coordination check, motor curve comparisons, and one bundled save/load.
 
-Every recommendation is a rule-of-thumb starting point, not a substitute for a real coordination study — always confirm against the approved study, relay manual, and site test procedure before applying settings in service.
+def _flow(row_title, steps):
+    boxes = ""
+    for i, (icon, label) in enumerate(steps):
+        if i > 0:
+            boxes += '<div class="poe-arrow">→</div>'
+        boxes += f'<div class="poe-step"><div class="poe-icon">{icon}</div><div class="poe-label">{label}</div></div>'
+    st.markdown(
+        f'<div class="poe-row-title">{row_title}</div><div class="poe-flow-row">{boxes}</div>',
+        unsafe_allow_html=True,
+    )
 
-If a recommendation on a page looks extreme (e.g. a bias floor in the hundreds of percent), it's
-almost always telling you an *input* is wrong — a CT ratio, tap, or connection type — not that the
-setting genuinely needs to be that high. Check the inputs first.
-"""
+
+_flow("1 · Get started", [
+    ("🏠", "Home"),
+    ("⚡🔌🌀", "Pick a card"),
+    ("⚙️", "Load preset"),
+])
+
+_flow("2 · Work through these sections, in order", [
+    ("📋", "Current Settings"),
+    ("📖", "Theory"),
+    ("🧪", "Simulate & Test"),
+    ("🔧", "Commissioning"),
+    ("⚡", "Fault Analysis*"),
+    ("✅", "Approval"),
+])
+
+_flow("3 · Wrap up", [
+    ("📊", "Project page"),
+    ("💾", "Save / Export"),
+])
+
+st.caption("*Fault Analysis is a separate section only on generator and transformer pages — on motor pages it's folded into Simulate & Test.")
+
+st.divider()
+
+card1, card2, card3 = st.columns(3)
+with card1:
+    with st.container(border=True):
+        st.markdown("#### 📋 Current Settings")
+        st.write(
+            "Every applied setting, editable in place. 🟢 clears its margin, 🟠 needs a second "
+            "look, ⚪ is informational only. ✓/⚠ near the top shows how verified this preset is."
+        )
+with card2:
+    with st.container(border=True):
+        st.markdown("#### 📖 Theory")
+        st.write("How the protection scheme works, with the protection-zone diagram.")
+with card3:
+    with st.container(border=True):
+        st.markdown("#### 🧪 Simulate & Test")
+        st.write(
+            "Test a current/fault scenario against the real trip logic and watch the "
+            "characteristic curve live, then log real test points on that same curve."
+        )
+
+card4, card5, card6 = st.columns(3)
+with card4:
+    with st.container(border=True):
+        st.markdown("#### 🔧 Commissioning")
+        st.write("The exact secondary Amps to inject at the test set for a target result.")
+with card5:
+    with st.container(border=True):
+        st.markdown("#### ⚡ Fault Analysis")
+        st.write("Checks the CTs against a real fault current, with a step-by-step clearing simulation.")
+with card6:
+    with st.container(border=True):
+        st.markdown("#### ✅ Approval")
+        st.write("Document control, the relay-ready settings sheet, and a certified PDF audit report.")
+
+st.divider()
+
+st.info(
+    "Every recommendation is a rule-of-thumb starting point, not a substitute for a real "
+    "coordination study — always confirm against the approved study, relay manual, and site "
+    "test procedure before applying settings in service."
+)
+st.warning(
+    "If a recommendation looks extreme (e.g. a bias floor in the hundreds of percent), it's "
+    "almost always an *input* that's wrong — a CT ratio, tap, or connection type — not that the "
+    "setting genuinely needs to be that high. Check the inputs first."
 )
 
 with st.expander("Notes on a few equipment-specific differences"):
@@ -32,5 +117,6 @@ with st.expander("Notes on a few equipment-specific differences"):
         """
 - **Wiring & Convention** (Restraint Standard, CT Polarity) is at the top of the **Simulate & Test** section for the generator and transformer pages, not Current Settings — it only affects that evaluation.
 - **Motor pages** don't have a separate Fault Current Analysis section. Their fault-clearing simulation lives inside **Simulate & Test** instead, and skips the current waveform (no real X/R data exists for a motor short-circuit contribution).
+- **Pin Current Settings** (sidebar checkbox on every equipment page) keeps Current Settings visible above whichever section you're viewing, instead of it being just another section in the list — off by default.
 """
     )
