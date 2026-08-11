@@ -304,6 +304,19 @@ with c["Current Settings"]:
     else:
         st.warning("Overall status: one or more settings above need review before this is applied.")
 
+    st.markdown("---")
+    st.markdown("#### Save Profile")
+    st.caption(
+        "Name and download every setting currently active under the selected preset above — "
+        "most useful after entering your own values under Custom Profile, so you can pick this "
+        "file back up next time instead of re-typing everything. Use the loader in the sidebar "
+        "to restore it later."
+    )
+    export_profile_button(
+        st, "aux", f"{selected_preset}__",
+        default_name="UAT Profile", button_key="aux",
+    )
+
 
 windings = [
     {"name": "HV (23kV)", "kv": kv_hv, "ct_ratio": ct_hv, "ct_secondary_rating": ct_secondary_rating, "tap": tap_hv, "ct_connection": ct_conn_hv},
@@ -1188,17 +1201,4 @@ with c["Settings Summary & Approval"]:
         file_name=f"UAT_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
         help="Includes the Relay-Ready Settings Sheet as its final section.",
-    )
-
-    st.markdown("---")
-    st.markdown("#### Save Profile")
-    st.caption(
-        "Name and download every setting currently active under the selected preset above — "
-        "most useful after entering your own values under Custom Profile, so you can pick this "
-        "file back up next time instead of re-typing everything. Use the loader in the sidebar "
-        "to restore it later."
-    )
-    export_profile_button(
-        st, "aux", f"{selected_preset}__",
-        default_name="UAT Profile", button_key="aux",
     )

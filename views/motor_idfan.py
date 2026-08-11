@@ -453,6 +453,43 @@ with c["Current Settings"]:
     else:
         st.warning("Overall status: one or more settings above need review before this is applied.")
 
+    st.markdown("---")
+    st.markdown("#### Save Profile")
+    st.caption(
+        "Name and download the currently active settings — most useful after entering your own "
+        "values under Custom Profile, so you can pick this file back up next time instead of "
+        "re-typing everything. Use the loader in the sidebar to restore it later."
+    )
+    idfan_profile_name = st.text_input(
+        "Profile Name", value="ID Fan Profile", key="idfan_profile_name",
+        help="Used as the downloaded file's name, and shown when you reload it later.",
+    )
+    # Document-control fields are normally initialized by the widgets under
+    # "Settings Summary & Approval", which runs later in the script. Ensure
+    # defaults exist here too so the very first run doesn't KeyError before
+    # that section has executed.
+    ensure_setting("motor_source_document", "Motor Protection Setting - IDFAN.pdf")
+    ensure_setting("motor_revision", "Rev. 0")
+    ensure_setting("motor_prepared_by", "")
+    ensure_setting("motor_reviewed_by", "")
+    ensure_setting("motor_approval_status", "Draft — engineering review required")
+    ensure_setting("motor_review_note", "")
+    settings_export = {
+        "format": "Electrical Equipment Protection Suite settings",
+        "version": 1,
+        "equipment": "id_fan_motor",
+        "profile_name": idfan_profile_name,
+        "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "settings": {key: st.session_state[key] for key in MOTOR_CONFIG_FIELDS},
+    }
+    st.download_button(
+        label="💾 Save Profile (.json)",
+        data=json.dumps(settings_export, indent=2),
+        file_name=f"{safe_filename(idfan_profile_name, 'IDFan_profile')}.json",
+        mime="application/json",
+        help="Download the active settings and document-control fields for later reload in this app.",
+    )
+
 
 record_equipment_settings("motor", {
     "motor_fla": motor_fla, "locked_rotor_amps": locked_rotor_amps, "locked_rotor_amps_80pct": locked_rotor_amps_80,
@@ -1174,31 +1211,4 @@ with c["Settings Summary & Approval"]:
         data=approval_pdf_bytes,
         file_name=f"IDFan_Settings_Summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
-    )
-
-    st.markdown("---")
-    st.markdown("#### Save Profile")
-    st.caption(
-        "Name and download the currently active settings — most useful after entering your own "
-        "values under Custom Profile, so you can pick this file back up next time instead of "
-        "re-typing everything. Use the loader in the sidebar to restore it later."
-    )
-    idfan_profile_name = st.text_input(
-        "Profile Name", value="ID Fan Profile", key="idfan_profile_name",
-        help="Used as the downloaded file's name, and shown when you reload it later.",
-    )
-    settings_export = {
-        "format": "Electrical Equipment Protection Suite settings",
-        "version": 1,
-        "equipment": "id_fan_motor",
-        "profile_name": idfan_profile_name,
-        "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
-        "settings": {key: st.session_state[key] for key in MOTOR_CONFIG_FIELDS},
-    }
-    st.download_button(
-        label="💾 Save Profile (.json)",
-        data=json.dumps(settings_export, indent=2),
-        file_name=f"{safe_filename(idfan_profile_name, 'IDFan_profile')}.json",
-        mime="application/json",
-        help="Download the active settings and document-control fields for later reload in this app.",
     )

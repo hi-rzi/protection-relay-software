@@ -589,6 +589,18 @@ def render_fan_motor_page(fan_type):
         else:
             st.warning("Overall status: one or more settings above need review before this is applied.")
 
+        st.markdown("---")
+        st.markdown("#### Save Profile")
+        st.caption(
+            "Name and download every setting currently active on this page — most useful after "
+            "entering your own values under Custom Profile, so you can pick this file back up "
+            "next time instead of re-typing everything. Use the loader in the sidebar to restore "
+            "it later."
+        )
+        export_profile_button(
+            st, project_key, f"{project_key}__",
+            default_name=f"{fan_type} Profile", button_key=project_key,
+        )
 
     record_equipment_settings(project_key, {
         "motor_fla": motor_fla, "ct_ratio": ct_ratio, "ct_sec": ct_secondary_rating,
@@ -1365,18 +1377,5 @@ def render_fan_motor_page(fan_type):
             file_name=f"{project_key}_Settings_Summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
             key=f"{project_key}__approval_pdf_dl",
-        )
-
-        st.markdown("---")
-        st.markdown("#### Save Profile")
-        st.caption(
-            "Name and download every setting currently active on this page — most useful after "
-            "entering your own values under Custom Profile, so you can pick this file back up "
-            "next time instead of re-typing everything. Use the loader in the sidebar to restore "
-            "it later."
-        )
-        export_profile_button(
-            st, project_key, f"{project_key}__",
-            default_name=f"{fan_type} Profile", button_key=project_key,
         )
 

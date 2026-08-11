@@ -334,6 +334,19 @@ with c["Current Settings"]:
     else:
         st.warning("Overall status: one or more settings above need review before this is applied.")
 
+    st.markdown("---")
+    st.markdown("#### Save Profile")
+    st.caption(
+        "Name and download every setting currently active under the selected preset above — "
+        "most useful after entering your own values under Custom Profile, so you can pick this "
+        "file back up next time instead of re-typing everything. Use the loader in the sidebar "
+        "to restore it later."
+    )
+    export_profile_button(
+        st, "generator", f"{current_mode}__{selected_preset}__",
+        default_name="Generator Profile", button_key="generator",
+    )
+
 _generator_project_settings = {"mva": mva, "kv": kv, "ct_n": ct_ratio_N, "ct_t": ct_ratio_T, "mode": current_mode, "calc_mismatch_pct": calc_mismatch}
 if current_mode == "GENERATOR_LEGACY":
     _generator_project_settings.update({"target_amps": target_amps, "s1": slope_1})
@@ -1286,17 +1299,4 @@ with c["Settings Summary & Approval"]:
         file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
         help="Includes the Relay-Ready Settings Sheet as its final section.",
-    )
-
-    st.markdown("---")
-    st.markdown("#### Save Profile")
-    st.caption(
-        "Name and download every setting currently active under the selected preset above — "
-        "most useful after entering your own values under Custom Profile, so you can pick this "
-        "file back up next time instead of re-typing everything. Use the loader in the sidebar "
-        "to restore it later."
-    )
-    export_profile_button(
-        st, "generator", f"{current_mode}__{selected_preset}__",
-        default_name="Generator Profile", button_key="generator",
     )
