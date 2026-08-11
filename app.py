@@ -7,7 +7,8 @@ apply_theme()
 
 pg = st.navigation({
     "": [
-        st.Page("views/home.py", title="Home", default=True),
+        st.Page("views/welcome.py", title="Welcome", default=True, visibility="hidden"),
+        st.Page("views/home.py", title="Home"),
         st.Page("views/guide.py", title="Guide"),
         st.Page("views/project.py", title="Project"),
         st.Page("views/fmea.py", title="FMEA"),
