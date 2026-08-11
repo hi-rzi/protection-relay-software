@@ -7,6 +7,7 @@ import streamlit as st
 
 from common.fmea_data import CATEGORIES, FAILURE_CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
 from common.pdf_report import generate_fmea_pdf_report
+from common.theme import flow_row
 
 st.title("FMEA — Digital Protection Relays")
 st.caption(
@@ -16,7 +17,36 @@ st.caption(
     "protection)."
 )
 
-with st.expander("Scope and how to use this page", expanded=False):
+with st.expander("📍 How to use this page", expanded=False):
+    flow_row("Scan the table", [
+        ("🔍", "Filter (family + cause)"),
+        ("📊", "Scan the table"),
+        ("✏️", "Edit S / O / D"),
+    ])
+    flow_row("Drill into one failure mode", [
+        ("👆", "Pick a row below"),
+        ("🔬", "Cause / effect / diagnostics"),
+        ("🛠️", "Set maintenance task + frequency"),
+    ])
+    flow_row("Wrap up", [
+        ("🚨", "Check High-risk callout"),
+        ("💾", "Save / Export (JSON, CSV, PDF)"),
+    ])
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        with st.container(border=True):
+            st.markdown("#### 🎯 RPN")
+            st.write("Severity × Occurrence × Detection (1–1000). Higher = more urgent. 🟢 Low, 🟠 Medium, 🔴 High.")
+    with fc2:
+        with st.container(border=True):
+            st.markdown("#### 🧭 Failure Category")
+            st.write("Root-cause branch (Hardware, Software, Measurement, Wiring, Environment) from the plant's failure-cause diagram.")
+    with fc3:
+        with st.container(border=True):
+            st.markdown("#### 🛠️ Row Detail")
+            st.write("Cause, effect, diagnostics, and the editable maintenance task/frequency for one row at a time — kept attached to its failure mode, not a separate tab.")
+
+with st.expander("Scope & FMEA scoring conventions", expanded=False):
     st.markdown(
         "**Why only these three relay families?** The GE CFD22B4A (legacy generator "
         "relay) and the GE IFC66KD2A/HFC22B2A stack (on ID Fan and PA Fan) are "
