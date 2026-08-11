@@ -54,10 +54,26 @@ def apply_theme():
             background-color: {CARD_BG};
         }}
         div[class*="st-key-card_"] {{
+            position: relative;
             transition: border-color 0.15s ease;
         }}
         div[class*="st-key-card_"]:hover {{
             border-color: {ACCENT};
+        }}
+        /* Streamlit puts position:relative on every stElementContainer, which would
+           otherwise become the nearest positioned ancestor and trap the stretched-link
+           overlay below to just the link's own row instead of the whole card - override
+           it back to static (scoped to only link-containing containers inside a card) so
+           containing-block resolution walks up to the card itself. */
+        div[class*="st-key-card_"] div[data-testid="stElementContainer"]:has(a[data-testid="stPageLink-NavLink"]) {{
+            position: static !important;
+        }}
+        div[class*="st-key-card_"] a[data-testid="stPageLink-NavLink"]::after {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            cursor: pointer;
         }}
         .stButton > button[kind="primary"] {{
             background-color: {ACCENT};
