@@ -11,7 +11,7 @@ import streamlit as st
 from common.pdf_report import generate_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
-from common.ui_helpers import slider_with_exact_input, sidebar_section_nav
+from common.ui_helpers import slider_with_exact_input, sidebar_section_nav, equipment_switcher
 from common.settings_advisor import suggest_bias_settings, suggest_time_overcurrent_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -155,6 +155,7 @@ def _load_preset_into_state():
 
 
 PRESETS_WITH_PROJECT = with_restored_preset(PRESETS, "motor")
+equipment_switcher("views/motor_idfan.py")
 st.sidebar.header("Equipment Presets")
 ensure_setting("motor_selected_preset", next(iter(PRESETS_WITH_PROJECT)))
 selected_preset = st.sidebar.selectbox(

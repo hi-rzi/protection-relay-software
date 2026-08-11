@@ -31,7 +31,7 @@ from common.historian import render_historian_overlay
 from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.profile_io import export_profile_button, restore_profile_uploader
-from common.ui_helpers import sidebar_section_nav
+from common.ui_helpers import sidebar_section_nav, equipment_switcher
 from common.settings_advisor import suggest_motor_overload_settings
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
@@ -211,6 +211,7 @@ def render_fan_motor_page(fan_type):
         "coordination study, relay manual, and site test procedure before applying settings in service."
     )
 
+    equipment_switcher(f"views/motor_{project_key}.py")
     st.sidebar.header("Equipment Presets")
     presets_with_project = with_restored_preset(fan_data["presets"], project_key)
     selected_preset = st.sidebar.selectbox(

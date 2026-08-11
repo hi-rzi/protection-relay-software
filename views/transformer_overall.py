@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, sidebar_section_nav
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, sidebar_section_nav, equipment_switcher
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -49,6 +49,7 @@ PRESETS = {
 }
 
 PRESETS_WITH_PROJECT = with_restored_preset(PRESETS, "overall")
+equipment_switcher("views/transformer_overall.py")
 st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(PRESETS_WITH_PROJECT.keys()),

@@ -9,7 +9,7 @@ import streamlit as st
 from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
-from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_section_nav
+from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_section_nav, equipment_switcher
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings, suggest_generator_differential_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -69,6 +69,7 @@ if _restored_generator is not None and _restored_generator.get("mode") == curren
     # breaks vs. target_amps), so injecting it under the wrong mode would break
     # the p_data["..."] lookups every other preset here already relies on.
     current_mode_presets = with_restored_preset(current_mode_presets, "generator")
+equipment_switcher("views/generator.py")
 st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(current_mode_presets.keys()),

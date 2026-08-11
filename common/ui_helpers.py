@@ -1,5 +1,47 @@
 import streamlit as st
 
+EQUIPMENT_PAGES = [
+    ("⚡", "Generator (87G)", "views/generator.py"),
+    ("🔌", "Excitation Transformer", "views/transformer_exct.py"),
+    ("🔌", "Generator Step-Up Transformer", "views/transformer_gsut.py"),
+    ("🔌", "Overall GSUT-GEN", "views/transformer_overall.py"),
+    ("🔌", "Auxiliary Transformer", "views/transformer_aux.py"),
+    ("🌀", "Induced Draft Fan", "views/motor_idfan.py"),
+    ("🌀", "Primary Air Fan", "views/motor_pa_fan.py"),
+    ("🌀", "Forced Draft Fan", "views/motor_fd_fan.py"),
+]
+
+
+def equipment_switcher(current_path):
+    """Sidebar dropdown for jumping directly between equipment pages, instead of
+    going back to Home first. Call once near the top of every equipment page's
+    sidebar, passing that page's own st.Page path (e.g. "views/generator.py").
+
+    Streamlit's session_state for a widget key persists across full page
+    navigations (this selectbox uses the SAME key on every equipment page, since
+    it needs to be "the same switcher"), so without the reset below, arriving on
+    a new equipment page would show the PREVIOUS page's selection still selected,
+    which then reads as "the user picked a different page" and immediately fires
+    an unwanted second st.switch_page. Tracking the last-seen current_path lets
+    us detect "we've genuinely navigated since this widget last ran" and
+    resync the stored selection to match reality before the widget renders.
+    """
+    labels = [f"{icon} {label}" for icon, label, _ in EQUIPMENT_PAGES]
+    paths = [p for _, _, p in EQUIPMENT_PAGES]
+    current_index = paths.index(current_path) if current_path in paths else 0
+
+    if st.session_state.get("equipment_switcher_last_path") != current_path:
+        st.session_state["equipment_switcher"] = labels[current_index]
+        st.session_state["equipment_switcher_last_path"] = current_path
+
+    selected_label = st.sidebar.selectbox(
+        "Switch Equipment", labels, key="equipment_switcher",
+        help="Jump directly to another equipment page.",
+    )
+    selected_path = paths[labels.index(selected_label)]
+    if selected_path != current_path:
+        st.switch_page(selected_path)
+
 
 def sidebar_section_nav(section_names, key_prefix, pin_first=False):
     """Replaces a page's outer/inner st.tabs() with a sidebar-driven section

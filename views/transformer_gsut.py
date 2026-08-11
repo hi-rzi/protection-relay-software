@@ -9,7 +9,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import two_winding_transformer_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, fault_term_info, sidebar_section_nav
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, fault_term_info, sidebar_section_nav, equipment_switcher
 from engines.fault_current import transformer_through_fault_current, relay_secondary_at_fault
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
@@ -58,6 +58,7 @@ PRESETS = {
 }
 
 PRESETS_WITH_PROJECT = with_restored_preset(PRESETS, "gsut")
+equipment_switcher("views/transformer_gsut.py")
 st.sidebar.header("Equipment Presets")
 selected_preset = st.sidebar.selectbox(
     "Load Standard Profile", list(PRESETS_WITH_PROJECT.keys()),
