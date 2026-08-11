@@ -31,7 +31,7 @@ def sidebar_section_nav(section_names, key_prefix, pin_first=False):
     pinned = False
     if pin_first:
         pinned = st.sidebar.checkbox(
-            "Pin Current Settings", value=True, key=f"{key_prefix}_pin",
+            "Pin Current Settings", value=False, key=f"{key_prefix}_pin",
             help="Keep Current Settings visible above whichever section you're viewing.",
         )
 
