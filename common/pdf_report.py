@@ -362,6 +362,82 @@ def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, un
     )
 
 
+def generate_custom_relay_pdf_report(unit_name, relay, results, test_inputs, approval=None, settings_sheets=None):
+    """User-assembled generic relay (engines/custom_relay.CustomRelay) report.
+
+    results: relay.evaluate(...)'s return dict (tag -> {multiple, trip_time, is_trip, status}).
+    test_inputs: dict with whichever of i_phase_primary/i_ground_primary/i_diff_primary/
+        unbalance_pct were used for this evaluation - only elements present in `results`
+        are reported.
+    settings_sheets: optional list of (relay_type_label, rows) tuples - see
+    _settings_sheet_sections()."""
+    report_title = f"Custom Relay Protection Evaluation Report - {unit_name}"
+    meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
+
+    relay_rows = [["Parameter", "Value"], ["CT Ratio", f"{relay.ct_ratio:.0f}:{relay.ct_secondary_rating:.0f}"]]
+    if relay.ground_ct_ratio:
+        relay_rows.append(["Ground CT Ratio", f"{relay.ground_ct_ratio:.0f}:{relay.ground_ct_secondary_rating:.0f}"])
+
+    element_rows = [["Element", "Parameter", "Value"]]
+    for tag, el in relay.elements.items():
+        label = relay.ELEMENT_LABELS[tag]
+        if tag in ("51", "51G"):
+            element_rows += [
+                [label, "Pickup", f"{el['pickup_sec']:.2f} A sec."],
+                [label, "Curve", el["curve"]],
+                [label, "Time Dial / TMS", f"{el['time_dial']:.2f}"],
+            ]
+        elif tag in ("50", "50G"):
+            element_rows += [
+                [label, "Pickup", f"{el['pickup_sec']:.2f} A sec."],
+                [label, "Delay", f"{el['delay_ms']:.0f} ms"],
+            ]
+        elif tag == "87":
+            element_rows.append([label, "Pickup", f"{el['pickup_primary']:.1f} A primary"])
+        elif tag == "46":
+            element_rows += [
+                [label, "Alarm Pickup / Delay", f"{el['alarm_pct']:.0f}% / {el['alarm_delay_s']:.0f}s"],
+                [label, "Trip Pickup / Delay", f"{el['trip_pct']:.0f}% / {el['trip_delay_s']:.0f}s"],
+            ]
+
+    results_header = ["Element", "Test Input", "Multiple", "Status"]
+    results_rows = []
+    input_labels = {
+        "51": f"{test_inputs.get('i_phase_primary', 0):.1f} A primary",
+        "50": f"{test_inputs.get('i_phase_primary', 0):.1f} A primary",
+        "51G": f"{test_inputs.get('i_ground_primary', 0):.1f} A primary",
+        "50G": f"{test_inputs.get('i_ground_primary', 0):.1f} A primary",
+        "87": f"{test_inputs.get('i_diff_primary', 0):.1f} A primary",
+        "46": f"{test_inputs.get('unbalance_pct', 0):.1f} %",
+    }
+    for tag, r in results.items():
+        multiple_str = f"{r['multiple']:.2f}x" if r["multiple"] is not None else "—"
+        results_rows.append([relay.ELEMENT_LABELS[tag], input_labels.get(tag, "—"), multiple_str, r["status"]])
+
+    sections = [("Relay Settings", relay_rows), ("Protection Elements", element_rows)]
+
+    if approval:
+        approval_rows = [
+            ["Parameter", "Value"],
+            ["Source Document", approval.get("source_document", "Not recorded")],
+            ["Revision", approval.get("revision", "Not recorded")],
+            ["Prepared By", approval.get("prepared_by", "Not recorded")],
+            ["Reviewed By", approval.get("reviewed_by", "Not recorded")],
+            ["Approval Status", approval.get("approval_status", "Not recorded")],
+            ["Review Note", approval.get("review_note", "None")],
+        ]
+        sections.append(("Document Control and Approval", approval_rows))
+
+    sections += _settings_sheet_sections(settings_sheets)
+
+    return build_pdf_report(
+        report_title, meta_text,
+        sections=sections,
+        results_header=results_header, results_rows=results_rows,
+        results_col_widths=(160, 110, 80, 130),
+    )
+
+
 def generate_fmea_pdf_report(rows, categories):
     """FMEA (Failure Mode and Effects Analysis) report, views/fmea.py.
 

@@ -25,5 +25,6 @@ pg = st.navigation({
         st.Page("views/motor_pa_fan.py", title="Primary Air Fan", visibility="hidden"),
         st.Page("views/motor_fd_fan.py", title="Forced Draft Fan", visibility="hidden"),
     ],
+    "Custom": [st.Page("views/custom_relays.py", title="Custom Relay Types", visibility="hidden")],
 })
 pg.run()

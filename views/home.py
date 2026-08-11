@@ -54,3 +54,10 @@ with m3:
         "views/motor_fd_fan.py", "Forced Draft Fan",
         "Multilin SR469 static MPR", "🌀", "card_fdfan",
     )
+
+st.subheader("🧩 Custom")
+equipment_card(
+    "views/custom_relays.py", "Custom Relay Types",
+    "Model any other relay — standard IEC/IEEE curves, self-balancing differential, unbalance",
+    "🧩", "card_custom",
+)
