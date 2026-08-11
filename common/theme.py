@@ -94,6 +94,40 @@ def apply_theme():
             border-radius: 12px;
             padding: 0.75rem 1rem;
         }}
+        .poe-flow-row {{
+            display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+            margin: 0.5rem 0 1.5rem 0;
+        }}
+        .poe-step {{
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-width: 108px; padding: 0.6rem 0.5rem;
+            background-color: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 12px;
+            text-align: center;
+        }}
+        .poe-step .poe-icon {{ font-size: 1.6rem; line-height: 1.2; }}
+        .poe-step .poe-label {{ font-size: 0.78rem; font-weight: 600; color: {TEXT}; margin-top: 2px; }}
+        .poe-arrow {{ color: {ACCENT}; font-size: 1.3rem; flex-shrink: 0; }}
+        .poe-row-title {{
+            font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
+            color: {ACCENT}; font-weight: 700; margin-bottom: 0.4rem;
+        }}
         </style>""",
+        unsafe_allow_html=True,
+    )
+
+
+def flow_row(row_title, steps):
+    """Renders one row of the icon-boxes-connected-by-arrows flow diagram used
+    on the Guide and Project pages - steps is a list of (icon, label) tuples.
+    Relies on the .poe-* classes injected globally by apply_theme(), so any
+    page using this must run after apply_theme() has been called (already
+    true everywhere, since app.py calls it before st.navigation runs)."""
+    boxes = ""
+    for i, (icon, label) in enumerate(steps):
+        if i > 0:
+            boxes += '<div class="poe-arrow">→</div>'
+        boxes += f'<div class="poe-step"><div class="poe-icon">{icon}</div><div class="poe-label">{label}</div></div>'
+    st.markdown(
+        f'<div class="poe-row-title">{row_title}</div><div class="poe-flow-row">{boxes}</div>',
         unsafe_allow_html=True,
     )

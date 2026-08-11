@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from common.project_state import EQUIPMENT_LABELS, project_summary, differential_zone_coordination
+from common.theme import flow_row
 from engines.motor import MotorTimeOvercurrentRelay
 from engines.motor_869 import Motor869Relay
 
@@ -16,6 +17,37 @@ st.caption(
     "project you can save and reload later — instead of exporting each equipment's settings "
     "one at a time."
 )
+
+with st.expander("📍 How to use this page", expanded=False):
+    flow_row("Build a project this session", [
+        ("⚡🔌🌀", "Visit equipment pages"),
+        ("📊", "Come here"),
+        ("🔍", "Review status"),
+        ("💾", "Save Project (.json)"),
+    ])
+    flow_row("Reload a saved project later", [
+        ("📂", "Load Project (.json)"),
+        ("📊", "Project page"),
+        ("🔁", "Revisit each equipment page"),
+        ("✅", "Pick \"Restored from Project\""),
+    ])
+    st.caption(
+        "This page only bundles settings already configured in this browser session — it "
+        "doesn't reach into equipment pages you haven't opened yet."
+    )
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        with st.container(border=True):
+            st.markdown("#### 🔍 Equipment Status")
+            st.write("A rule-of-thumb health check per equipment — not a coordination study or an approval.")
+    with g2:
+        with st.container(border=True):
+            st.markdown("#### ⚡ Coordination Check")
+            st.write("Shared-CT consistency and backup differential zone coverage across Generator, GSUT, and Overall.")
+    with g3:
+        with st.container(border=True):
+            st.markdown("#### 📈 Motor Curves")
+            st.write("Overlays every visited motor's trip curve on one chart, in absolute primary Amps.")
 
 st.info(
     "Visit each equipment page at least once (with the settings you want to keep) before "

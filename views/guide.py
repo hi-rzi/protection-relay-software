@@ -1,53 +1,17 @@
 import streamlit as st
 
-from common.theme import ACCENT, BORDER, CARD_BG, TEXT
+from common.theme import flow_row
 
 st.title("Guide")
 st.caption("How to use this app — same flow on every equipment page.")
 
-st.markdown(
-    f"""<style>
-    .poe-flow-row {{
-        display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-        margin: 0.5rem 0 1.5rem 0;
-    }}
-    .poe-step {{
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        min-width: 108px; padding: 0.6rem 0.5rem;
-        background-color: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 12px;
-        text-align: center;
-    }}
-    .poe-step .poe-icon {{ font-size: 1.6rem; line-height: 1.2; }}
-    .poe-step .poe-label {{ font-size: 0.78rem; font-weight: 600; color: {TEXT}; margin-top: 2px; }}
-    .poe-arrow {{ color: {ACCENT}; font-size: 1.3rem; flex-shrink: 0; }}
-    .poe-row-title {{
-        font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;
-        color: {ACCENT}; font-weight: 700; margin-bottom: 0.4rem;
-    }}
-    </style>""",
-    unsafe_allow_html=True,
-)
-
-
-def _flow(row_title, steps):
-    boxes = ""
-    for i, (icon, label) in enumerate(steps):
-        if i > 0:
-            boxes += '<div class="poe-arrow">→</div>'
-        boxes += f'<div class="poe-step"><div class="poe-icon">{icon}</div><div class="poe-label">{label}</div></div>'
-    st.markdown(
-        f'<div class="poe-row-title">{row_title}</div><div class="poe-flow-row">{boxes}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-_flow("1 · Get started", [
+flow_row("1 · Get started", [
     ("🏠", "Home"),
     ("⚡🔌🌀", "Pick a card"),
     ("⚙️", "Load preset"),
 ])
 
-_flow("2 · Work through these sections, in order", [
+flow_row("2 · Work through these sections, in order", [
     ("📋", "Current Settings"),
     ("📖", "Theory"),
     ("🧪", "Simulate & Test"),
@@ -56,7 +20,7 @@ _flow("2 · Work through these sections, in order", [
     ("✅", "Approval"),
 ])
 
-_flow("3 · Wrap up", [
+flow_row("3 · Wrap up", [
     ("📊", "Project page"),
     ("💾", "Save / Export"),
 ])
