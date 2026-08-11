@@ -94,7 +94,7 @@ if not is_custom:
 # engineering judgment invented) - just surfaced inline per-field instead of
 # buried in a collapsed sidebar expander.
 # ---------------------------------------------------------------------------
-sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Fault Current Analysis", "Settings Summary & Approval"]
+sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Fault Current Analysis", "Settings Summary & Approval"]
 selected, c, pinned = sidebar_section_nav(sections, key_prefix="exct", pin_first=True)
 
 with c["Current Settings"]:
@@ -322,6 +322,37 @@ relay = TransformerDifferentialRelay(
 
 phases = ["Phase A", "Phase B", "Phase C"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
+
+with c["Settings Calculator"]:
+    st.caption(
+        "Computed from the ratings/CT entered under Current Settings — a starting point, not a "
+        "substitute for a coordination study."
+    )
+    tcalc1, tcalc2 = st.columns(2)
+    with tcalc1:
+        with st.container(border=True):
+            st.markdown("#### HV Tap (T1_E)")
+            st.metric("Suggested", f"{t1_e:.3f}" if t1_e is not None else "—")
+    with tcalc2:
+        with st.container(border=True):
+            st.markdown("#### LV Tap (T2_E)")
+            st.metric("Suggested", f"{t2_e:.3f}" if t2_e is not None else "—")
+    st.caption("Ideal (unrounded) CT-matching tap for each winding at rated load — round to the nearest tap your relay's settings software offers.")
+
+    bcalc1, bcalc2, bcalc3 = st.columns(3)
+    with bcalc1:
+        with st.container(border=True):
+            st.markdown("#### Bias")
+            st.metric("Suggested", f"{suggestion['bias_pct']:.0f} %")
+    with bcalc2:
+        with st.container(border=True):
+            st.markdown("#### Min Operate")
+            st.metric("Suggested", f"{suggestion['min_operate_pct']:.0f} %")
+    with bcalc3:
+        with st.container(border=True):
+            st.markdown("#### HOC")
+            st.metric("Suggested", f"{suggestion['hoc_multiple']:.0f}x tap current")
+    st.caption(suggestion["basis"])
 
 with c["Theory"]:
     render_theory_tab(
