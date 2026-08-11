@@ -359,8 +359,10 @@ relay = AdvancedDifferentialRelay(
 
 with c["Settings Calculator"]:
     st.caption(
-        "Computed from the CT ratios entered under Current Settings — a starting point, not a "
-        "substitute for a coordination study."
+        "Enter equipment ratings and CT data below to get a suggested settings sheet — a "
+        "starting point, not a substitute for a coordination study. Prefilled from Current "
+        "Settings, but independent of it: change a value here to test a scenario without "
+        "touching your actual settings."
     )
     if current_mode == "GENERATOR_LEGACY":
         st.info(
@@ -370,7 +372,23 @@ with c["Settings Calculator"]:
             "Current Settings — no suggested-settings sheet for it here."
         )
     else:
-        gen_suggestion = suggest_generator_differential_settings(calc_mismatch)
+        with st.container(border=True):
+            st.markdown("**Ratings and CT**")
+            gin1, gin2 = st.columns(2)
+            with gin1:
+                calc_mva = st.number_input("Generator Rating (MVA)", min_value=0.1, value=float(mva), step=1.0, key="gen_calc_mva")
+                calc_kv = st.number_input("Rated Voltage (kV)", min_value=0.1, value=float(kv), step=1.0, key="gen_calc_kv")
+            with gin2:
+                calc_ct_n = st.number_input("Neutral Side CT Rating (Primary A)", min_value=1.0, value=float(ct_ratio_N), step=1.0, key="gen_calc_ct_n")
+                calc_ct_t = st.number_input("Terminal Side CT Rating (Primary A)", min_value=1.0, value=float(ct_ratio_T), step=1.0, key="gen_calc_ct_t")
+            calc_ct_sec = st.number_input("CT Secondary Rating (A)", min_value=1.0, value=float(ct_secondary_rating), step=1.0, key="gen_calc_ct_sec")
+
+            calc_i_sec_n = (calc_mva * 1000.0 / (1.7320508 * calc_kv)) / (calc_ct_n / calc_ct_sec) if calc_kv > 0 and calc_ct_n > 0 else 0.0
+            calc_i_sec_t = (calc_mva * 1000.0 / (1.7320508 * calc_kv)) / (calc_ct_t / calc_ct_sec) if calc_kv > 0 and calc_ct_t > 0 else 0.0
+            calc_gen_mismatch = mismatch_ratio_pct([calc_i_sec_n, calc_i_sec_t])
+            st.metric("CT mismatch between sides", f"{calc_gen_mismatch:.2f}%" if calc_gen_mismatch is not None else "—")
+
+        gen_suggestion = suggest_generator_differential_settings(calc_gen_mismatch)
         gcalc1, gcalc2, gcalc3 = st.columns(3)
         with gcalc1:
             with st.container(border=True):

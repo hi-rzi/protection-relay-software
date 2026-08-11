@@ -468,14 +468,35 @@ record_equipment_settings("motor", {
 
 with c["Settings Calculator"]:
     st.caption(
-        "Computed from the ratings/CT entered under Current Settings — a starting point, not a "
-        "substitute for a coordination study."
+        "Enter motor ratings, CT, and starting/safe-stall data below to get a suggested "
+        "settings sheet — a starting point, not a substitute for a coordination study. "
+        "Prefilled from Current Settings, but independent of it: change a value here to test "
+        "a scenario without touching your actual settings."
     )
+    with st.container(border=True):
+        st.markdown("**Motor & CT**")
+        idcalc1, idcalc2 = st.columns(2)
+        with idcalc1:
+            calc_motor_fla = st.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(motor_fla), step=1.0, key="idfan_calc_fla")
+            calc_ct_ratio = st.number_input("CT Ratio (Primary A)", min_value=1.0, value=float(ct_ratio), step=1.0, key="idfan_calc_ct_ratio")
+            calc_ct_sec = st.number_input("CT Secondary Rating (A)", min_value=1.0, value=float(ct_secondary_rating), step=1.0, key="idfan_calc_ct_sec")
+        with idcalc2:
+            calc_lrc_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(locked_rotor_amps), step=1.0, key="idfan_calc_lrc_100")
+            calc_lrc_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(locked_rotor_amps_80), step=1.0, key="idfan_calc_lrc_80")
+        st.markdown("**Starting & Safe Stall**")
+        idcalc3, idcalc4 = st.columns(2)
+        with idcalc3:
+            calc_accel_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=float(accel_time_100), step=0.1, key="idfan_calc_accel_100")
+            calc_accel_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=float(accel_time_80), step=0.1, key="idfan_calc_accel_80")
+        with idcalc4:
+            calc_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=float(safe_stall_100), step=0.1, key="idfan_calc_stall_100")
+            calc_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=float(safe_stall_80), step=0.1, key="idfan_calc_stall_80")
+
     idc_suggestion = suggest_time_overcurrent_settings(
-        motor_fla=motor_fla, ct_ratio=ct_ratio, ct_secondary_rating=ct_secondary_rating,
-        locked_rotor_amps_100=locked_rotor_amps, locked_rotor_amps_80=locked_rotor_amps_80,
-        accel_time_100=accel_time_100, accel_time_80=accel_time_80,
-        safe_stall_100=safe_stall_100, safe_stall_80=safe_stall_80,
+        motor_fla=calc_motor_fla, ct_ratio=calc_ct_ratio, ct_secondary_rating=calc_ct_sec,
+        locked_rotor_amps_100=calc_lrc_100, locked_rotor_amps_80=calc_lrc_80,
+        accel_time_100=calc_accel_100, accel_time_80=calc_accel_80,
+        safe_stall_100=calc_stall_100, safe_stall_80=calc_stall_80,
     )
     idc1, idc2 = st.columns(2)
     with idc1:
