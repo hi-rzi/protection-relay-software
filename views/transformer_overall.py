@@ -12,7 +12,6 @@ from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, sideba
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
-from common.relay_settings_sheet import render_settings_sheet
 from common.profile_io import export_profile_button, restore_profile_uploader
 from common.test_point_input import TEST_POINT_SOURCE_OPTIONS, TEST_POINT_SOURCE_HELP, raw_current_inputs
 from engines.transformer import TransformerDifferentialRelay, winding_internal_vector, raw_input_for_internal_vector, solve_healthy_target_angle
@@ -931,16 +930,7 @@ with c["Settings Summary & Approval"]:
         )
     review_note = st.text_area("Review note / change description", key="overall_review_note")
 
-    st.markdown("---")
-    pdf_bytes = generate_transformer_pdf_report(selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents)
-    st.download_button(
-        label="Export Certified Protection Audit Report",
-        data=pdf_bytes,
-        file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf"
-    )
-
-    render_settings_sheet(st, "CAC2-10-M3", [
+    _sheet_rows = [
         ("HV CT Ratio", f"{ct_hv:.0f}:{ct_secondary_rating:.0f}"),
         ("Generator CT Ratio", f"{ct_gen:.0f}:{ct_secondary_rating:.0f}"),
         ("UAT CT Ratio", f"{ct_uat:.0f}:{ct_secondary_rating:.0f}"),
@@ -952,7 +942,20 @@ with c["Settings Summary & Approval"]:
         ("HOC (x tap value current)", f"{hoc_multiple:.2f}"),
         ("Restraint Standard", convention),
         ("CT Polarity Reference", ct_polarity),
-    ], key_prefix="Overall")
+    ]
+
+    st.markdown("---")
+    pdf_bytes = generate_transformer_pdf_report(
+        selected_preset, relay, evals, phases, relay_type_label="CAC2-10-M3", winding_currents=winding_currents,
+        settings_sheets=[("CAC2-10-M3", _sheet_rows)],
+    )
+    st.download_button(
+        label="Export Certified Protection Audit Report",
+        data=pdf_bytes,
+        file_name=f"Overall_GSUT-GEN_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf",
+        help="Includes the Relay-Ready Settings Sheet as its final section.",
+    )
 
     st.markdown("---")
     st.markdown("#### Save Profile")

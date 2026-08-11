@@ -13,7 +13,6 @@ from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings, suggest_generator_differential_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
-from common.relay_settings_sheet import render_settings_sheet
 from common.profile_io import export_profile_button, restore_profile_uploader
 from common.test_point_input import TEST_POINT_SOURCE_OPTIONS, TEST_POINT_SOURCE_HELP, raw_current_inputs
 from engines.generator import AdvancedDifferentialRelay
@@ -1253,15 +1252,6 @@ with c["Settings Summary & Approval"]:
         )
     review_note = st.text_area("Review note / change description", key="generator_review_note")
 
-    st.markdown("---")
-    pdf_bytes = generate_generator_pdf_report(selected_preset, relay, evals, phases, inputs=inputs)
-    st.download_button(
-        label="Export Certified Protection Audit Report",
-        data=pdf_bytes,
-        file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf"
-    )
-
     if current_mode == "GENERATOR_LEGACY":
         _sheet_rows = [
             ("Relay Type", "GE CFD22B4A (GEK-34124)"),
@@ -1284,7 +1274,19 @@ with c["Settings Summary & Approval"]:
         ("Restraint Standard", convention),
         ("CT Polarity Reference", ct_polarity),
     ]
-    render_settings_sheet(st, "GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows, key_prefix="Generator")
+
+    st.markdown("---")
+    pdf_bytes = generate_generator_pdf_report(
+        selected_preset, relay, evals, phases, inputs=inputs,
+        settings_sheets=[("GE G60" if current_mode == "GENERATOR" else "GE CFD22B4A", _sheet_rows)],
+    )
+    st.download_button(
+        label="Export Certified Protection Audit Report",
+        data=pdf_bytes,
+        file_name=f"Generator_Differential_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf",
+        help="Includes the Relay-Ready Settings Sheet as its final section.",
+    )
 
     st.markdown("---")
     st.markdown("#### Save Profile")

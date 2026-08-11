@@ -71,13 +71,32 @@ def build_pdf_report(report_title, meta_text, sections, results_header=None, res
     return buffer
 
 
-def generate_generator_pdf_report(unit_name, relay_obj, evals, phases, inputs=None):
+def _settings_sheet_sections(settings_sheets):
+    """settings_sheets: optional list of (relay_type_label, rows) tuples, rows
+    being (Parameter, Value) pairs using the SAME terminology as that relay's
+    own instruction manual/settings summary - a checklist for manual entry
+    into the relay's own settings software or front-panel HMI, deliberately
+    not an importable relay project file (see module docstring precedent:
+    this app has no access to vendor proprietary settings-file formats).
+    Returns a list of (heading, two_col_rows) tuples ready to append to a
+    build_pdf_report() sections list - empty list if none supplied."""
+    if not settings_sheets:
+        return []
+    out = []
+    for relay_type_label, rows in settings_sheets:
+        out.append((f"Relay-Ready Settings Sheet — {relay_type_label}", [["Parameter", "Value"]] + list(rows)))
+    return out
+
+
+def generate_generator_pdf_report(unit_name, relay_obj, evals, phases, inputs=None, settings_sheets=None):
     """Generator (87G) report — output is identical to the original monolithic
     generate_pdf_report(), now built on top of the shared build_pdf_report().
 
     inputs: optional {phase: {"i_N": ..., "i_T": ...}} — when supplied, the
     Neutral/Terminal primary Amps actually entered for each phase are added
-    to the results table, not just the derived pu values."""
+    to the results table, not just the derived pu values.
+    settings_sheets: optional list of (relay_type_label, rows) tuples - see
+    _settings_sheet_sections()."""
     report_title = f"Generator Differential Protection (87G) Evaluation Report - {relay_obj.mode} Mode"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -133,19 +152,23 @@ def generate_generator_pdf_report(unit_name, relay_obj, evals, phases, inputs=No
 
     return build_pdf_report(
         report_title, meta_text,
-        sections=[("Generator Parameters", generator_rows), ("Relay Parameters", relay_rows)],
+        sections=[("Generator Parameters", generator_rows), ("Relay Parameters", relay_rows)]
+                 + _settings_sheet_sections(settings_sheets),
         results_header=results_header, results_rows=results_rows, results_col_widths=results_col_widths,
     )
 
 
-def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_type_label="CAC1-10-M3", winding_currents=None):
+def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_type_label="CAC1-10-M3",
+                                     winding_currents=None, settings_sheets=None):
     """Transformer differential (87T) report — built on the same shared
     build_pdf_report() used for the Generator report. Works for any winding
     count (2-winding EXCT/GSUT, 3-winding Overall).
 
     winding_currents: optional {phase: [primary_amps, ...]}, aligned in order
     with relay_obj.windings — when supplied, each winding's primary Amps
-    actually entered for that phase are added to the results table."""
+    actually entered for that phase are added to the results table.
+    settings_sheets: optional list of (relay_type_label, rows) tuples - see
+    _settings_sheet_sections()."""
     report_title = f"Transformer Differential Protection (87T) Evaluation Report - {unit_name}"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -185,18 +208,21 @@ def generate_transformer_pdf_report(unit_name, relay_obj, evals, phases, relay_t
 
     return build_pdf_report(
         report_title, meta_text,
-        sections=[("Transformer Parameters", transformer_rows), ("Relay Parameters", relay_rows)],
+        sections=[("Transformer Parameters", transformer_rows), ("Relay Parameters", relay_rows)]
+                 + _settings_sheet_sections(settings_sheets),
         results_header=results_header, results_rows=results_rows, results_col_widths=results_col_widths,
     )
 
 
 def generate_motor_pdf_report(unit_name, relay_obj, eval_result, test_current_amps,
                                backup_relay_obj=None, backup_eval_result=None,
-                               approval=None, coordination_checks=None):
+                               approval=None, coordination_checks=None, settings_sheets=None):
     """Motor 50/50/51 time-overcurrent (IFC66KD2A) report — built on the same
     shared build_pdf_report(). Single test-current evaluation (this relay
     is single-phase A & C, not a 3-phase differential), with an optional
-    second section for the backup 50 (HFC22B2A) instantaneous relay."""
+    second section for the backup 50 (HFC22B2A) instantaneous relay.
+    settings_sheets: optional list of (relay_type_label, rows) tuples - see
+    _settings_sheet_sections()."""
     report_title = f"Motor Time-Overcurrent Protection (50/50/51) Evaluation Report - {unit_name}"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -261,6 +287,8 @@ def generate_motor_pdf_report(unit_name, relay_obj, eval_result, test_current_am
         ]
         sections.append(("Document Control and Approval", approval_rows))
 
+    sections += _settings_sheet_sections(settings_sheets)
+
     return build_pdf_report(
         report_title, meta_text,
         sections=sections,
@@ -271,11 +299,13 @@ def generate_motor_pdf_report(unit_name, relay_obj, eval_result, test_current_am
 
 def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, unbal_eval,
                                    test_current_amps, ground_current_amps, unbalance_pct,
-                                   approval=None):
+                                   approval=None, settings_sheets=None):
     """SR469 MPR motor report (Primary Air Fan / FD Fan) - covers only what this app
     models for these motors (the SR469 static MPR); a separate discrete 50/50/51
     electromechanical relay documented in these motors' settings docs is not covered
-    here."""
+    here.
+    settings_sheets: optional list of (relay_type_label, rows) tuples - see
+    _settings_sheet_sections()."""
     report_title = f"Fan Motor Protection (SR469 MPR) Evaluation Report - {unit_name}"
     meta_text = f"<b>Date/Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | <b>Configuration:</b> {unit_name}"
 
@@ -321,6 +351,8 @@ def generate_fan_motor_pdf_report(unit_name, relay_obj, eval_result, gf_eval, un
             ["Review Note", approval.get("review_note", "None")],
         ]
         sections.append(("Document Control and Approval", approval_rows))
+
+    sections += _settings_sheet_sections(settings_sheets)
 
     return build_pdf_report(
         report_title, meta_text,

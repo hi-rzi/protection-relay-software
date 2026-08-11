@@ -15,7 +15,6 @@ from common.ui_helpers import slider_with_exact_input, sidebar_section_nav, equi
 from common.settings_advisor import suggest_bias_settings, suggest_time_overcurrent_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
-from common.relay_settings_sheet import render_settings_sheet
 from common.profile_io import safe_filename
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
@@ -690,17 +689,6 @@ with c["Simulate & Test"]:
             else:
                 st.error(f"**{label}:** {review_note} ({detail})")
 
-        pdf_bytes = generate_motor_pdf_report(
-            selected_preset, relay, eval_result, test_current,
-            backup_relay_obj=backup_relay, backup_eval_result=backup_result
-        )
-        st.download_button(
-            label="Export Certified Protection Audit Report",
-            data=pdf_bytes,
-            file_name=f"IDFan_Motor_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
-
         _motor_sheet_rows = [
             ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
             ("51 Tap (A sec.)", f"{tap_51:.2f}"),
@@ -714,13 +702,24 @@ with c["Simulate & Test"]:
                 ("Backup 50 CT Ratio", f"{backup_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Backup 50 Pickup (A sec.)", f"{backup_pickup_50:.2f}"),
             ]
-        render_settings_sheet(st, "IFC66KD2A", _motor_sheet_rows, key_prefix="IDFan")
-
-        render_settings_sheet(st, "GE HFC23C1A", [
+        _diff87m_sheet_rows = [
             ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
             ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
             ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
-        ], key_prefix="IDFan_87M")
+        ]
+
+        pdf_bytes = generate_motor_pdf_report(
+            selected_preset, relay, eval_result, test_current,
+            backup_relay_obj=backup_relay, backup_eval_result=backup_result,
+            settings_sheets=[("IFC66KD2A", _motor_sheet_rows), ("GE HFC23C1A", _diff87m_sheet_rows)],
+        )
+        st.download_button(
+            label="Export Certified Protection Audit Report",
+            data=pdf_bytes,
+            file_name=f"IDFan_Motor_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            help="Includes the Relay-Ready Settings Sheet as its final section(s).",
+        )
 
     st.markdown("---")
     st.subheader("Time-Current Characteristic (TCC) Curve")

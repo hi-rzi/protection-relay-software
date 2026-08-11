@@ -28,7 +28,6 @@ from common.pdf_report import generate_fan_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
 from common.historian import render_historian_overlay
-from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.profile_io import export_profile_button, restore_profile_uploader
 from common.ui_helpers import sidebar_section_nav, equipment_switcher
@@ -768,18 +767,12 @@ def render_fan_motor_page(fan_type):
                 {"Function": "87M (Self-Balancing Differential)", "Multiple": f"{diff87m_test_imbalance:.1f} A", "Status": diff87m_result["status"]},
             ])
 
-            pdf_bytes = generate_fan_motor_pdf_report(
-                f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
-                test_current, ground_current, unbalance_input,
-            )
-            st.download_button(
-                label="Export Certified Protection Audit Report",
-                data=pdf_bytes,
-                file_name=f"{project_key}_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
-            )
-
-            render_settings_sheet(st, "Multilin SR469", [
+            # PDF export moved to the end of this tab (after the IFC66KD2A section
+            # below, PA Fan only) so its settings_sheets can include all three
+            # relays' rows in one report instead of splitting them - see the
+            # relocated generate_fan_motor_pdf_report() call near the end of
+            # `with c["Simulate & Test"]:`.
+            _sr469_sheet_rows = [
                 ("CT Ratio", f"{ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Ground CT Ratio", f"{ground_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("Overload Pickup (% FLA)", f"{overload_pickup_pct:.0f}"),
@@ -790,13 +783,12 @@ def render_fan_motor_page(fan_type):
                 ("Ground Fault Delay (ms)", f"{gf_delay_ms:.0f}"),
                 ("Unbalance Alarm/Trip (%)", f"{unbal_alarm_pct:.0f} / {unbal_trip_pct:.0f}"),
                 ("Mechanical Jam Pickup (% FLA)", f"{mech_jam_pct:.0f}"),
-            ], key_prefix=project_key.upper())
-
-            render_settings_sheet(st, "GE HFC23C1A", [
+            ]
+            _87m_sheet_rows = [
                 ("87M CT Ratio", f"{diff87m_ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                 ("87M Pickup (A sec.)", f"{diff87m_pickup_sec:.2f}"),
                 ("87M Tap", "High" if diff87m_pickup_sec >= 2.0 else "Low"),
-            ], key_prefix=f"{project_key.upper()}_87M")
+            ]
 
         st.markdown("---")
 
@@ -1087,6 +1079,7 @@ def render_fan_motor_page(fan_type):
                 ))
                 fs_chart_ph.plotly_chart(fig_last, use_container_width=True, key=f"{project_key}__fault_sim_last_fig")
 
+        _ifc_sheet_rows = None
         if project_key == "pa_fan":
             with st.expander("GE IFC66KD2A 50/50/51 (separate discrete relay)", expanded=False):
                 st.subheader("Electromechanical 50/50/51 Relay (IFC66KD2A)")
@@ -1214,7 +1207,22 @@ def render_fan_motor_page(fan_type):
                         ("Backup 50 CT Ratio", f"{ifc_backup_relay.ct_ratio:.0f}:{ct_secondary_rating:.0f}"),
                         ("Backup 50 Pickup (A sec.)", f"{ifc_backup_relay.pickup_amps:.2f}"),
                     ]
-                render_settings_sheet(st, "IFC66KD2A", _ifc_sheet_rows, key_prefix=f"{project_key.upper()}_IFC")
+
+        settings_sheets = [("Multilin SR469", _sr469_sheet_rows), ("GE HFC23C1A", _87m_sheet_rows)] + (
+            [("IFC66KD2A", _ifc_sheet_rows)] if _ifc_sheet_rows else []
+        )
+        pdf_bytes = generate_fan_motor_pdf_report(
+            f"{fan_type} - {selected_preset}", relay, eval_result, gf_eval, unbal_eval,
+            test_current, ground_current, unbalance_input,
+            settings_sheets=settings_sheets,
+        )
+        st.download_button(
+            label="Export Certified Protection Audit Report",
+            data=pdf_bytes,
+            file_name=f"{project_key}_Protection_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            help="Includes the Relay-Ready Settings Sheet as its final section(s).",
+        )
 
     # -----------------------------------------------------------------------
     # TAB 2 — Commissioning & Injection Tool
