@@ -32,6 +32,7 @@ from common.relay_settings_sheet import render_settings_sheet
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.profile_io import export_profile_button, restore_profile_uploader
 from common.ui_helpers import sidebar_section_nav
+from common.settings_advisor import suggest_motor_overload_settings
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
@@ -283,7 +284,7 @@ def render_fan_motor_page(fan_type):
     # Stall Margin Check") - no new engineering judgment invented, just
     # surfaced inline per field.
     # -------------------------------------------------------------------
-    sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+    sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
     selected, c, pinned = sidebar_section_nav(sections, key_prefix=project_key, pin_first=True)
 
     with c["Current Settings"]:
@@ -642,6 +643,50 @@ def render_fan_motor_page(fan_type):
         mech_jam_pct=mech_jam_pct, mech_jam_delay_s=mech_jam_delay_s,
         accel_timer_s=accel_timer_s, overload_alarm_delay_s=overload_alarm_delay_s,
     )
+
+    with c["Settings Calculator"]:
+        st.caption(
+            "Computed from the ratings/CT entered under Current Settings — a starting point, not a "
+            "substitute for a coordination study."
+        )
+        fan_suggestion = suggest_motor_overload_settings(
+            motor_fla=motor_fla, ct_ratio=ct_ratio, ground_ct_ratio=ground_ct_ratio,
+            locked_rotor_amps_100=locked_rotor_amps_100, locked_rotor_amps_80=locked_rotor_amps_80,
+            accel_time_100=accel_time_100, accel_time_80=accel_time_80,
+            safe_stall_100=safe_stall_100, safe_stall_80=safe_stall_80,
+        )
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            with st.container(border=True):
+                st.markdown("#### Overload Pickup")
+                st.metric("Suggested", f"{fan_suggestion['overload_pickup_pct']:.0f} % FLA")
+                st.caption(fan_suggestion["basis_overload"])
+        with fc2:
+            with st.container(border=True):
+                st.markdown("#### Curve Multiplier")
+                st.metric("Suggested", f"{fan_suggestion['curve_multiplier']:.1f}")
+                st.caption(fan_suggestion["basis_cm"])
+        fc3, fc4 = st.columns(2)
+        with fc3:
+            with st.container(border=True):
+                st.markdown("#### Instantaneous Pickup")
+                st.metric("Suggested", f"{fan_suggestion['inst_pickup_amps']:.0f} A primary" if fan_suggestion["inst_pickup_amps"] is not None else "—")
+                st.caption(fan_suggestion["basis_inst"])
+        with fc4:
+            with st.container(border=True):
+                st.markdown("#### Ground Fault Pickup")
+                st.metric("Suggested", f"{fan_suggestion['gf_pickup_amps']:.1f} A primary")
+                st.caption(fan_suggestion["basis_gf"])
+        fc5, fc6 = st.columns(2)
+        with fc5:
+            with st.container(border=True):
+                st.markdown("#### Unbalance Alarm")
+                st.metric("Suggested", f"{fan_suggestion['unbal_alarm_pct']:.0f} %")
+        with fc6:
+            with st.container(border=True):
+                st.markdown("#### Unbalance Trip")
+                st.metric("Suggested", f"{fan_suggestion['unbal_trip_pct']:.0f} %")
+        st.caption(fan_suggestion["basis_unbal"])
 
     with c["Theory"]:
         render_theory_tab(
