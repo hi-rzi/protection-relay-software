@@ -127,6 +127,17 @@ def apply_theme():
             cursor: pointer;
             z-index: 2;
         }}
+        /* Without this, the icon/label markdown text underneath (painted
+           behind the invisible button, but still hit-testable at its own
+           pixel positions in some browsers) shows a text-selection cursor,
+           and the cursor visibly flickers between pointer/text as the mouse
+           crosses those overlapping regions. Force pointer everywhere in
+           the card so hovering anywhere on it reads as one clickable
+           surface, never a text-select target. */
+        div[class*="st-key-card_nav_"],
+        div[class*="st-key-card_nav_"] * {{
+            cursor: pointer !important;
+        }}
         div[class*="st-key-card_nav_"][class*="__active"] {{
             border-color: {ACCENT} !important;
             box-shadow: 0 0 0 2px rgba(124,108,246,0.45), 0 10px 28px rgba(124,108,246,0.20) !important;

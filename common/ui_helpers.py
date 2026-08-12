@@ -119,9 +119,18 @@ def card_section_nav(section_names, key_prefix, icons=None, pin_first=False):
                     f'<div style="text-align:center; font-weight:700; font-size:0.8rem; margin-top:2px;">{name}</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button(name, key=f"card_nav_{key_prefix}_{i}_btn", use_container_width=True):
-                    st.session_state[nav_key] = name
-                    st.rerun()
+                # on_click, not "if st.button(...): ...; st.rerun()" - an
+                # on_click callback runs BEFORE the script body re-executes,
+                # so session_state[nav_key] is already updated by the time
+                # `selected` is read above on the next pass. Checking the
+                # return value and calling st.rerun() manually would run
+                # this whole (potentially chart-heavy) page's script twice
+                # per click instead of once - the actual cause of the
+                # sluggish-feeling clicks.
+                st.button(
+                    name, key=f"card_nav_{key_prefix}_{i}_btn", use_container_width=True,
+                    on_click=lambda n=name: st.session_state.update({nav_key: n}),
+                )
 
     containers = {name: st.container(key=f"{key_prefix}_c_{i}") for i, name in enumerate(section_names)}
 
