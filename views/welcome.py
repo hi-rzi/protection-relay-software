@@ -1,10 +1,11 @@
 import streamlit as st
 
-from common.theme import ACCENT, CARD_BG, BORDER, TEXT, MUTED
+from common.equipment_icons import GENERATOR_SVG, TRANSFORMER_SVG, MOTOR_SVG, CUSTOM_SVG, FMEA_SVG, render_equipment_card
+from common.theme import MUTED
 
 # This page is the app's front door - no sidebar nav is useful yet (nothing
-# to switch to before "Get Started"), so hide it here only. Scoped to this
-# page's own script run, unlike common/theme.py's apply_theme() which
+# to switch to before a card is clicked), so hide it here only. Scoped to
+# this page's own script run, unlike common/theme.py's apply_theme() which
 # injects globally from app.py before every page renders.
 st.markdown(
     """<style>
@@ -13,52 +14,6 @@ st.markdown(
     </style>""",
     unsafe_allow_html=True,
 )
-
-GENERATOR_SVG = """
-<svg viewBox="0 0 120 120" width="72" height="72">
-    <circle cx="60" cy="60" r="46" fill="none" stroke="{accent}" stroke-width="4"/>
-    <path d="M67 22 L42 66 L58 66 L51 98 L80 54 L62 54 Z" fill="{accent}"/>
-</svg>
-""".format(accent=ACCENT)
-
-TRANSFORMER_SVG = """
-<svg viewBox="0 0 120 120" width="72" height="72">
-    <line x1="57" y1="22" x2="57" y2="98" stroke="{text}" stroke-width="4"/>
-    <line x1="63" y1="22" x2="63" y2="98" stroke="{text}" stroke-width="4"/>
-    <circle cx="42" cy="42" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-    <circle cx="42" cy="60" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-    <circle cx="42" cy="78" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-    <circle cx="78" cy="42" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-    <circle cx="78" cy="60" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-    <circle cx="78" cy="78" r="16" fill="none" stroke="{accent}" stroke-width="4"/>
-</svg>
-""".format(accent=ACCENT, text=TEXT)
-
-MOTOR_SVG = """
-<svg viewBox="0 0 120 120" width="72" height="72">
-    <circle cx="52" cy="60" r="38" fill="none" stroke="{accent}" stroke-width="4"/>
-    <path d="M52 60 L52 30 A30 30 0 0 1 79 47 Z" fill="{accent}" opacity="0.85"/>
-    <path d="M52 60 L79 73 A30 30 0 0 1 52 90 Z" fill="{accent}" opacity="0.6"/>
-    <path d="M52 60 L25 47 A30 30 0 0 1 25 73 Z" fill="{accent}" opacity="0.4"/>
-    <circle cx="52" cy="60" r="8" fill="{text}"/>
-    <rect x="90" y="53" width="20" height="14" rx="3" fill="{text}"/>
-</svg>
-""".format(accent=ACCENT, text=TEXT)
-
-
-def equipment_visual(svg, title, subtitle):
-    st.markdown(
-        f"""<div style="
-            background-color:{CARD_BG}; border:1px solid {BORDER}; border-radius:14px;
-            padding:1.5rem 1rem; text-align:center; height:100%;
-        ">
-            <div style="margin-bottom:0.75rem;">{svg}</div>
-            <div style="font-weight:700; font-size:1.05rem; color:{TEXT};">{title}</div>
-            <div style="font-size:0.85rem; color:{MUTED}; margin-top:0.35rem;">{subtitle}</div>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
 
 st.markdown(
     f"""<div style="text-align:center; padding: 3rem 1rem 1.5rem 1rem;">
@@ -72,20 +27,23 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Generator/Custom/FMEA are each a single page, so their card links straight
+# there. Transformer/Motor cover several relay types apiece (4 and 3 pages)
+# - their card lands on Home, where each of those is its own card, rather
+# than guessing which one the user wants.
 v1, v2, v3 = st.columns(3)
 with v1:
-    equipment_visual(GENERATOR_SVG, "Generator", "Differential protection for the stator zone (87G)")
+    render_equipment_card(GENERATOR_SVG, "views/generator.py", "Generator", "Differential protection for the stator zone (87G)", "wcard_generator")
 with v2:
-    equipment_visual(TRANSFORMER_SVG, "Transformer", "Excitation, GSUT, Overall, and Auxiliary differential protection")
+    render_equipment_card(TRANSFORMER_SVG, "views/home.py", "Transformer", "Excitation, GSUT, Overall, and Auxiliary differential protection", "wcard_transformer")
 with v3:
-    equipment_visual(MOTOR_SVG, "Motor", "Induced Draft, Primary Air, and Forced Draft fan motor protection")
+    render_equipment_card(MOTOR_SVG, "views/home.py", "Motor", "Induced Draft, Primary Air, and Forced Draft fan motor protection", "wcard_motor")
 
-st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
-
-col = st.columns([1, 1, 1])[1]
-with col:
-    if st.button("Get Started →", type="primary", use_container_width=True):
-        st.switch_page("views/home.py")
+v4, v5 = st.columns(2)
+with v4:
+    render_equipment_card(CUSTOM_SVG, "views/custom_relays.py", "Custom Relay Types", "Model any other relay — standard IEC/IEEE curves, self-balancing differential, unbalance", "wcard_custom")
+with v5:
+    render_equipment_card(FMEA_SVG, "views/fmea.py", "FMEA", "Failure Mode and Effects Analysis for the numerical/microprocessor-based relays modeled in this app", "wcard_fmea")
 
 st.markdown(
     f"""<div style="text-align:center; margin-top:1.5rem; color:{MUTED}; font-size:0.9rem;">
