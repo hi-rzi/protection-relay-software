@@ -20,6 +20,11 @@ st.caption(
 )
 
 with st.expander("📍 How to use this page", expanded=False):
+    flow_row("Add a failure mode (optional)", [
+        ("➕", "Add New Failure Mode"),
+        ("🧩", "Relay + Component + Failure Mode"),
+        ("🧭", "Failure Category"),
+    ])
     flow_row("Scan the table", [
         ("🔍", "Filter (family + cause)"),
         ("📊", "Scan the table"),
@@ -34,19 +39,31 @@ with st.expander("📍 How to use this page", expanded=False):
         ("🚨", "Check High-risk callout"),
         ("💾", "Save / Export (JSON, CSV, PDF)"),
     ])
-    fc1, fc2, fc3 = st.columns(3)
+    fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
+        with st.container(border=True):
+            st.markdown("#### ➕ Add New Failure Mode")
+            st.write(
+                "Log a failure mode against any relay — including one you've modeled on the "
+                "🧩 Custom Relay Types page — not just the 3 relay families built into this "
+                "app. Pick \"+ Add a new relay type\" under Relay to name it."
+            )
+    with fc2:
         with st.container(border=True):
             st.markdown("#### 🎯 RPN")
             st.write("Severity × Occurrence × Detection (1–1000). Higher = more urgent. 🟢 Low, 🟠 Medium, 🔴 High.")
-    with fc2:
+    with fc3:
         with st.container(border=True):
             st.markdown("#### 🧭 Failure Category")
             st.write("Root-cause branch (Hardware, Software, Measurement, Wiring, Environment) from the plant's failure-cause diagram.")
-    with fc3:
+    with fc4:
         with st.container(border=True):
             st.markdown("#### 🛠️ Row Detail")
             st.write("Cause, effect, diagnostics, and the editable maintenance task/frequency for one row at a time — kept attached to its failure mode, not a separate tab.")
+    st.caption(
+        "💾 Everything on this page — scores, maintenance tasks, and any rows you add — is "
+        "saved automatically and is still here next time you open the app."
+    )
 
 with st.expander("Scope & FMEA scoring conventions", expanded=False):
     st.markdown("##### Scope")
@@ -66,6 +83,11 @@ with st.expander("Scope & FMEA scoring conventions", expanded=False):
         "Different failure physics — contact wear/mechanical wear-out vs. firmware/power "
         "supply/watchdog — mixing them would blur two failure physics rather than usefully "
         "compare them."
+    )
+    st.caption(
+        "This is the built-in reference library's scope, not a hard limit — use the "
+        "➕ Add New Failure Mode form above to log failure modes for any other relay, "
+        "including one modeled on the 🧩 Custom Relay Types page."
     )
 
     st.markdown("##### Scoring, 1–10 each")

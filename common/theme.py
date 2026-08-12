@@ -8,6 +8,12 @@ for the rest of the script run regardless of which page is active. Colors mirror
 widget palette; this file layers card/nav-specific styling Streamlit's theme system
 doesn't cover on its own).
 
+Palette targets a polished analytics-dashboard look (indigo/violet on near-black,
+soft glow on interactive elements) rather than the flat GitHub-dark look this app
+started with - deliberately not a literal clone of any one reference product, since
+this app has no AI-chat/map features to give that chrome a real function; same
+information architecture (sidebar nav, cards, metrics), refreshed color/depth only.
+
 Streamlit's internal data-testid / class names shift between releases - if a
 selector below stops matching after a Streamlit upgrade, re-inspect the live DOM
 rather than assuming the old selector is still correct.
@@ -15,20 +21,33 @@ rather than assuming the old selector is still correct.
 
 import streamlit as st
 
-ACCENT = "#2dd4a7"
-BG = "#0d1117"
-CARD_BG = "#161b22"
-BORDER = "#21262d"
-TEXT = "#e6edf3"
+ACCENT = "#7c6cf6"
+ACCENT_2 = "#4f9dff"
+BG = "#0a0a1a"
+CARD_BG = "#15162e"
+CARD_BG_HOVER = "#191a35"
+BORDER = "#2a2b4d"
+TEXT = "#e8e9f5"
+MUTED = "#9497c2"
 NEGATIVE = "#f85149"
 WARNING = "#f0883e"
+POSITIVE = "#2dd4a7"
 
 
 def apply_theme():
     st.markdown(
         f"""<style>
+        [data-testid="stAppViewContainer"] {{
+            background:
+                radial-gradient(1200px 600px at 12% -8%, rgba(124,108,246,0.16), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, rgba(79,157,255,0.10), transparent 55%),
+                {BG};
+        }}
+        [data-testid="stHeader"] {{
+            background: rgba(10, 10, 26, 0.0);
+        }}
         [data-testid="stSidebar"] {{
-            background-color: {BG};
+            background-color: #0c0c22;
             border-right: 1px solid {BORDER};
         }}
         [data-testid="stSidebarNav"] a {{
@@ -37,7 +56,7 @@ def apply_theme():
             padding: 0.4rem 0.9rem;
         }}
         [data-testid="stSidebarNav"] a[aria-current="page"] {{
-            background-color: rgba(45, 212, 167, 0.15);
+            background: linear-gradient(90deg, rgba(124,108,246,0.22), rgba(79,157,255,0.12));
             color: {ACCENT} !important;
             font-weight: 600;
         }}
@@ -47,19 +66,31 @@ def apply_theme():
             margin-bottom: 2px;
         }}
         [data-testid="stSidebar"] .stRadio [role="radiogroup"] label:has(input:checked) {{
-            background-color: rgba(45, 212, 167, 0.15);
+            background: linear-gradient(90deg, rgba(124,108,246,0.22), rgba(79,157,255,0.12));
         }}
-        div[data-testid="stVerticalBlockBorderWrapper"] {{
-            border-radius: 12px;
-            border: 1px solid {BORDER};
-            background-color: {CARD_BG};
+        /* Streamlit renders st.container(border=True) as a plain stVerticalBlock with
+           its border applied through an unstable, per-instance generated class - there
+           is no stable testid/attribute to target every bordered container generically.
+           Every container this app wants panel-styled already carries an explicit
+           key=... (Home's equipment cards, each equipment page's section-nav panels),
+           so that's what's targeted here instead - broader and more reliable than
+           trying to chase Streamlit's own internal border styling. */
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        div[data-testid="stVerticalBlock"][class*="st-key-"] {{
+            border-radius: 14px !important;
+            border: 1px solid {BORDER} !important;
+            background-color: {CARD_BG} !important;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 6px 20px rgba(0,0,0,0.25);
+            padding: 1rem;
         }}
         div[class*="st-key-card_"] {{
             position: relative;
-            transition: border-color 0.15s ease;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
         }}
         div[class*="st-key-card_"]:hover {{
             border-color: {ACCENT};
+            box-shadow: 0 0 0 1px rgba(124,108,246,0.35), 0 10px 28px rgba(124,108,246,0.16);
+            transform: translateY(-1px);
         }}
         /* Streamlit puts position:relative on every stElementContainer, which would
            otherwise become the nearest positioned ancestor and trap the stretched-link
@@ -77,23 +108,30 @@ def apply_theme():
             cursor: pointer;
         }}
         .stButton > button[kind="primary"] {{
-            background-color: {ACCENT};
-            color: {BG};
+            background: linear-gradient(90deg, {ACCENT}, {ACCENT_2});
+            color: #0a0a1a;
             border: none;
             border-radius: 8px;
-            font-weight: 600;
+            font-weight: 700;
+            box-shadow: 0 4px 16px rgba(124,108,246,0.35);
         }}
         .stButton > button[kind="primary"]:hover {{
-            background-color: {ACCENT};
-            opacity: 0.85;
+            filter: brightness(1.08);
+            box-shadow: 0 6px 20px rgba(124,108,246,0.45);
         }}
-        .positive {{ color: {ACCENT}; }}
+        .positive {{ color: {POSITIVE}; }}
         .negative {{ color: {NEGATIVE}; }}
         [data-testid="stMetric"] {{
-            background-color: {CARD_BG};
+            background: linear-gradient(180deg, {CARD_BG_HOVER}, {CARD_BG});
             border: 1px solid {BORDER};
-            border-radius: 12px;
-            padding: 0.75rem 1rem;
+            border-radius: 14px;
+            padding: 0.9rem 1.1rem;
+        }}
+        [data-testid="stMetricValue"] {{
+            background: linear-gradient(90deg, {TEXT}, {ACCENT_2});
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
         }}
         .poe-flow-row {{
             display: flex; flex-wrap: wrap; align-items: center; gap: 6px;

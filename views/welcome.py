@@ -1,10 +1,6 @@
 import streamlit as st
 
-ACCENT = "#2dd4a7"
-CARD_BG = "#161b22"
-BORDER = "#21262d"
-TEXT = "#e6edf3"
-MUTED = "#8b949e"
+from common.theme import ACCENT, CARD_BG, BORDER, TEXT, MUTED
 
 # This page is the app's front door - no sidebar nav is useful yet (nothing
 # to switch to before "Get Started"), so hide it here only. Scoped to this

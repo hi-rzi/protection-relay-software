@@ -10,6 +10,12 @@ flow_row("1 · Get started", [
     ("⚡🔌🌀", "Pick a card"),
     ("⚙️", "Load preset"),
 ])
+st.caption(
+    "Protecting something other than the plant's own generator/transformer/motor lineup? "
+    "Use the **🧩 Custom** card on Home instead of a preset — it walks through the same "
+    "sections below for a relay you define yourself (CT spec + whichever protection elements "
+    "it has)."
+)
 
 flow_row("2 · Work through these sections, in order", [
     ("📋", "Current Settings"),
@@ -82,5 +88,6 @@ with st.expander("Notes on a few equipment-specific differences"):
 - **Wiring & Convention** (Restraint Standard, CT Polarity) is at the top of the **Simulate & Test** section for the generator and transformer pages, not Current Settings — it only affects that evaluation.
 - **Motor pages** don't have a separate Fault Current Analysis section. Their fault-clearing simulation lives inside **Simulate & Test** instead, and skips the current waveform (no real X/R data exists for a motor short-circuit contribution).
 - **Pin Current Settings** (sidebar checkbox on every equipment page) keeps Current Settings visible above whichever section you're viewing, instead of it being just another section in the list — off by default.
+- **Custom Relay Types** works the same way as the plant's own pages, but lets you add and switch between any number of relay definitions from its sidebar. Standard IEC/IEEE time-current curves and a self-balancing differential are offered — percentage-restrained (dual-slope) differential protection isn't, since that needs a restraint-current structure specific to the equipment it's protecting.
 """
     )
