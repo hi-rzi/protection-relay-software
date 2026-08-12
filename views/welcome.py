@@ -31,19 +31,25 @@ st.markdown(
 # there. Transformer/Motor cover several relay types apiece (4 and 3 pages)
 # - their card lands on Home, where each of those is its own card, rather
 # than guessing which one the user wants.
+#
+# Keys must start with "card_" - common/theme.py's whole-card-clickable
+# overlay CSS matches on `[class*="st-key-card_"]` specifically (that's also
+# what gives every equipment card its background/border/hover glow), so a
+# key like "wcard_..." silently falls outside that rule and leaves only the
+# link text itself clickable.
 v1, v2, v3 = st.columns(3)
 with v1:
-    render_equipment_card(GENERATOR_SVG, "views/generator.py", "Generator", "Differential protection for the stator zone (87G)", "wcard_generator")
+    render_equipment_card(GENERATOR_SVG, "views/generator.py", "Generator", "Differential protection for the stator zone (87G)", "card_w_generator")
 with v2:
-    render_equipment_card(TRANSFORMER_SVG, "views/home.py", "Transformer", "Excitation, GSUT, Overall, and Auxiliary differential protection", "wcard_transformer")
+    render_equipment_card(TRANSFORMER_SVG, "views/home.py", "Transformer", "Excitation, GSUT, Overall, and Auxiliary differential protection", "card_w_transformer")
 with v3:
-    render_equipment_card(MOTOR_SVG, "views/home.py", "Motor", "Induced Draft, Primary Air, and Forced Draft fan motor protection", "wcard_motor")
+    render_equipment_card(MOTOR_SVG, "views/home.py", "Motor", "Induced Draft, Primary Air, and Forced Draft fan motor protection", "card_w_motor")
 
 v4, v5 = st.columns(2)
 with v4:
-    render_equipment_card(CUSTOM_SVG, "views/custom_relays.py", "Custom Relay Types", "Model any other relay — standard IEC/IEEE curves, self-balancing differential, unbalance", "wcard_custom")
+    render_equipment_card(CUSTOM_SVG, "views/custom_relays.py", "Custom Relay Types", "Model any other relay — standard IEC/IEEE curves, self-balancing differential, unbalance", "card_w_custom")
 with v5:
-    render_equipment_card(FMEA_SVG, "views/fmea.py", "FMEA", "Failure Mode and Effects Analysis for the numerical/microprocessor-based relays modeled in this app", "wcard_fmea")
+    render_equipment_card(FMEA_SVG, "views/fmea.py", "FMEA", "Failure Mode and Effects Analysis for the numerical/microprocessor-based relays modeled in this app", "card_w_fmea")
 
 st.markdown(
     f"""<div style="text-align:center; margin-top:1.5rem; color:{MUTED}; font-size:0.9rem;">
