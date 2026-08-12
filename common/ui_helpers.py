@@ -43,26 +43,9 @@ def equipment_switcher(current_path):
         st.switch_page(selected_path)
 
 
-# Default icon per section name, reused across every equipment page so the
-# same section always shows the same icon - matches the icons already used
-# in the Guide page's own flow diagrams. A page passing a name not listed
-# here (rare) falls back to a plain document icon.
-_SECTION_ICONS = {
-    "Current Settings": "📋",
-    "Settings Calculator": "🧮",
-    "Theory": "📖",
-    "Simulate & Test": "🧪",
-    "Commissioning & Injection Tool": "🔧",
-    "Fault Current Analysis": "⚡",
-    "Settings Summary & Approval": "✅",
-}
-
-
-def card_section_nav(section_names, key_prefix, icons=None, pin_first=False):
-    """Replaces a page's outer/inner st.tabs() with a card-based section
-    switcher in the main content area, matching the Home page's equipment
-    cards visually (icon, label, clickable across the whole card - not a
-    sidebar radio).
+def sidebar_section_nav(section_names, key_prefix, pin_first=False):
+    """Replaces a page's outer/inner st.tabs() with a sidebar-driven section
+    switcher, styled as nav pills to match the rest of the app's theme.
 
     Every section gets its own st.container(key=...) and ALL of them are
     created (and their bodies executed) every rerun, exactly like st.tabs()
@@ -77,25 +60,16 @@ def card_section_nav(section_names, key_prefix, icons=None, pin_first=False):
     If pin_first, a "Pin Current Settings" sidebar checkbox lets the user
     choose whether section_names[0] stays permanently visible above whichever
     other section is selected (pinned=True), or behaves as just one more
-    selectable card like the rest (pinned=False) - both are real, ongoing
+    selectable section like the rest (pinned=False) - both are real, ongoing
     behaviors, not a one-off toggle.
 
-    Each card's actual click target is a real st.button, stretched invisibly
-    over the whole card by common/theme.py's CSS (targeting the
-    "card_nav_..." key prefix) - clicking anywhere on the card works, not
-    just its label, same as every other card in this app.
-
     Returns (selected, containers, pinned_container):
-      - selected: the name of the currently selected section
+      - selected: the name of the currently sidebar-selected section
       - containers: dict of section name -> st.container to render into,
         replacing `with tab_x:` with `with containers["X"]:`
       - pinned_container: containers[section_names[0]] if pinned is active,
         else None - render it above the selected section's content.
     """
-    nav_key = f"{key_prefix}_nav"
-    if nav_key not in st.session_state:
-        st.session_state[nav_key] = section_names[0]
-
     pinned = False
     if pin_first:
         pinned = st.sidebar.checkbox(
@@ -104,33 +78,9 @@ def card_section_nav(section_names, key_prefix, icons=None, pin_first=False):
         )
 
     nav_options = section_names[1:] if (pin_first and pinned) else section_names
-    if st.session_state[nav_key] not in nav_options:
-        st.session_state[nav_key] = nav_options[0]
-    selected = st.session_state[nav_key]
-
-    icon_map = {**_SECTION_ICONS, **(icons or {})}
-    cols = st.columns(len(nav_options))
-    for i, name in enumerate(nav_options):
-        with cols[i]:
-            card_key = f"card_nav_{key_prefix}_{i}" + ("__active" if name == selected else "")
-            with st.container(border=True, key=card_key):
-                st.markdown(
-                    f'<div style="text-align:center; font-size:1.5rem; line-height:1.2;">{icon_map.get(name, "📄")}</div>'
-                    f'<div style="text-align:center; font-weight:700; font-size:0.8rem; margin-top:2px;">{name}</div>',
-                    unsafe_allow_html=True,
-                )
-                # on_click, not "if st.button(...): ...; st.rerun()" - an
-                # on_click callback runs BEFORE the script body re-executes,
-                # so session_state[nav_key] is already updated by the time
-                # `selected` is read above on the next pass. Checking the
-                # return value and calling st.rerun() manually would run
-                # this whole (potentially chart-heavy) page's script twice
-                # per click instead of once - the actual cause of the
-                # sluggish-feeling clicks.
-                st.button(
-                    name, key=f"card_nav_{key_prefix}_{i}_btn", use_container_width=True,
-                    on_click=lambda n=name: st.session_state.update({nav_key: n}),
-                )
+    selected = st.sidebar.radio(
+        "Section", nav_options, key=f"{key_prefix}_nav", label_visibility="collapsed",
+    )
 
     containers = {name: st.container(key=f"{key_prefix}_c_{i}") for i, name in enumerate(section_names)}
 

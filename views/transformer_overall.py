@@ -8,7 +8,7 @@ import streamlit as st
 from common.pdf_report import generate_transformer_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import overall_zone_svg
-from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, card_section_nav, equipment_switcher
+from common.ui_helpers import slider_with_exact_input, MR_CT_TAPS_2000_5, sidebar_section_nav, equipment_switcher
 from common.settings_advisor import suggest_ct_matching_tap, mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -92,7 +92,7 @@ if not is_custom:
 # match their own T_E, so the mismatch metric below is the real signal.
 # ---------------------------------------------------------------------------
 sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
-selected, c, pinned = card_section_nav(sections, key_prefix="overall", pin_first=True)
+selected, c, pinned = sidebar_section_nav(sections, key_prefix="overall", pin_first=True)
 
 with c["Current Settings"]:
     # Live preview, click to reveal, at the top of the tab. Reads straight from session_state

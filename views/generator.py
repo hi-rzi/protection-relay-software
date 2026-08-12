@@ -9,7 +9,7 @@ import streamlit as st
 from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
-from common.ui_helpers import slider_with_exact_input, fault_term_info, card_section_nav, equipment_switcher
+from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_section_nav, equipment_switcher
 from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings, suggest_generator_differential_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -111,7 +111,7 @@ if not is_custom:
 sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test",
             "Commissioning & Injection Tool", "Fault Current Analysis",
             "Settings Summary & Approval"]
-selected, c, pinned = card_section_nav(sections, key_prefix="gen", pin_first=True)
+selected, c, pinned = sidebar_section_nav(sections, key_prefix="gen", pin_first=True)
 
 with c["Current Settings"]:
     # Live preview, click to reveal, at the top of the tab. Reads straight from session_state

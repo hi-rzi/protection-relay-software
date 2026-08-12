@@ -107,41 +107,6 @@ def apply_theme():
             z-index: 1;
             cursor: pointer;
         }}
-        /* Section-nav cards (common/ui_helpers.py's card_section_nav) - same
-           whole-card-clickable idea as the page_link cards above, but there's
-           no real link to stretch (switching sections is a same-page rerun,
-           not navigation), so the actual st.button is stretched invisibly
-           over the card instead; the icon/label markdown underneath is what
-           the user actually sees. */
-        div[class*="st-key-card_nav_"] div[data-testid="stElementContainer"]:has(button) {{
-            position: static !important;
-        }}
-        div[class*="st-key-card_nav_"] button {{
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            opacity: 0;
-            cursor: pointer;
-            z-index: 2;
-        }}
-        /* Without this, the icon/label markdown text underneath (painted
-           behind the invisible button, but still hit-testable at its own
-           pixel positions in some browsers) shows a text-selection cursor,
-           and the cursor visibly flickers between pointer/text as the mouse
-           crosses those overlapping regions. Force pointer everywhere in
-           the card so hovering anywhere on it reads as one clickable
-           surface, never a text-select target. */
-        div[class*="st-key-card_nav_"],
-        div[class*="st-key-card_nav_"] * {{
-            cursor: pointer !important;
-        }}
-        div[class*="st-key-card_nav_"][class*="__active"] {{
-            border-color: {ACCENT} !important;
-            box-shadow: 0 0 0 2px rgba(124,108,246,0.45), 0 10px 28px rgba(124,108,246,0.20) !important;
-        }}
         .stButton > button[kind="primary"] {{
             background: linear-gradient(90deg, {ACCENT}, {ACCENT_2});
             color: #0a0a1a;
