@@ -13,12 +13,13 @@ st.markdown(
     """<style>
     [data-testid="stSidebar"] { display: none; }
     [data-testid="stSidebarCollapsedControl"] { display: none; }
+    [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; }
     </style>""",
     unsafe_allow_html=True,
 )
 
 st.markdown(
-    f"""<div style="text-align:center; padding: 3rem 1rem 1rem 1rem;">
+    f"""<div style="text-align:center; padding: 0.5rem 1rem 1rem 1rem;">
         <div style="font-size:3rem; line-height:1;">⚡</div>
         <h1 style="margin-bottom:0.25rem;">Electrical Equipment Protection Suite</h1>
         <p style="font-size:1.1rem; color:{MUTED}; max-width:640px; margin:0.5rem auto 0 auto;">
