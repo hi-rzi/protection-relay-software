@@ -16,6 +16,11 @@ st.caption(
     "sections below for a relay you define yourself (CT spec + whichever protection elements "
     "it has)."
 )
+st.caption(
+    "Home is also where the 📖 Guide and 📁 Project quick links live, since Home hides the "
+    "sidebar to keep the equipment picker uncluttered — once you're on any equipment page, "
+    "the sidebar (with Home, Guide, Project, FMEA, Reliability) is back."
+)
 
 flow_row("2 · Work through these sections, in order", [
     ("📋", "Current Settings"),

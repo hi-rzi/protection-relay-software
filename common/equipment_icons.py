@@ -1,8 +1,8 @@
 """
 Shared line-art SVG icons for the equipment categories (Generator, Transformer,
-Motor, Custom) - used by both views/welcome.py (decorative, first-entry hero)
-and views/home.py (clickable equipment cards), so the two pages share one
-visual identity for "what this app protects" instead of drifting apart.
+Motor, Custom) plus FMEA - used by views/welcome.py, the app's single equipment
+picker (there is no separate Home page - Home is this same file, registered
+under that title in app.py).
 
 Colors are read from common.theme so these follow the app's palette
 automatically if it's ever retuned again.
@@ -68,8 +68,8 @@ FMEA_SVG = """
 
 def render_equipment_card(svg, page_path, title, subtitle, key):
     """One clickable equipment tile: icon, title, subtitle, the whole card
-    a link to page_path. Shared by views/welcome.py and views/home.py so
-    both pages present equipment the same way.
+    a link to page_path. Used by views/welcome.py, the app's one equipment
+    picker page.
 
     Relies on common/theme.py's global CSS: any st.container(border=True,
     key="...") automatically gets the card background/radius/shadow, and the
