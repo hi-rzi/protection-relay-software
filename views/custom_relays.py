@@ -6,7 +6,7 @@ import streamlit as st
 from common.custom_relay_store import list_relays, create_relay, delete_relay, get_fields
 from common.pdf_report import generate_custom_relay_pdf_report
 from common.profile_io import export_profile_button, restore_profile_uploader
-from common.ui_helpers import sidebar_section_nav
+from common.ui_helpers import card_section_nav
 from engines.custom_relay import CustomRelay, CURVE_NAMES, curve_sweep, curve_trip_time
 
 st.title("Custom Relay Types")
@@ -91,7 +91,7 @@ with st.sidebar.popover("🗑️ Delete This Relay"):
         st.session_state.pop("cr_selected_id", None)
         st.rerun()
 
-selected, c, _ = sidebar_section_nav(
+selected, c, _ = card_section_nav(
     ["Current Settings", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"],
     key_prefix=rid,
 )

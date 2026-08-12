@@ -11,7 +11,7 @@ import streamlit as st
 from common.pdf_report import generate_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
-from common.ui_helpers import slider_with_exact_input, sidebar_section_nav, equipment_switcher
+from common.ui_helpers import slider_with_exact_input, card_section_nav, equipment_switcher
 from common.settings_advisor import suggest_bias_settings, suggest_time_overcurrent_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
@@ -189,7 +189,7 @@ if selected_preset != "Custom Profile":
 # inline per-field instead of only after entering a test current.
 # ---------------------------------------------------------------------------
 sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
-selected, c, pinned = sidebar_section_nav(sections, key_prefix="idfan", pin_first=True)
+selected, c, pinned = card_section_nav(sections, key_prefix="idfan", pin_first=True)
 
 with c["Current Settings"]:
     # Live preview, click to reveal, at the top of the tab. Reads CT Ratio, Tap, and Time Dial
