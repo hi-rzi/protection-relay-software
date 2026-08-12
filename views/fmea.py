@@ -1,11 +1,13 @@
 import copy
 import datetime
 import json
+import uuid
 
 import pandas as pd
 import streamlit as st
 
 from common.fmea_data import CATEGORIES, FAILURE_CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
+from common.fmea_store import load_saved_rows, save_rows
 from common.pdf_report import generate_fmea_pdf_report
 from common.theme import flow_row, pill_row
 
@@ -120,7 +122,10 @@ with st.expander("Scope & FMEA scoring conventions", expanded=False):
     st.caption("From the supervisor-supplied failure-cause diagram for digital relays.")
 
 if "fmea_rows" not in st.session_state:
-    st.session_state.fmea_rows = copy.deepcopy(FMEA_ENTRIES)
+    # Rows saved to disk from a previous session take priority over the
+    # built-in defaults, so S/O/D edits, maintenance tasks, and any rows the
+    # engineer has added persist across closing and reopening the app.
+    st.session_state.fmea_rows = load_saved_rows() or copy.deepcopy(FMEA_ENTRIES)
 
 # ---------------------------------------------------------------------------
 # Load a saved FMEA — processed before any widget bound to session_state keys
@@ -149,16 +154,100 @@ if uploaded_fmea is not None:
             st.toast("Loaded saved FMEA.")
             st.rerun()
 
+st.caption(
+    "💾 Every edit here — scores, maintenance tasks, and any failure modes you add — "
+    "is saved automatically and will still be here next time you open the app."
+)
+
+# ---------------------------------------------------------------------------
+# Add New Failure Mode - relay family is free text (not restricted to the 3
+# built-in CATEGORIES) so a failure mode can be logged against a relay
+# modeled on the Custom Relay Types page too, not just the plant's fixed
+# lineup. Existing relay names already in use are offered as a starting
+# point; picking "+ Add a new relay type" reveals a text input instead.
+# ---------------------------------------------------------------------------
+_ADD_NEW_RELAY = "+ Add a new relay type…"
+
+with st.expander("➕ Add New Failure Mode", expanded=False):
+    existing_relays = sorted({r["category"] for r in st.session_state.fmea_rows} | set(CATEGORIES))
+    add_col1, add_col2 = st.columns(2)
+    with add_col1:
+        relay_choice = st.selectbox(
+            "Relay", existing_relays + [_ADD_NEW_RELAY], key="fmea_add_relay_choice",
+        )
+        if relay_choice == _ADD_NEW_RELAY:
+            new_relay_name = st.text_input("New relay type name", key="fmea_add_relay_new")
+        else:
+            new_relay_name = relay_choice
+        new_component = st.text_input("Component", key="fmea_add_component", help="What part of the relay/circuit this failure mode affects, e.g. \"CT input circuit\".")
+    with add_col2:
+        new_failure_category = st.selectbox("Failure Category", FAILURE_CATEGORIES, key="fmea_add_failure_category")
+        new_failure_mode = st.text_input("Failure Mode", key="fmea_add_failure_mode")
+
+    with st.expander("Optional: cause / effect / diagnostics", expanded=False):
+        new_cause = st.text_area("Potential Cause", key="fmea_add_cause", height=60)
+        new_effect = st.text_area("Potential Effect", key="fmea_add_effect", height=60)
+        new_detection = st.text_area("Diagnostics", key="fmea_add_detection", height=60)
+
+    if st.button("Add Failure Mode", key="fmea_add_btn"):
+        if not new_relay_name.strip() or not new_component.strip() or not new_failure_mode.strip():
+            st.warning("Relay, Component, and Failure Mode are required.")
+        else:
+            new_row = dict(
+                id=f"custom-{uuid.uuid4().hex[:8]}",
+                category=new_relay_name.strip(),
+                component=new_component.strip(),
+                failure_mode=new_failure_mode.strip(),
+                failure_category=new_failure_category,
+                potential_cause=new_cause.strip(),
+                potential_effect=new_effect.strip(),
+                detection_method=new_detection.strip(),
+                # Mid-range placeholders, same "engineering judgment, not measured
+                # data" convention as the built-in rows - edit immediately below.
+                default_severity=5, default_occurrence=5, default_detection=5,
+                maintenance_task="", maintenance_frequency=FREQUENCY_OPTIONS[0],
+                recommended_action="",
+            )
+            st.session_state.fmea_rows.append(new_row)
+            # Keep the new relay/failure category visible in the filters below
+            # without an extra click, rather than silently hiding the row the
+            # engineer just added.
+            st.session_state["fmea_category_filter"] = list(
+                dict.fromkeys(st.session_state.get("fmea_category_filter", list(CATEGORIES)) + [new_relay_name.strip()])
+            )
+            st.session_state["fmea_failure_category_filter"] = list(
+                dict.fromkeys(st.session_state.get("fmea_failure_category_filter", list(FAILURE_CATEGORIES)) + [new_failure_category])
+            )
+            save_rows(st.session_state.fmea_rows)
+            st.toast(f"Added: {new_component.strip()} — {new_failure_mode.strip()}")
+            st.rerun()
+
 st.markdown("### Scored FMEA")
+
+# Dynamic, not the static CATEGORIES import: a relay family added via "Add
+# New Failure Mode" above must stay filterable/visible, not silently
+# disappear because it isn't one of the 3 built-in relay families.
+all_relay_categories = sorted({r["category"] for r in st.session_state.fmea_rows} | set(CATEGORIES))
+
+# Both filters' session_state can also be set directly by the "Add New
+# Failure Mode" handler above (to keep a just-added row visible without an
+# extra click) - only seed a `default` the first time the key doesn't exist
+# yet, since passing `default=` alongside a key Streamlit already has a
+# direct-assigned value for triggers its "default value AND session state
+# API" policy warning.
+if "fmea_category_filter" not in st.session_state:
+    st.session_state["fmea_category_filter"] = all_relay_categories
+if "fmea_failure_category_filter" not in st.session_state:
+    st.session_state["fmea_failure_category_filter"] = list(FAILURE_CATEGORIES)
 
 filter_col1, filter_col2 = st.columns(2)
 with filter_col1:
     selected_categories = st.multiselect(
-        "Relay family", CATEGORIES, default=CATEGORIES, key="fmea_category_filter"
+        "Relay family", all_relay_categories, key="fmea_category_filter"
     )
 with filter_col2:
     selected_failure_categories = st.multiselect(
-        "Failure category", FAILURE_CATEGORIES, default=FAILURE_CATEGORIES,
+        "Failure category", FAILURE_CATEGORIES,
         key="fmea_failure_category_filter",
         help="Root-cause branch from the failure-cause diagram (Hardware Failure / "
              "Software Defects / Measurement Errors / Wiring Problems / Environment).",
@@ -255,9 +344,19 @@ with st.container(border=True):
         f"**{detail_row['category']} · {detail_row.get('failure_category', '')}** — "
         f"RPN {detail_rpn} ({risk_level(detail_rpn)})"
     )
-    st.markdown(f"**Potential Cause:** {detail_row['potential_cause']}")
-    st.markdown(f"**Potential Effect:** {detail_row['potential_effect']}")
-    st.markdown(f"**Diagnostics:** {detail_row['detection_method']}")
+    cause = st.text_area(
+        "Potential Cause", value=detail_row.get("potential_cause", ""),
+        key=f"fmea_cause_{selected_id}", height=60,
+    )
+    effect = st.text_area(
+        "Potential Effect", value=detail_row.get("potential_effect", ""),
+        key=f"fmea_effect_{selected_id}", height=60,
+    )
+    detection = st.text_area(
+        "Diagnostics", value=detail_row.get("detection_method", ""),
+        key=f"fmea_detection_{selected_id}", height=60,
+        help="How this failure is caught - a monitoring alarm, a periodic test, an inspection.",
+    )
 
     detail_task_col, detail_freq_col = st.columns([3, 1])
     with detail_task_col:
@@ -280,9 +379,18 @@ with st.container(border=True):
         key=f"fmea_rec_action_{selected_id}", height=60,
     )
 
+detail_row["potential_cause"] = cause
+detail_row["potential_effect"] = effect
+detail_row["detection_method"] = detection
 detail_row["maintenance_task"] = maint_task
 detail_row["maintenance_frequency"] = maint_freq
 detail_row["recommended_action"] = rec_action
+
+# Persist to disk every rerun (rows_by_id holds the SAME dict objects as
+# st.session_state.fmea_rows, so every edit above is already reflected here)
+# - this is what makes values "stay the same after closing and reopening the
+# app" rather than only lasting for the current browser session.
+save_rows(st.session_state.fmea_rows)
 
 # Recompute RPN/Risk from the just-written-back values for the callout below,
 # so it reflects this rerun's edits immediately rather than the pre-edit table.
