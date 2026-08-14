@@ -39,6 +39,23 @@ def render_zone_diagram(image_filename, fallback_svg_html):
         st.markdown(fallback_svg_html, unsafe_allow_html=True)
 
 
+def sld_path(image_filename):
+    return os.path.join(ASSET_DIR, image_filename)
+
+
+def save_uploaded_sld(image_filename, uploaded_file):
+    """Persists an uploaded SLD image to assets/sld/<image_filename>,
+    overwriting any existing file there. This is the SAME location
+    render_zone_diagram() reads from, so uploading a relay's SLD from the
+    FMEA page immediately shows up on that equipment's own Theory tab too,
+    not just wherever the upload happened."""
+    os.makedirs(ASSET_DIR, exist_ok=True)
+    dest_path = sld_path(image_filename)
+    with open(dest_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return dest_path
+
+
 def _header(width, height):
     return (
         f'<svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" '

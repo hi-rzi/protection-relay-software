@@ -1,6 +1,7 @@
 import copy
 import datetime
 import json
+import os
 import uuid
 
 import pandas as pd
@@ -9,7 +10,37 @@ import streamlit as st
 from common.fmea_data import CATEGORIES, FAILURE_CATEGORIES, FMEA_ENTRIES, FREQUENCY_OPTIONS, risk_level
 from common.fmea_store import load_saved_rows, save_rows
 from common.pdf_report import generate_fmea_pdf_report
+from common.sld import sld_path, save_uploaded_sld
 from common.theme import flow_row, pill_row
+
+# Same relay-family grouping and image filenames each equipment page's own
+# Theory tab already uses via common.sld.render_zone_diagram() - the
+# Transformer family covers 4 different pieces of equipment (all built on
+# the same CAC1-10-M3/CAC2-10-M3 relay), so all 4 are shown; the Motor
+# family's 3 pages (ID Fan/PA Fan/FD Fan) share one SLD image today.
+FMEA_SLD_GROUPS = [
+    ("GE G60", [("Generator (87G)", "generator.png")]),
+    ("Mitsubishi CAC1-10-M3 / CAC2-10-M3", [
+        ("Excitation Transformer", "exct.png"),
+        ("Generator Step-Up Transformer", "gsut.png"),
+        ("Overall GSUT-GEN", "overall.png"),
+        ("Auxiliary Transformer", "transformer_aux.png"),
+    ]),
+    ("Multilin SR469 / GE 869", [("Motor (ID Fan / PA Fan / FD Fan)", "motor_idfan.png")]),
+]
+
+# Generic protective-relay wiring diagram (Bus/CT/PT/Relay/CB trip circuit) -
+# not specific to any relay family, so it's a single shipped asset shown once,
+# not an upload-per-family slot like the SLDs above.
+BASIC_RELAY_DIAGRAM_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "basic_relay.png"
+)
+
+if "fmea_rows" not in st.session_state:
+    # Rows saved to disk from a previous session take priority over the
+    # built-in defaults, so S/O/D edits, maintenance tasks, and any rows the
+    # engineer has added persist across closing and reopening the app.
+    st.session_state.fmea_rows = load_saved_rows() or copy.deepcopy(FMEA_ENTRIES)
 
 st.title("FMEA — Digital Protection Relays")
 st.caption(
@@ -143,11 +174,68 @@ with st.expander("Scope & FMEA scoring conventions", expanded=False):
             st.caption("Temperature/humidity, dust, a noisy operating environment")
     st.caption("From the supervisor-supplied failure-cause diagram for digital relays.")
 
-if "fmea_rows" not in st.session_state:
-    # Rows saved to disk from a previous session take priority over the
-    # built-in defaults, so S/O/D edits, maintenance tasks, and any rows the
-    # engineer has added persist across closing and reopening the app.
-    st.session_state.fmea_rows = load_saved_rows() or copy.deepcopy(FMEA_ENTRIES)
+# ---------------------------------------------------------------------------
+# Basic Relay Wiring - a single generic reference diagram (Bus - CT - Relay -
+# CB trip circuit - PT), the same one used in the plant's own training
+# material. Not specific to any relay family, so it's a shipped asset shown
+# once, not an upload-per-family slot like the sections below.
+# ---------------------------------------------------------------------------
+with st.expander("🧷 Basic Relay Wiring — Generic Reference", expanded=False):
+    st.caption(
+        "How a protection relay sits in the circuit in general - Bus, CT, PT, the relay "
+        "itself, and its trip circuit to the breaker (CB). Not specific to any one relay "
+        "family; a plain starting point before the family-specific photos and "
+        "protection-zone diagrams below."
+    )
+    if os.path.isfile(BASIC_RELAY_DIAGRAM_PATH):
+        st.image(BASIC_RELAY_DIAGRAM_PATH, use_container_width=True)
+    else:
+        st.info("No basic relay diagram found at assets/basic_relay.png.")
+
+# ---------------------------------------------------------------------------
+# Relay SLDs - reference diagrams showing where each relay's CTs sit and
+# what's inside its protected zone, grouped by the same 3 relay families the
+# rest of this page scores against. Reuses the SAME assets/sld/<file>.png
+# location and filenames each equipment page's own Theory tab already reads
+# via common.sld.render_zone_diagram() - uploading/replacing one here takes
+# effect there too, not just on this page. Plain reference diagrams only -
+# enough to show WHERE the protection zone sits, not to pinpoint an exact
+# failing part on it.
+# ---------------------------------------------------------------------------
+with st.expander("🗺️ Relay SLDs — Protection Zone Diagrams", expanded=False):
+    st.caption(
+        "Reference diagrams for the relay family a failure mode belongs to - the same "
+        "images shown on that equipment's own Theory tab. Upload or replace one below; "
+        "it updates everywhere it's used."
+    )
+    # One tab per relay family (not all 3 side by side) so each family gets
+    # the full page width to work with - important for the Transformer tab,
+    # which has 4 diagrams to lay out rather than 1.
+    sld_family_tabs = st.tabs([family for family, _ in FMEA_SLD_GROUPS])
+    for sld_family_tab, (family, items) in zip(sld_family_tabs, FMEA_SLD_GROUPS):
+        with sld_family_tab:
+            # Transformer's 4 diagrams get a 2-wide grid (bigger per diagram)
+            # rather than all 4 crammed into one row; families with 1 diagram
+            # just get a single full-width column.
+            sld_n_cols = 2 if len(items) > 2 else len(items)
+            for row_start in range(0, len(items), sld_n_cols):
+                sld_cols = st.columns(sld_n_cols)
+                for sld_col, (label, filename) in zip(sld_cols, items[row_start:row_start + sld_n_cols]):
+                    with sld_col:
+                        image_path = sld_path(filename)
+                        if os.path.isfile(image_path):
+                            st.image(image_path, caption=label, use_container_width=True)
+                        else:
+                            st.info(f"No SLD uploaded yet for {label}.")
+
+                        uploaded_sld = st.file_uploader(
+                            label, type=["png", "jpg", "jpeg"],
+                            key=f"fmea_sld_upload_{filename}", label_visibility="collapsed",
+                        )
+                        if uploaded_sld is not None:
+                            save_uploaded_sld(filename, uploaded_sld)
+                            st.toast(f"Saved SLD for {label}.")
+                            st.rerun()
 
 # ---------------------------------------------------------------------------
 # Load a saved FMEA — processed before any widget bound to session_state keys
@@ -366,6 +454,7 @@ with st.container(border=True):
         f"**{detail_row['category']} · {detail_row.get('failure_category', '')}** — "
         f"RPN {detail_rpn} ({risk_level(detail_rpn)})"
     )
+
     cause = st.text_area(
         "Potential Cause", value=detail_row.get("potential_cause", ""),
         key=f"fmea_cause_{selected_id}", height=60,
