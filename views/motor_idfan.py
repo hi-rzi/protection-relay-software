@@ -12,7 +12,6 @@ from common.pdf_report import generate_motor_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import motor_overcurrent_svg
 from common.ui_helpers import slider_with_exact_input, sidebar_section_nav, equipment_switcher
-from common.settings_advisor import suggest_bias_settings, suggest_time_overcurrent_settings
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.profile_io import safe_filename
@@ -188,7 +187,7 @@ if selected_preset != "Custom Profile":
 # Stall Margin Check") - no new engineering judgment invented, just surfaced
 # inline per-field instead of only after entering a test current.
 # ---------------------------------------------------------------------------
-sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
 selected, c, pinned = sidebar_section_nav(sections, key_prefix="idfan", pin_first=True)
 
 with c["Current Settings"]:
@@ -502,61 +501,6 @@ record_equipment_settings("motor", {
     "backup_ct_ratio": backup_ct_ratio, "backup_pickup_50": backup_pickup_50,
     "diff87m_ct_ratio": diff87m_ct_ratio, "diff87m_pickup_sec": diff87m_pickup_sec,
 })
-
-with c["Settings Calculator"]:
-    st.caption(
-        "Enter motor ratings, CT, and starting/safe-stall data below to get a suggested "
-        "settings sheet — a starting point, not a substitute for a coordination study. "
-        "Prefilled from Current Settings, but independent of it: change a value here to test "
-        "a scenario without touching your actual settings."
-    )
-    with st.container(border=True):
-        st.markdown("**Motor & CT**")
-        idcalc1, idcalc2 = st.columns(2)
-        with idcalc1:
-            calc_motor_fla = st.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(motor_fla), step=1.0, key="idfan_calc_fla")
-            calc_ct_ratio = st.number_input("CT Ratio (Primary A)", min_value=1.0, value=float(ct_ratio), step=1.0, key="idfan_calc_ct_ratio")
-            calc_ct_sec = st.number_input("CT Secondary Rating (A)", min_value=1.0, value=float(ct_secondary_rating), step=1.0, key="idfan_calc_ct_sec")
-        with idcalc2:
-            calc_lrc_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(locked_rotor_amps), step=1.0, key="idfan_calc_lrc_100")
-            calc_lrc_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(locked_rotor_amps_80), step=1.0, key="idfan_calc_lrc_80")
-        st.markdown("**Starting & Safe Stall**")
-        idcalc3, idcalc4 = st.columns(2)
-        with idcalc3:
-            calc_accel_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=float(accel_time_100), step=0.1, key="idfan_calc_accel_100")
-            calc_accel_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=float(accel_time_80), step=0.1, key="idfan_calc_accel_80")
-        with idcalc4:
-            calc_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=float(safe_stall_100), step=0.1, key="idfan_calc_stall_100")
-            calc_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=float(safe_stall_80), step=0.1, key="idfan_calc_stall_80")
-
-    idc_suggestion = suggest_time_overcurrent_settings(
-        motor_fla=calc_motor_fla, ct_ratio=calc_ct_ratio, ct_secondary_rating=calc_ct_sec,
-        locked_rotor_amps_100=calc_lrc_100, locked_rotor_amps_80=calc_lrc_80,
-        accel_time_100=calc_accel_100, accel_time_80=calc_accel_80,
-        safe_stall_100=calc_stall_100, safe_stall_80=calc_stall_80,
-    )
-    idc1, idc2 = st.columns(2)
-    with idc1:
-        with st.container(border=True):
-            st.markdown("#### 51 Tap")
-            st.metric("Suggested", f"{idc_suggestion['tap_51']:.1f} A sec.")
-            st.caption(idc_suggestion["basis_tap_51"])
-    with idc2:
-        with st.container(border=True):
-            st.markdown("#### 51 Time Dial")
-            st.metric("Suggested", f"{idc_suggestion['time_dial']:.1f}")
-            st.caption(idc_suggestion["basis_time_dial"])
-    idc3, idc4 = st.columns(2)
-    with idc3:
-        with st.container(border=True):
-            st.markdown("#### 50A Pickup")
-            st.metric("Suggested", f"{idc_suggestion['pickup_50a']:.1f} A sec." if idc_suggestion["pickup_50a"] is not None else "—")
-            st.caption(idc_suggestion["basis_pickup_50a"])
-    with idc4:
-        with st.container(border=True):
-            st.markdown("#### 50B Dropout")
-            st.metric("Suggested", f"{idc_suggestion['dropout_50b']:.2f} A sec." if idc_suggestion["dropout_50b"] is not None else "—")
-            st.caption(idc_suggestion["basis_dropout_50b"])
 
 with c["Theory"]:
     render_theory_tab(

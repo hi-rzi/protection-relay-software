@@ -10,7 +10,7 @@ from common.pdf_report import generate_generator_pdf_report
 from common.concepts import render_theory_tab
 from common.sld import generator_zone_svg
 from common.ui_helpers import slider_with_exact_input, fault_term_info, sidebar_section_nav, equipment_switcher
-from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings, suggest_generator_differential_settings
+from common.settings_advisor import mismatch_ratio_pct, suggest_bias_settings
 from common.project_state import with_restored_preset, get_restorable_preset, record_equipment_settings
 from common.historian import render_historian_overlay
 from common.profile_io import export_profile_button, restore_profile_uploader
@@ -104,11 +104,9 @@ if not is_custom:
 
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
-# comment on whether an adjustment improves or weakens protection. Comments
-# reuse the exact same functions as the old sidebar "Settings Calculator" (no
-# new engineering judgment invented) - just surfaced inline per-field.
+# comment on whether an adjustment improves or weakens protection.
 # ---------------------------------------------------------------------------
-sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test",
+sections = ["Current Settings", "Theory", "Simulate & Test",
             "Commissioning & Injection Tool", "Fault Current Analysis",
             "Settings Summary & Approval"]
 selected, c, pinned = sidebar_section_nav(sections, key_prefix="gen", pin_first=True)
@@ -369,62 +367,6 @@ relay = AdvancedDifferentialRelay(
     convention=convention, ct_polarity=ct_polarity,
     target_amps=target_amps
 )
-
-with c["Settings Calculator"]:
-    st.caption(
-        "Enter equipment ratings and CT data below to get a suggested settings sheet — a "
-        "starting point, not a substitute for a coordination study. Prefilled from Current "
-        "Settings, but independent of it: change a value here to test a scenario without "
-        "touching your actual settings."
-    )
-    if current_mode == "GENERATOR_LEGACY":
-        st.info(
-            "This calculator suggests Pickup/Slope/Break settings for the GE G60 numerical "
-            "dual-breakpoint characteristic. The GE CFD22B4A legacy relay uses a single-slope "
-            "product-restraint characteristic instead, set via Target Amps directly under "
-            "Current Settings — no suggested-settings sheet for it here."
-        )
-    else:
-        with st.container(border=True):
-            st.markdown("**Ratings and CT**")
-            gin1, gin2 = st.columns(2)
-            with gin1:
-                calc_mva = st.number_input("Generator Rating (MVA)", min_value=0.1, value=float(mva), step=1.0, key="gen_calc_mva")
-                calc_kv = st.number_input("Rated Voltage (kV)", min_value=0.1, value=float(kv), step=1.0, key="gen_calc_kv")
-            with gin2:
-                calc_ct_n = st.number_input("Neutral Side CT Rating (Primary A)", min_value=1.0, value=float(ct_ratio_N), step=1.0, key="gen_calc_ct_n")
-                calc_ct_t = st.number_input("Terminal Side CT Rating (Primary A)", min_value=1.0, value=float(ct_ratio_T), step=1.0, key="gen_calc_ct_t")
-            calc_ct_sec = st.number_input("CT Secondary Rating (A)", min_value=1.0, value=float(ct_secondary_rating), step=1.0, key="gen_calc_ct_sec")
-
-            calc_i_sec_n = (calc_mva * 1000.0 / (1.7320508 * calc_kv)) / (calc_ct_n / calc_ct_sec) if calc_kv > 0 and calc_ct_n > 0 else 0.0
-            calc_i_sec_t = (calc_mva * 1000.0 / (1.7320508 * calc_kv)) / (calc_ct_t / calc_ct_sec) if calc_kv > 0 and calc_ct_t > 0 else 0.0
-            calc_gen_mismatch = mismatch_ratio_pct([calc_i_sec_n, calc_i_sec_t])
-            st.metric("CT mismatch between sides", f"{calc_gen_mismatch:.2f}%" if calc_gen_mismatch is not None else "—")
-
-        gen_suggestion = suggest_generator_differential_settings(calc_gen_mismatch)
-        gcalc1, gcalc2, gcalc3 = st.columns(3)
-        with gcalc1:
-            with st.container(border=True):
-                st.markdown("#### Pickup")
-                st.metric("Suggested", f"{gen_suggestion['i_pickup']:.3f} pu")
-        with gcalc2:
-            with st.container(border=True):
-                st.markdown("#### Slope 1")
-                st.metric("Suggested", f"{gen_suggestion['slope_1']:.1f} %")
-        with gcalc3:
-            with st.container(border=True):
-                st.markdown("#### Slope 2")
-                st.metric("Suggested", f"{gen_suggestion['slope_2']:.1f} %")
-        gcalc4, gcalc5 = st.columns(2)
-        with gcalc4:
-            with st.container(border=True):
-                st.markdown("#### Break 1")
-                st.metric("Suggested", f"{gen_suggestion['break_1']:.2f} pu")
-        with gcalc5:
-            with st.container(border=True):
-                st.markdown("#### Break 2")
-                st.metric("Suggested", f"{gen_suggestion['break_2']:.2f} pu")
-        st.caption(gen_suggestion["basis"])
 
 with c["Theory"]:
     render_theory_tab(

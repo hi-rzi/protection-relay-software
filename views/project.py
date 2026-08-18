@@ -102,7 +102,7 @@ commissioning_notes = st.text_area(
 
 st.markdown("### Equipment Status")
 st.caption(
-    "Health is a rule-of-thumb signal only (reusing each page's own Settings Calculator "
+    "Health is a rule-of-thumb signal only (reusing each page's own suggested-settings "
     "math) - it is not a coordination study or an approval. Revisit an equipment page for "
     "the full picture behind any ⚠️ Review flag."
 )

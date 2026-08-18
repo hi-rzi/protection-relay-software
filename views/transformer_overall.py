@@ -83,15 +83,13 @@ if not is_custom:
 
 # ---------------------------------------------------------------------------
 # CURRENT SETTINGS — every applied setting, editable in place, with a live
-# comment on whether an adjustment improves or weakens protection. Comments
-# reuse the exact same functions as the old sidebar "Settings Calculator" (no
-# new engineering judgment invented) - just surfaced inline per-field. Taps
-# are shown against their individual T_E only as a reference (informational),
+# comment on whether an adjustment improves or weakens protection. Taps are
+# shown against their individual T_E only as a reference (informational),
 # not a pass/fail check - same reasoning as EXCT/GSUT: taps are chosen
 # JOINTLY to minimize the actual 3-way mismatch, not to each independently
 # match their own T_E, so the mismatch metric below is the real signal.
 # ---------------------------------------------------------------------------
-sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
 selected, c, pinned = sidebar_section_nav(sections, key_prefix="overall", pin_first=True)
 
 with c["Current Settings"]:
@@ -346,84 +344,6 @@ relay = TransformerDifferentialRelay(
 phases = ["Phase A", "Phase B", "Phase C"]
 winding_names = ["HV (525kV)", "Generator (23kV)", "UAT (23kV)"]
 amps_base = relay.windings[0]["i_rated_sec"]  # HV-side rated secondary current, used as pu base for charts
-
-with c["Settings Calculator"]:
-    st.caption(
-        "Enter equipment ratings and CT data below to get a suggested settings sheet — a "
-        "starting point, not a substitute for a coordination study. Prefilled from Current "
-        "Settings, but independent of it: change a value here to test a scenario without "
-        "touching your actual settings."
-    )
-    with st.container(border=True):
-        st.markdown("**Ratings and CT**")
-        calc_mva = st.number_input("Base Rating (MVA)", min_value=0.1, value=float(mva), step=1.0, key="overall_calc_mva")
-        calc_ct_sec = st.number_input("CT Secondary Rating (A)", min_value=1.0, value=float(ct_secondary_rating), step=1.0, key="overall_calc_ct_sec")
-        ocalc1, ocalc2, ocalc3 = st.columns(3)
-        with ocalc1:
-            st.markdown("HV Winding")
-            calc_kv_hv = st.number_input("HV Rated Voltage (kV)", min_value=0.1, value=float(kv_hv), step=1.0, key="overall_calc_kv_hv")
-            calc_ct_hv = st.number_input("HV CT Ratio (Primary A)", min_value=1.0, value=float(ct_hv), step=1.0, key="overall_calc_ct_hv")
-            calc_conn_hv = st.selectbox("HV CT Connection", ["DELTA", "WYE"], index=0 if ct_conn_hv.upper() == "DELTA" else 1, key="overall_calc_conn_hv")
-            calc_tap_hv = st.number_input("HV Tap (as set)", min_value=0.1, value=float(tap_hv), step=0.01, key="overall_calc_tap_hv")
-        with ocalc2:
-            st.markdown("Generator Winding")
-            calc_kv_gen = st.number_input("Generator Rated Voltage (kV)", min_value=0.1, value=float(kv_gen), step=1.0, key="overall_calc_kv_gen")
-            calc_ct_gen = st.number_input("Generator CT Ratio (Primary A)", min_value=1.0, value=float(ct_gen), step=1.0, key="overall_calc_ct_gen")
-            calc_conn_gen = st.selectbox("Generator CT Connection", ["DELTA", "WYE"], index=0 if ct_conn_gen.upper() == "DELTA" else 1, key="overall_calc_conn_gen")
-            calc_tap_gen = st.number_input("Generator Tap (as set)", min_value=0.1, value=float(tap_gen), step=0.01, key="overall_calc_tap_gen")
-        with ocalc3:
-            st.markdown("UAT Winding")
-            calc_kv_uat = st.number_input("UAT Rated Voltage (kV)", min_value=0.1, value=float(kv_uat), step=1.0, key="overall_calc_kv_uat")
-            calc_ct_uat = st.number_input("UAT CT Ratio (Primary A)", min_value=1.0, value=float(ct_uat), step=1.0, key="overall_calc_ct_uat")
-            calc_conn_uat = st.selectbox("UAT CT Connection", ["DELTA", "WYE"], index=0 if ct_conn_uat.upper() == "DELTA" else 1, key="overall_calc_conn_uat")
-            calc_tap_uat = st.number_input("UAT Tap (as set)", min_value=0.1, value=float(tap_uat), step=0.01, key="overall_calc_tap_uat")
-
-        calc_delta_hv = 1.7320508 if calc_conn_hv == "DELTA" else 1.0
-        calc_delta_gen = 1.7320508 if calc_conn_gen == "DELTA" else 1.0
-        calc_delta_uat = 1.7320508 if calc_conn_uat == "DELTA" else 1.0
-        calc_i_pri_hv = (calc_mva * 1000.0) / (1.7320508 * calc_kv_hv) if calc_kv_hv > 0 else 0.0
-        calc_i_pri_gen = (calc_mva * 1000.0) / (1.7320508 * calc_kv_gen) if calc_kv_gen > 0 else 0.0
-        calc_i_pri_uat = (calc_mva * 1000.0) / (1.7320508 * calc_kv_uat) if calc_kv_uat > 0 else 0.0
-        calc_t1_e = suggest_ct_matching_tap(calc_i_pri_hv, calc_ct_hv, calc_ct_sec, calc_delta_hv)
-        calc_t2_e = suggest_ct_matching_tap(calc_i_pri_gen, calc_ct_gen, calc_ct_sec, calc_delta_gen)
-        calc_t3_e = suggest_ct_matching_tap(calc_i_pri_uat, calc_ct_uat, calc_ct_sec, calc_delta_uat)
-        calc_i_relay_hv = (calc_i_pri_hv / (calc_ct_hv / calc_ct_sec) * calc_delta_hv * calc_tap_hv) if calc_ct_hv > 0 else None
-        calc_i_relay_gen = (calc_i_pri_gen / (calc_ct_gen / calc_ct_sec) * calc_delta_gen * calc_tap_gen) if calc_ct_gen > 0 else None
-        calc_i_relay_uat = (calc_i_pri_uat / (calc_ct_uat / calc_ct_sec) * calc_delta_uat * calc_tap_uat) if calc_ct_uat > 0 else None
-        calc_mismatch_overall = mismatch_ratio_pct([calc_i_relay_hv, calc_i_relay_gen, calc_i_relay_uat])
-        st.metric("Mismatch at entered taps", f"{calc_mismatch_overall:.2f}%" if calc_mismatch_overall is not None else "—")
-
-    calc_suggestion = suggest_bias_settings(calc_mismatch_overall or 0.0, num_windings=3)
-
-    tcalc1, tcalc2, tcalc3 = st.columns(3)
-    with tcalc1:
-        with st.container(border=True):
-            st.markdown("#### HV Tap (T1_E)")
-            st.metric("Suggested", f"{calc_t1_e:.3f}" if calc_t1_e is not None else "—")
-    with tcalc2:
-        with st.container(border=True):
-            st.markdown("#### Generator Tap (T2_E)")
-            st.metric("Suggested", f"{calc_t2_e:.3f}" if calc_t2_e is not None else "—")
-    with tcalc3:
-        with st.container(border=True):
-            st.markdown("#### UAT Tap (T3_E)")
-            st.metric("Suggested", f"{calc_t3_e:.3f}" if calc_t3_e is not None else "—")
-    st.caption("Ideal (unrounded) CT-matching tap for each winding at rated load — round to the nearest tap your relay's settings software offers.")
-
-    bcalc1, bcalc2, bcalc3 = st.columns(3)
-    with bcalc1:
-        with st.container(border=True):
-            st.markdown("#### Bias")
-            st.metric("Suggested", f"{calc_suggestion['bias_pct']:.0f} %")
-    with bcalc2:
-        with st.container(border=True):
-            st.markdown("#### Min Operate")
-            st.metric("Suggested", f"{calc_suggestion['min_operate_pct']:.0f} %")
-    with bcalc3:
-        with st.container(border=True):
-            st.markdown("#### HOC")
-            st.metric("Suggested", f"{calc_suggestion['hoc_multiple']:.0f}x tap current")
-    st.caption(calc_suggestion["basis"])
 
 with c["Theory"]:
     render_theory_tab(

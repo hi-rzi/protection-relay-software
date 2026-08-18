@@ -31,7 +31,6 @@ from common.historian import render_historian_overlay
 from common.project_state import with_restored_preset, record_equipment_settings
 from common.profile_io import export_profile_button, restore_profile_uploader
 from common.ui_helpers import sidebar_section_nav, equipment_switcher
-from common.settings_advisor import suggest_motor_overload_settings
 from engines.motor_869 import Motor869Relay
 from engines.motor import MotorTimeOvercurrentRelay, BackupInstantaneousRelay
 from engines.motor_differential import SelfBalancingDifferentialRelay
@@ -284,7 +283,7 @@ def render_fan_motor_page(fan_type):
     # Stall Margin Check") - no new engineering judgment invented, just
     # surfaced inline per field.
     # -------------------------------------------------------------------
-    sections = ["Current Settings", "Settings Calculator", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
+    sections = ["Current Settings", "Theory", "Simulate & Test", "Commissioning & Injection Tool", "Settings Summary & Approval"]
     selected, c, pinned = sidebar_section_nav(sections, key_prefix=project_key, pin_first=True)
 
     with c["Current Settings"]:
@@ -655,71 +654,6 @@ def render_fan_motor_page(fan_type):
         mech_jam_pct=mech_jam_pct, mech_jam_delay_s=mech_jam_delay_s,
         accel_timer_s=accel_timer_s, overload_alarm_delay_s=overload_alarm_delay_s,
     )
-
-    with c["Settings Calculator"]:
-        st.caption(
-            "Enter motor ratings, CT, and starting/safe-stall data below to get a suggested "
-            "settings sheet — a starting point, not a substitute for a coordination study. "
-            "Prefilled from Current Settings, but independent of it: change a value here to "
-            "test a scenario without touching your actual settings."
-        )
-        with st.container(border=True):
-            st.markdown("**Motor & CT**")
-            fcalc1, fcalc2 = st.columns(2)
-            with fcalc1:
-                calc_motor_fla = st.number_input("Motor Full Load Current (A)", min_value=1.0, value=float(motor_fla), step=1.0, key=f"{project_key}__calc_fla")
-                calc_ct_ratio = st.number_input("CT Ratio (Primary A)", min_value=1.0, value=float(ct_ratio), step=1.0, key=f"{project_key}__calc_ct_ratio")
-                calc_ground_ct_ratio = st.number_input("Ground CT Ratio (Primary A)", min_value=1.0, value=float(ground_ct_ratio), step=1.0, key=f"{project_key}__calc_gct_ratio")
-            with fcalc2:
-                calc_lrc_100 = st.number_input("Locked Rotor Current @ 100% V (A)", min_value=1.0, value=float(locked_rotor_amps_100), step=1.0, key=f"{project_key}__calc_lrc_100") if locked_rotor_amps_100 else None
-                calc_lrc_80 = st.number_input("Locked Rotor Current @ 80% V (A)", min_value=1.0, value=float(locked_rotor_amps_80), step=1.0, key=f"{project_key}__calc_lrc_80") if locked_rotor_amps_80 else None
-            st.markdown("**Starting & Safe Stall**")
-            fcalc3, fcalc4 = st.columns(2)
-            with fcalc3:
-                calc_accel_100 = st.number_input("Acceleration Time @ 100% V (s)", min_value=0.1, value=float(accel_time_100), step=0.1, key=f"{project_key}__calc_accel_100") if accel_time_100 else None
-                calc_accel_80 = st.number_input("Acceleration Time @ 80% V (s)", min_value=0.1, value=float(accel_time_80), step=0.1, key=f"{project_key}__calc_accel_80") if accel_time_80 else None
-            with fcalc4:
-                calc_stall_100 = st.number_input("Safe Stall Time @ 100% V (s)", min_value=0.1, value=float(safe_stall_100), step=0.1, key=f"{project_key}__calc_stall_100") if safe_stall_100 else None
-                calc_stall_80 = st.number_input("Safe Stall Time @ 80% V (s)", min_value=0.1, value=float(safe_stall_80), step=0.1, key=f"{project_key}__calc_stall_80") if safe_stall_80 else None
-
-        fan_suggestion = suggest_motor_overload_settings(
-            motor_fla=calc_motor_fla, ct_ratio=calc_ct_ratio, ground_ct_ratio=calc_ground_ct_ratio,
-            locked_rotor_amps_100=calc_lrc_100, locked_rotor_amps_80=calc_lrc_80,
-            accel_time_100=calc_accel_100, accel_time_80=calc_accel_80,
-            safe_stall_100=calc_stall_100, safe_stall_80=calc_stall_80,
-        )
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            with st.container(border=True):
-                st.markdown("#### Overload Pickup")
-                st.metric("Suggested", f"{fan_suggestion['overload_pickup_pct']:.0f} % FLA")
-                st.caption(fan_suggestion["basis_overload"])
-        with fc2:
-            with st.container(border=True):
-                st.markdown("#### Curve Multiplier")
-                st.metric("Suggested", f"{fan_suggestion['curve_multiplier']:.1f}")
-                st.caption(fan_suggestion["basis_cm"])
-        fc3, fc4 = st.columns(2)
-        with fc3:
-            with st.container(border=True):
-                st.markdown("#### Instantaneous Pickup")
-                st.metric("Suggested", f"{fan_suggestion['inst_pickup_amps']:.0f} A primary" if fan_suggestion["inst_pickup_amps"] is not None else "—")
-                st.caption(fan_suggestion["basis_inst"])
-        with fc4:
-            with st.container(border=True):
-                st.markdown("#### Ground Fault Pickup")
-                st.metric("Suggested", f"{fan_suggestion['gf_pickup_amps']:.1f} A primary")
-                st.caption(fan_suggestion["basis_gf"])
-        fc5, fc6 = st.columns(2)
-        with fc5:
-            with st.container(border=True):
-                st.markdown("#### Unbalance Alarm")
-                st.metric("Suggested", f"{fan_suggestion['unbal_alarm_pct']:.0f} %")
-        with fc6:
-            with st.container(border=True):
-                st.markdown("#### Unbalance Trip")
-                st.metric("Suggested", f"{fan_suggestion['unbal_trip_pct']:.0f} %")
-        st.caption(fan_suggestion["basis_unbal"])
 
     with c["Theory"]:
         render_theory_tab(

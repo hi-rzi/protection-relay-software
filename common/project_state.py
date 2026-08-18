@@ -85,8 +85,9 @@ def with_restored_preset(presets_dict, equipment_key):
 
 def equipment_health(equipment_key, data):
     """A cheap, rule-of-thumb health signal per equipment - reuses the same
-    Settings Calculator math already shown on each page, not a new check.
-    Returns (status, detail) where status is one of OK / REVIEW / N/A.
+    suggested-settings math already shown inline on each page's Current
+    Settings, not a new check. Returns (status, detail) where status is
+    one of OK / REVIEW / N/A.
     This is NOT a coordination study - just a sanity check that the applied
     Bias/Minimum Operate clears the rule-of-thumb floor for the CT/tap
     mismatch already being carried (transformers/generator), or that the
